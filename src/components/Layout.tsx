@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Sidebar,
   SidebarContent,
@@ -11,10 +11,20 @@ import {
   SidebarTrigger,
   SidebarFooter,
 } from '@/components/ui/sidebar'
-import { Scale, FileText, Search, Briefcase, Settings, Bell, LayoutDashboard } from 'lucide-react'
+import {
+  Scale,
+  FileText,
+  Search,
+  Briefcase,
+  Settings,
+  Bell,
+  LayoutDashboard,
+  LogOut,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { useAuth } from '@/hooks/use-auth'
 
 const navigation = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
@@ -26,17 +36,24 @@ const navigation = [
 
 export default function Layout() {
   const location = useLocation()
+  const { signOut, user } = useAuth()
+  const navigate = useNavigate()
+
+  const handleLogout = async () => {
+    await signOut()
+    navigate('/login')
+  }
 
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full overflow-hidden bg-background">
-        <Sidebar variant="sidebar" collapsible="icon">
+        <Sidebar variant="sidebar" collapsible="icon" className="no-print">
           <SidebarHeader className="h-16 flex items-center justify-center border-b px-4">
             <div className="flex items-center gap-2 font-bold tracking-tight text-primary w-full overflow-hidden group-data-[collapsible=icon]:justify-center">
               <Scale className="h-6 w-6 shrink-0 text-primary" />
               <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-                <span className="truncate text-sm uppercase">Luiz Moreira Gomes Junior</span>
-                <span className="text-xs font-normal text-muted-foreground">OAB/MG 247.000</span>
+                <span className="truncate text-sm uppercase">LexControl</span>
+                <span className="text-xs font-normal text-muted-foreground">Sistema Jurídico</span>
               </div>
             </div>
           </SidebarHeader>
@@ -59,33 +76,34 @@ export default function Layout() {
             </SidebarMenu>
           </SidebarContent>
           <SidebarFooter className="border-t p-4 space-y-3">
-            <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
-              <Avatar className="h-8 w-8">
-                <AvatarImage src="https://img.usecurling.com/ppl/thumbnail?gender=male&seed=luiz" />
-                <AvatarFallback>LM</AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
-                <span className="text-sm font-medium truncate uppercase">
-                  Luiz Moreira Gomes Junior
-                </span>
-                <span className="text-xs text-muted-foreground truncate">OAB/MG 247.000</span>
+            <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center justify-between">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage
+                    src={`https://img.usecurling.com/ppl/thumbnail?gender=male&seed=${user?.email}`}
+                  />
+                  <AvatarFallback>AD</AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
+                  <span className="text-sm font-medium truncate">{user?.email}</span>
+                  <span className="text-xs text-muted-foreground truncate">Advogado(a)</span>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
-              <Avatar className="h-8 w-8">
-                <AvatarImage src="https://img.usecurling.com/ppl/thumbnail?gender=male&seed=sanders" />
-                <AvatarFallback>SB</AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
-                <span className="text-sm font-medium truncate">Sanders Barão</span>
-                <span className="text-xs text-muted-foreground truncate">OAB/MG 112.898</span>
-              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="group-data-[collapsible=icon]:hidden text-muted-foreground hover:text-red-600"
+                onClick={handleLogout}
+                title="Sair"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
           </SidebarFooter>
         </Sidebar>
 
         <SidebarInset className="flex flex-col flex-1 overflow-hidden">
-          <header className="h-16 flex-shrink-0 flex items-center justify-between px-6 border-b bg-white/80 backdrop-blur-md sticky top-0 z-10">
+          <header className="no-print h-16 flex-shrink-0 flex items-center justify-between px-6 border-b bg-white/80 backdrop-blur-md sticky top-0 z-10">
             <div className="flex items-center gap-4 flex-1">
               <SidebarTrigger />
               <div className="relative w-full max-w-md hidden md:flex">
@@ -105,7 +123,7 @@ export default function Layout() {
             </div>
           </header>
 
-          <main className="flex-1 overflow-y-auto p-6 md:p-8 animate-fade-in">
+          <main className="flex-1 overflow-y-auto p-6 md:p-8 animate-fade-in print:p-0 print:overflow-visible">
             <Outlet />
           </main>
         </SidebarInset>

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -10,90 +11,133 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts'
-import { Briefcase, CalendarClock, FileEdit, Gavel, ArrowRight } from 'lucide-react'
+import { Briefcase, CalendarClock, FileEdit, Gavel, ArrowRight, Activity } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-
-const kpiData = [
-  { title: 'Processos Ativos', value: '142', icon: Briefcase, trend: '+4 esta semana' },
-  {
-    title: 'Prazos da Semana',
-    value: '12',
-    icon: CalendarClock,
-    trend: '3 urgentes',
-    urgent: true,
-  },
-  { title: 'Minutas em Rascunho', value: '5', icon: FileEdit, trend: '2 prontas para revisão' },
-  { title: 'Audiências Próximas', value: '3', icon: Gavel, trend: 'Próxima em 2 dias' },
-]
-
-const recentActivity = [
-  {
-    id: 1,
-    action: 'Novo Acórdão anexado',
-    process: '0012345-67.2023.8.26.0000',
-    type: 'Penal',
-    date: 'Hoje, 10:30',
-  },
-  {
-    id: 2,
-    action: 'Minuta de Habeas Corpus gerada',
-    process: '0089765-43.2023.8.26.0000',
-    type: 'Penal',
-    date: 'Hoje, 09:15',
-  },
-  {
-    id: 3,
-    action: 'Petição Inicial protocolada',
-    process: '1023456-89.2023.8.26.0100',
-    type: 'Cível',
-    date: 'Ontem, 16:45',
-  },
-  {
-    id: 4,
-    action: 'Prazo fatal alertado (Contestação)',
-    process: '1098765-12.2022.8.26.0100',
-    type: 'Cível',
-    date: 'Ontem, 14:20',
-  },
-  { id: 5, action: 'Nova Jurisprudência salva', process: '-', type: 'Geral', date: 'Ontem, 11:00' },
-]
-
-const chartData = [
-  { name: 'Direito Penal', value: 65, color: 'var(--color-penal)' },
-  { name: 'Direito Cível', value: 77, color: 'var(--color-civel)' },
-]
-
-const chartConfig = {
-  penal: { label: 'Penal', color: 'hsl(var(--chart-2))' },
-  civel: { label: 'Cível', color: 'hsl(var(--chart-3))' },
-}
+import { supabase } from '@/lib/supabase/client'
+import { Link } from 'react-router-dom'
 
 export default function Index() {
+  const [stats, setStats] = useState({ active: 0, drafts: 0, civil: 0, penal: 0, deadlines: 0 })
+  const [recentActivity, setRecentActivity] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [
+          { count: activeCount },
+          { count: draftCount },
+          { data: procs },
+          { data: deadlines },
+          { data: minutesData },
+        ] = await Promise.all([
+          supabase
+            .from('processes')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'Ativo'),
+          supabase
+            .from('minutes')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'Draft'),
+          supabase.from('processes').select('area'),
+          supabase.from('processes').select('*', { count: 'exact' }).eq('status', 'Prazo Fatal'),
+          supabase
+            .from('minutes')
+            .select('id, title, status, created_at, process_id')
+            .order('created_at', { ascending: false })
+            .limit(5),
+        ])
+
+        const penal = procs?.filter((p) => p.area === 'Penal').length || 0
+        const civil = procs?.filter((p) => p.area === 'Cível').length || 0
+
+        setStats({
+          active: activeCount || 0,
+          drafts: draftCount || 0,
+          civil,
+          penal,
+          deadlines: deadlines?.length || 0,
+        })
+
+        if (minutesData) {
+          setRecentActivity(
+            minutesData.map((m) => ({
+              id: m.id,
+              action: `Minuta criada: ${m.title}`,
+              process: m.process_id ? 'Vinculada' : 'Avulsa',
+              type: 'Geral',
+              date: new Date(m.created_at).toLocaleString('pt-BR', {
+                dateStyle: 'short',
+                timeStyle: 'short',
+              }),
+            })),
+          )
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [])
+
+  const kpiData = [
+    {
+      title: 'Processos Ativos',
+      value: stats.active.toString(),
+      icon: Briefcase,
+      trend: 'Sincronizado',
+    },
+    {
+      title: 'Prazos Fatais',
+      value: stats.deadlines.toString(),
+      icon: CalendarClock,
+      trend: stats.deadlines > 0 ? 'Atenção necessária' : 'Tudo em dia',
+      urgent: stats.deadlines > 0,
+    },
+    {
+      title: 'Minutas em Rascunho',
+      value: stats.drafts.toString(),
+      icon: FileEdit,
+      trend: 'Aguardando revisão',
+    },
+    { title: 'Jurisprudências Salvas', value: '3', icon: Gavel, trend: 'Base de conhecimento' },
+  ]
+
+  const chartData = [
+    { name: 'Direito Penal', value: stats.penal || 1, color: 'var(--color-penal)' },
+    { name: 'Direito Cível', value: stats.civil || 1, color: 'var(--color-civel)' },
+  ]
+
+  const chartConfig = {
+    penal: { label: 'Penal', color: 'hsl(var(--chart-2))' },
+    civel: { label: 'Cível', color: 'hsl(var(--chart-3))' },
+  }
+
+  if (loading)
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Activity className="animate-spin text-primary mr-2" /> Carregando dashboard...
+      </div>
+    )
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-start lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-primary uppercase">
-            LUIZ MOREIRA GOMES JUNIOR
+            LexControl Dashboard
           </h1>
-          <div className="flex items-center gap-2 mt-1 mb-2">
-            <span className="text-primary font-semibold text-sm">OAB/MG 247.000</span>
-            <span className="text-muted-foreground text-sm hidden sm:inline">•</span>
-            <span className="text-muted-foreground text-sm hidden sm:inline">Advogado Titular</span>
-          </div>
-          <p className="text-muted-foreground text-sm">
-            Bem-vindo de volta, Dr. Luiz. Aqui está o resumo dos seus processos e prazos.
+          <p className="text-muted-foreground text-sm mt-1">
+            Resumo em tempo real dos seus processos e atividades.
           </p>
         </div>
         <div className="flex flex-col md:items-end gap-3">
-          <Badge
-            variant="secondary"
-            className="w-fit flex items-center gap-2 py-1.5 px-3 bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200"
-          >
-            Colaborador: Sanders Barão (OAB/MG 112.898)
-          </Badge>
-          <Button className="hidden md:flex gap-2 w-fit">
-            <FileEdit className="h-4 w-4" /> Nova Minuta
+          <Button className="hidden md:flex gap-2 w-fit" asChild>
+            <Link to="/gerador">
+              <FileEdit className="h-4 w-4" /> Nova Minuta
+            </Link>
           </Button>
         </div>
       </div>
@@ -123,51 +167,39 @@ export default function Index() {
         <Card className="md:col-span-4 border-border/50 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Atividade Recente</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">Últimas atualizações no sistema.</p>
+              <CardTitle>Atividade Recente (Minutas)</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Últimos documentos criados ou editados.
+              </p>
             </div>
-            <Button variant="ghost" size="sm" className="gap-1">
-              Ver tudo <ArrowRight className="h-4 w-4" />
-            </Button>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Ação</TableHead>
-                  <TableHead>Processo</TableHead>
-                  <TableHead>Área</TableHead>
-                  <TableHead className="text-right">Data</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentActivity.map((item) => (
-                  <TableRow key={item.id} className="hover:bg-muted/50">
-                    <TableCell className="font-medium text-sm">{item.action}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground font-mono">
-                      {item.process}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={
-                          item.type === 'Penal'
-                            ? 'border-red-200 text-red-700 bg-red-50'
-                            : item.type === 'Cível'
-                              ? 'border-blue-200 text-blue-700 bg-blue-50'
-                              : 'bg-slate-50'
-                        }
-                      >
-                        {item.type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right text-sm text-muted-foreground">
-                      {item.date}
-                    </TableCell>
+            {recentActivity.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">Nenhuma atividade recente.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ação</TableHead>
+                    <TableHead>Processo</TableHead>
+                    <TableHead className="text-right">Data</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {recentActivity.map((item) => (
+                    <TableRow key={item.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium text-sm">{item.action}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground font-mono">
+                        {item.process}
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground">
+                        {item.date}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
@@ -198,56 +230,6 @@ export default function Index() {
                 </PieChart>
               </ResponsiveContainer>
             </ChartContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card className="border-border/50 shadow-sm border-l-4 border-l-red-600">
-          <CardHeader>
-            <CardTitle className="text-red-800 flex items-center gap-2">
-              <CalendarClock className="h-5 w-5" /> Prazos Fatais Penais
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex flex-col gap-1 border-b pb-4">
-                <span className="font-semibold text-sm">
-                  Resposta à Acusação - Processo 0089765-43.2023.8.26.0000
-                </span>
-                <span className="text-xs text-red-600 font-medium">Vence amanhã, às 23:59</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="font-semibold text-sm">
-                  Apelação Criminal - Processo 0012345-67.2023.8.26.0000
-                </span>
-                <span className="text-xs text-muted-foreground">Vence em 3 dias</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 shadow-sm border-l-4 border-l-blue-600">
-          <CardHeader>
-            <CardTitle className="text-blue-800 flex items-center gap-2">
-              <CalendarClock className="h-5 w-5" /> Prazos Cíveis
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex flex-col gap-1 border-b pb-4">
-                <span className="font-semibold text-sm">
-                  Contestação - Processo 1023456-89.2023.8.26.0100
-                </span>
-                <span className="text-xs text-muted-foreground">Vence em 2 dias</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="font-semibold text-sm">
-                  Recurso de Apelação - Processo 1098765-12.2022.8.26.0100
-                </span>
-                <span className="text-xs text-muted-foreground">Vence em 5 dias</span>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>

@@ -1,15 +1,32 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Badge } from '@/components/ui/badge'
-import { FileText, ArrowLeft, ArrowRight, Gavel, Scale, Quote, Trash2 } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  FileText,
+  ArrowLeft,
+  ArrowRight,
+  Gavel,
+  Scale,
+  Save,
+  Download,
+  Sparkles,
+  Printer,
+  CheckCircle2,
+} from 'lucide-react'
 import useLegalStore from '@/stores/use-legal-store'
 import { useToast } from '@/hooks/use-toast'
+import { supabase } from '@/lib/supabase/client'
+import { RichTextEditor } from '@/components/RichTextEditor'
 
 type TemplateType =
   | 'Habeas Corpus'
@@ -21,27 +38,128 @@ type TemplateType =
 export default function GeradorMinutas() {
   const [template, setTemplate] = useState<TemplateType>(null)
   const [step, setStep] = useState(1)
-  const { clippedCases, removeCase } = useLegalStore()
+  const { clippedCases } = useLegalStore()
   const { toast } = useToast()
 
-  // Form State
+  const [lawyers, setLawyers] = useState<any[]>([])
+  const [selectedLawyerId, setSelectedLawyerId] = useState<string>('')
+
+  const [editorContent, setEditorContent] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
+
   const [formData, setFormData] = useState({
     cliente: '',
     comarca: '',
     vara: '',
-    autoridade: '',
     fatos: '',
     pedidos: '',
-    assinatura: 'luiz',
   })
+
+  useEffect(() => {
+    supabase
+      .from('lawyers')
+      .select('*')
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setLawyers(data)
+          setSelectedLawyerId(data[0].id)
+        }
+      })
+  }, [])
+
+  useEffect(() => {
+    if (step === 3 && !editorContent) {
+      const lawyer = lawyers.find((l) => l.id === selectedLawyerId)
+      const html = `
+        <p style="text-align: center; font-weight: bold; text-transform: uppercase;">
+          EXCELENTÍSSIMO SENHOR DOUTOR JUIZ DE DIREITO DA ${formData.vara || '[VARA]'} DA COMARCA DE ${formData.comarca || '[COMARCA]'}
+        </p>
+        <br/><br/>
+        <p><strong>${formData.cliente || '[NOME DO CLIENTE]'}</strong>, devidamente qualificado nos autos do processo em epígrafe, vem, mui respeitosamente, à presença de Vossa Excelência, apresentar a presente</p>
+        <p style="text-align: center; font-weight: bold; text-transform: uppercase; margin: 2rem 0; font-size: 1.25rem;">${template}</p>
+        <p>pelos motivos de fato e de direito a seguir aduzidos.</p>
+        <h3>I. DOS FATOS</h3>
+        <p>${formData.fatos.replace(/\n/g, '<br/>')}</p>
+        <h3>II. DO DIREITO</h3>
+        <p>O direito pátrio ampara a pretensão ora deduzida.</p>
+        ${clippedCases.map((c) => `<blockquote>"${c.ementa}" (${c.tribunal}, Relator: ${c.relator}, Ano: ${c.ano})</blockquote>`).join('')}
+        <h3>III. DOS PEDIDOS</h3>
+        <p>${formData.pedidos.replace(/\n/g, '<br/>')}</p>
+        <br/><br/>
+        <p style="text-align: center;">Termos em que,<br/>Pede Deferimento.</p>
+        <p style="text-align: center; margin-top: 1rem;">${formData.comarca || 'Cidade'}, ${new Date().toLocaleDateString('pt-BR')}</p>
+        <br/><br/>
+        <div style="text-align: center; border-top: 1px solid black; width: 300px; margin: 0 auto; padding-top: 10px;">
+          <p><strong>${lawyer?.full_name || 'Advogado'}</strong></p>
+          <p>${lawyer?.oab_number || 'OAB'}</p>
+        </div>
+      `
+      setEditorContent(html)
+    }
+  }, [step, template, formData, clippedCases, lawyers, selectedLawyerId])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
 
+  const handleSave = async () => {
+    setIsSaving(true)
+    const { error } = await supabase.from('minutes').insert({
+      lawyer_id: selectedLawyerId,
+      title: `Minuta - ${template} - ${formData.cliente}`,
+      content: editorContent,
+      status: 'Draft',
+    })
+
+    setIsSaving(false)
+    if (error) {
+      toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' })
+    } else {
+      setLastSaved(new Date())
+      toast({ title: 'Minuta salva com sucesso!', description: 'Sincronizada no banco de dados.' })
+    }
+  }
+
+  const handleAnalyzeAI = async () => {
+    setIsAnalyzing(true)
+    setAiSuggestions([])
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-legal-text', {
+        body: { content: editorContent },
+      })
+      if (error) throw error
+      if (data?.suggestions) {
+        setAiSuggestions(data.suggestions)
+        toast({ title: 'Análise Concluída', description: 'Veja as sugestões na aba lateral.' })
+      }
+    } catch (err: any) {
+      toast({ title: 'Erro na IA', description: err.message, variant: 'destructive' })
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  const exportDocx = () => {
+    const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head><meta charset='utf-8'><title>Minuta</title></head><body>`
+    const footer = '</body></html>'
+    const sourceHTML = header + editorContent + footer
+    const blob = new Blob(['\ufeff', sourceHTML], { type: 'application/msword' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `Minuta_${template?.replace(/\s+/g, '_')}.doc`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   if (!template) {
     return (
-      <div className="space-y-6 max-w-5xl mx-auto animate-fade-in">
+      <div className="space-y-6 max-w-5xl mx-auto animate-fade-in no-print">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center gap-2">
             <FileText className="h-8 w-8" />
@@ -58,22 +176,26 @@ export default function GeradorMinutas() {
               <Gavel className="h-5 w-5" /> Área Penal
             </h2>
             <Card
-              className="hover:border-red-400 hover:shadow-md transition-all cursor-pointer"
+              className="hover:border-red-400 hover:shadow-md transition-all cursor-pointer group"
               onClick={() => setTemplate('Habeas Corpus')}
             >
               <CardHeader>
-                <CardTitle className="text-base">Habeas Corpus</CardTitle>
+                <CardTitle className="text-base group-hover:text-red-700 transition-colors">
+                  Habeas Corpus
+                </CardTitle>
                 <CardDescription>
                   Pedido de revogação de prisão preventiva ou relaxamento de flagrante.
                 </CardDescription>
               </CardHeader>
             </Card>
             <Card
-              className="hover:border-red-400 hover:shadow-md transition-all cursor-pointer"
+              className="hover:border-red-400 hover:shadow-md transition-all cursor-pointer group"
               onClick={() => setTemplate('Resposta à Acusação')}
             >
               <CardHeader>
-                <CardTitle className="text-base">Resposta à Acusação</CardTitle>
+                <CardTitle className="text-base group-hover:text-red-700 transition-colors">
+                  Resposta à Acusação
+                </CardTitle>
                 <CardDescription>Defesa preliminar do artigo 396-A do CPP.</CardDescription>
               </CardHeader>
             </Card>
@@ -84,22 +206,26 @@ export default function GeradorMinutas() {
               <Scale className="h-5 w-5" /> Área Cível
             </h2>
             <Card
-              className="hover:border-blue-400 hover:shadow-md transition-all cursor-pointer"
+              className="hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group"
               onClick={() => setTemplate('Petição Inicial')}
             >
               <CardHeader>
-                <CardTitle className="text-base">Petição Inicial</CardTitle>
+                <CardTitle className="text-base group-hover:text-blue-700 transition-colors">
+                  Petição Inicial
+                </CardTitle>
                 <CardDescription>
                   Modelo padrão para ações indenizatórias e cobranças.
                 </CardDescription>
               </CardHeader>
             </Card>
             <Card
-              className="hover:border-blue-400 hover:shadow-md transition-all cursor-pointer"
+              className="hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group"
               onClick={() => setTemplate('Contestação')}
             >
               <CardHeader>
-                <CardTitle className="text-base">Contestação</CardTitle>
+                <CardTitle className="text-base group-hover:text-blue-700 transition-colors">
+                  Contestação
+                </CardTitle>
                 <CardDescription>Defesa padrão no rito ordinário do CPC.</CardDescription>
               </CardHeader>
             </Card>
@@ -109,96 +235,117 @@ export default function GeradorMinutas() {
     )
   }
 
-  const renderPreview = () => {
+  if (step === 3) {
     return (
-      <div className="legal-document">
-        <p className="text-center font-bold mb-12 uppercase">
-          EXCELENTÍSSIMO SENHOR DOUTOR JUIZ DE DIREITO DA {formData.vara || '[VARA]'} DA COMARCA DE{' '}
-          {formData.comarca || '[COMARCA]'}
-        </p>
-
-        <p className="mt-8">
-          <strong>{formData.cliente || '[NOME DO CLIENTE]'}</strong>, devidamente qualificado nos
-          autos do processo em epígrafe, vem, mui respeitosamente, à presença de Vossa Excelência,
-          por intermédio de seu advogado que esta subscreve, apresentar a presente
-        </p>
-
-        <p className="text-center font-bold uppercase my-10 text-lg">{template}</p>
-
-        <p>pelos motivos de fato e de direito a seguir aduzidos.</p>
-
-        <h3 className="font-bold uppercase mt-8 mb-4">I. DOS FATOS</h3>
-        <p className="whitespace-pre-wrap">
-          {formData.fatos || 'Breve relato dos fatos articulados pela acusação/autor...'}
-        </p>
-
-        <h3 className="font-bold uppercase mt-8 mb-4">II. DO DIREITO</h3>
-        <p>
-          O direito pátrio, bem como a mais balizada jurisprudência, amparam a pretensão ora
-          deduzida.
-        </p>
-
-        {clippedCases.length > 0 && (
-          <div className="mt-6 ml-8 border-l-4 border-slate-300 pl-6 italic text-sm text-slate-700">
-            {clippedCases.map((c) => (
-              <div key={c.id} className="mb-4">
-                <p>"{c.ementa}"</p>
-                <p className="mt-1 font-semibold">
-                  ({c.tribunal}, Relator: {c.relator}, Ano: {c.ano})
-                </p>
+      <div className="flex flex-col h-[calc(100vh-8rem)] animate-fade-in print:h-auto print:block">
+        <div className="flex items-center justify-between mb-4 no-print">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => setStep(2)}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h2 className="font-bold text-lg">{template} - Editor Avançado</h2>
+              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                {lastSaved ? (
+                  <>
+                    <CheckCircle2 className="h-3 w-3 text-green-500" /> Salvo em{' '}
+                    {lastSaved.toLocaleTimeString()}
+                  </>
+                ) : (
+                  'Rascunho não salvo'
+                )}
               </div>
-            ))}
+            </div>
           </div>
-        )}
-
-        <h3 className="font-bold uppercase mt-8 mb-4">III. DOS PEDIDOS</h3>
-        <p className="whitespace-pre-wrap">
-          {formData.pedidos || 'Ante o exposto, requer a Vossa Excelência...'}
-        </p>
-
-        <div className="mt-20 text-center">
-          <p>Termos em que,</p>
-          <p>Pede Deferimento.</p>
-          <p className="mt-4">
-            {formData.comarca || 'São Paulo'}, {new Date().toLocaleDateString('pt-BR')}.
-          </p>
-
-          <div className="mt-16 w-80 border-t border-black mx-auto pt-2">
-            {formData.assinatura === 'luiz' ? (
-              <>
-                <p className="font-bold uppercase">Luiz Moreira Gomes Junior</p>
-                <p>OAB/MG 247.000</p>
-              </>
-            ) : (
-              <>
-                <p className="font-bold uppercase">Sanders Barão</p>
-                <p>OAB/MG 112.898</p>
-              </>
-            )}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleAnalyzeAI}
+              disabled={isAnalyzing}
+              className="gap-2"
+            >
+              <Sparkles className="h-4 w-4 text-purple-500" />
+              {isAnalyzing ? 'Analisando...' : 'Revisão IA'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={exportDocx}
+              className="gap-2"
+              title="Exportar para DOCX"
+            >
+              <Download className="h-4 w-4" /> DOCX
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => window.print()}
+              className="gap-2"
+              title="Imprimir / Exportar PDF"
+            >
+              <Printer className="h-4 w-4" /> PDF
+            </Button>
+            <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+              <Save className="h-4 w-4" /> {isSaving ? 'Salvando...' : 'Salvar no Banco'}
+            </Button>
           </div>
+        </div>
+
+        <div className="flex flex-1 gap-6 overflow-hidden print:block print:overflow-visible">
+          <div className="flex-1 overflow-hidden rounded-lg shadow-sm border print:border-none print:shadow-none bg-slate-200 p-4 print:p-0 print:bg-white flex flex-col items-center">
+            <div className="w-full max-w-4xl h-full flex flex-col print:max-w-none">
+              <div className="print-area h-full flex flex-col">
+                <RichTextEditor value={editorContent} onChange={setEditorContent} />
+              </div>
+            </div>
+          </div>
+
+          {aiSuggestions.length > 0 && (
+            <div className="w-80 overflow-y-auto border rounded-lg bg-card p-4 space-y-4 no-print animate-fade-in-right">
+              <h3 className="font-semibold flex items-center gap-2 text-purple-700">
+                <Sparkles className="h-4 w-4" /> Sugestões da IA
+              </h3>
+              {aiSuggestions.map((sug, i) => (
+                <div
+                  key={i}
+                  className="p-3 bg-purple-50 border border-purple-100 rounded-md text-sm text-slate-700"
+                >
+                  {sug}
+                </div>
+              ))}
+              <Button
+                variant="ghost"
+                className="w-full text-xs"
+                onClick={() => setAiSuggestions([])}
+              >
+                Limpar
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     )
   }
 
   return (
-    <div className="h-full flex flex-col xl:flex-row gap-6 animate-fade-in">
-      {/* Esquerda: Formulário (Stepper) */}
-      <div className="w-full xl:w-1/3 flex flex-col bg-card rounded-lg border shadow-sm h-[calc(100vh-8rem)]">
+    <div className="h-full flex flex-col xl:flex-row gap-6 animate-fade-in no-print">
+      <div className="w-full xl:w-1/2 flex flex-col bg-card rounded-lg border shadow-sm h-[calc(100vh-8rem)] mx-auto">
         <div className="p-6 border-b flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => setTemplate(null)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => (step > 1 ? setStep(step - 1) : setTemplate(null))}
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
             <h2 className="font-bold text-lg">{template}</h2>
-            <p className="text-sm text-muted-foreground">Passo {step} de 3</p>
+            <p className="text-sm text-muted-foreground">Passo {step} de 2 - Configuração</p>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
           {step === 1 && (
             <div className="space-y-4 animate-fade-in-up">
-              <h3 className="font-semibold mb-4">Qualificação e Endereçamento</h3>
+              <h3 className="font-semibold mb-4">Qualificação e Assinatura</h3>
               <div className="space-y-2">
                 <Label>Nome do Cliente / Paciente</Label>
                 <Input
@@ -208,51 +355,41 @@ export default function GeradorMinutas() {
                   placeholder="Ex: João da Silva"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Comarca</Label>
-                <Input
-                  name="comarca"
-                  value={formData.comarca}
-                  onChange={handleChange}
-                  placeholder="Ex: São Paulo - SP"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Vara / Juízo</Label>
-                <Input
-                  name="vara"
-                  value={formData.vara}
-                  onChange={handleChange}
-                  placeholder="Ex: 1ª Vara Criminal"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Comarca</Label>
+                  <Input
+                    name="comarca"
+                    value={formData.comarca}
+                    onChange={handleChange}
+                    placeholder="Ex: São Paulo - SP"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Vara / Juízo</Label>
+                  <Input
+                    name="vara"
+                    value={formData.vara}
+                    onChange={handleChange}
+                    placeholder="Ex: 1ª Vara Criminal"
+                  />
+                </div>
               </div>
 
               <div className="space-y-3 pt-6 border-t mt-6">
                 <Label className="text-base font-semibold">Assinatura do Documento</Label>
-                <RadioGroup
-                  value={formData.assinatura}
-                  onValueChange={(val) => setFormData({ ...formData, assinatura: val })}
-                  className="flex flex-col gap-3 mt-2"
-                >
-                  <div className="flex items-center space-x-2 border p-3 rounded-md hover:bg-muted/50 transition-colors">
-                    <RadioGroupItem value="luiz" id="r-luiz" />
-                    <Label htmlFor="r-luiz" className="font-medium cursor-pointer flex-1">
-                      LUIZ MOREIRA GOMES JUNIOR{' '}
-                      <span className="text-muted-foreground ml-1 font-normal">
-                        (OAB/MG 247.000)
-                      </span>
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2 border p-3 rounded-md hover:bg-muted/50 transition-colors">
-                    <RadioGroupItem value="sanders" id="r-sanders" />
-                    <Label htmlFor="r-sanders" className="font-medium cursor-pointer flex-1">
-                      Sanders Barão{' '}
-                      <span className="text-muted-foreground ml-1 font-normal">
-                        (OAB/MG 112.898)
-                      </span>
-                    </Label>
-                  </div>
-                </RadioGroup>
+                <Select value={selectedLawyerId} onValueChange={setSelectedLawyerId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione o advogado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lawyers.map((l) => (
+                      <SelectItem key={l.id} value={l.id}>
+                        {l.full_name} ({l.oab_number})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           )}
@@ -282,85 +419,13 @@ export default function GeradorMinutas() {
               </div>
             </div>
           )}
-
-          {step === 3 && (
-            <div className="space-y-4 animate-fade-in-up">
-              <h3 className="font-semibold mb-4">Jurisprudência Clipada</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                As decisões abaixo serão inseridas automaticamente na seção "Do Direito".
-              </p>
-
-              {clippedCases.length === 0 ? (
-                <div className="text-center p-6 border border-dashed rounded-lg bg-slate-50">
-                  <Quote className="h-8 w-8 mx-auto text-slate-300 mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Nenhuma jurisprudência adicionada.
-                  </p>
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="mt-2"
-                    onClick={() => window.open('/jurisprudencia', '_blank')}
-                  >
-                    Buscar Jurisprudência
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {clippedCases.map((c) => (
-                    <div
-                      key={c.id}
-                      className="p-3 border rounded-md bg-slate-50 text-sm relative group pr-10"
-                    >
-                      <p className="font-medium line-clamp-2">{c.ementa}</p>
-                      <span className="text-xs text-muted-foreground">{c.tribunal}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-1 top-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => removeCase(c.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
-        <div className="p-6 border-t flex justify-between bg-muted/20">
-          <Button variant="outline" onClick={() => setStep(step - 1)} disabled={step === 1}>
-            Anterior
+        <div className="p-6 border-t flex justify-end bg-muted/20">
+          <Button onClick={() => setStep(step + 1)}>
+            {step === 2 ? 'Ir para o Editor' : 'Próximo'} <ArrowRight className="h-4 w-4 ml-2" />
           </Button>
-          {step < 3 ? (
-            <Button onClick={() => setStep(step + 1)}>
-              Próximo <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
-          ) : (
-            <Button
-              onClick={() => {
-                toast({
-                  title: 'Minuta Finalizada!',
-                  description: 'Documento salvo em seus rascunhos.',
-                })
-              }}
-            >
-              Finalizar Minuta
-            </Button>
-          )}
         </div>
-      </div>
-
-      {/* Direita: Preview (A4) */}
-      <div className="w-full xl:w-2/3 bg-slate-200/50 rounded-lg border shadow-inner p-4 overflow-y-auto h-[calc(100vh-8rem)] relative">
-        <div className="absolute top-6 right-8 flex gap-2 z-10">
-          <Badge variant="outline" className="bg-white text-xs">
-            Preview em Tempo Real
-          </Badge>
-        </div>
-        {renderPreview()}
       </div>
     </div>
   )
