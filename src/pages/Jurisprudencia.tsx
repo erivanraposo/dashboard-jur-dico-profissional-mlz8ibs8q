@@ -202,7 +202,7 @@ export default function Jurisprudencia() {
                     className="gap-1 z-10"
                     onClick={(e) => {
                       e.stopPropagation()
-                      !isClipped && handleClip(result)
+                      if (!isClipped) handleClip(result)
                     }}
                     disabled={isClipped}
                   >
