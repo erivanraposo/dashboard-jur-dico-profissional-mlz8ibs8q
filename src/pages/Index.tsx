@@ -71,16 +71,31 @@ const chartConfig = {
 export default function Index() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-start lg:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Visão Geral</h1>
-          <p className="text-muted-foreground mt-1">
-            Bem-vindo de volta, Dr. Alberto. Aqui está o resumo do seu escritório.
+          <h1 className="text-3xl font-bold tracking-tight text-primary uppercase">
+            LUIZ MOREIRA GOMES JUNIOR
+          </h1>
+          <div className="flex items-center gap-2 mt-1 mb-2">
+            <span className="text-primary font-semibold text-sm">OAB/MG 247.000</span>
+            <span className="text-muted-foreground text-sm hidden sm:inline">•</span>
+            <span className="text-muted-foreground text-sm hidden sm:inline">Advogado Titular</span>
+          </div>
+          <p className="text-muted-foreground text-sm">
+            Bem-vindo de volta, Dr. Luiz. Aqui está o resumo dos seus processos e prazos.
           </p>
         </div>
-        <Button className="hidden md:flex gap-2">
-          <FileEdit className="h-4 w-4" /> Nova Minuta
-        </Button>
+        <div className="flex flex-col md:items-end gap-3">
+          <Badge
+            variant="secondary"
+            className="w-fit flex items-center gap-2 py-1.5 px-3 bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200"
+          >
+            Colaborador: Sanders Barão (OAB/MG 112.898)
+          </Badge>
+          <Button className="hidden md:flex gap-2 w-fit">
+            <FileEdit className="h-4 w-4" /> Nova Minuta
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

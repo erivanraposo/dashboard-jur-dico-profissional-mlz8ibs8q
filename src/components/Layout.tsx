@@ -32,9 +32,12 @@ export default function Layout() {
       <div className="flex h-screen w-full overflow-hidden bg-background">
         <Sidebar variant="sidebar" collapsible="icon">
           <SidebarHeader className="h-16 flex items-center justify-center border-b px-4">
-            <div className="flex items-center gap-2 font-bold text-xl tracking-tight text-primary w-full overflow-hidden group-data-[collapsible=icon]:justify-center">
+            <div className="flex items-center gap-2 font-bold tracking-tight text-primary w-full overflow-hidden group-data-[collapsible=icon]:justify-center">
               <Scale className="h-6 w-6 shrink-0 text-primary" />
-              <span className="truncate group-data-[collapsible=icon]:hidden">LexControl</span>
+              <div className="flex flex-col group-data-[collapsible=icon]:hidden">
+                <span className="truncate text-sm uppercase">Luiz Moreira Gomes Junior</span>
+                <span className="text-xs font-normal text-muted-foreground">OAB/MG 247.000</span>
+              </div>
             </div>
           </SidebarHeader>
           <SidebarContent className="py-4">
@@ -55,15 +58,27 @@ export default function Layout() {
               ))}
             </SidebarMenu>
           </SidebarContent>
-          <SidebarFooter className="border-t p-4">
+          <SidebarFooter className="border-t p-4 space-y-3">
             <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
               <Avatar className="h-8 w-8">
-                <AvatarImage src="https://img.usecurling.com/ppl/thumbnail?gender=male&seed=lawyer" />
-                <AvatarFallback>AS</AvatarFallback>
+                <AvatarImage src="https://img.usecurling.com/ppl/thumbnail?gender=male&seed=luiz" />
+                <AvatarFallback>LM</AvatarFallback>
               </Avatar>
               <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
-                <span className="text-sm font-medium truncate">Dr. Alberto Souza</span>
-                <span className="text-xs text-muted-foreground truncate">OAB/SP 123.456</span>
+                <span className="text-sm font-medium truncate uppercase">
+                  Luiz Moreira Gomes Junior
+                </span>
+                <span className="text-xs text-muted-foreground truncate">OAB/MG 247.000</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
+              <Avatar className="h-8 w-8">
+                <AvatarImage src="https://img.usecurling.com/ppl/thumbnail?gender=male&seed=sanders" />
+                <AvatarFallback>SB</AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
+                <span className="text-sm font-medium truncate">Sanders Barão</span>
+                <span className="text-xs text-muted-foreground truncate">OAB/MG 112.898</span>
               </div>
             </div>
           </SidebarFooter>

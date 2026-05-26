@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Badge } from '@/components/ui/badge'
 import { FileText, ArrowLeft, ArrowRight, Gavel, Scale, Quote, Trash2 } from 'lucide-react'
 import useLegalStore from '@/stores/use-legal-store'
 import { useToast } from '@/hooks/use-toast'
@@ -30,6 +32,7 @@ export default function GeradorMinutas() {
     autoridade: '',
     fatos: '',
     pedidos: '',
+    assinatura: 'luiz',
   })
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -160,9 +163,18 @@ export default function GeradorMinutas() {
             {formData.comarca || 'São Paulo'}, {new Date().toLocaleDateString('pt-BR')}.
           </p>
 
-          <div className="mt-16 w-64 border-t border-black mx-auto pt-2">
-            <p className="font-bold">Dr. Alberto Souza</p>
-            <p>OAB/SP 123.456</p>
+          <div className="mt-16 w-80 border-t border-black mx-auto pt-2">
+            {formData.assinatura === 'luiz' ? (
+              <>
+                <p className="font-bold uppercase">Luiz Moreira Gomes Junior</p>
+                <p>OAB/MG 247.000</p>
+              </>
+            ) : (
+              <>
+                <p className="font-bold uppercase">Sanders Barão</p>
+                <p>OAB/MG 112.898</p>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -213,6 +225,34 @@ export default function GeradorMinutas() {
                   onChange={handleChange}
                   placeholder="Ex: 1ª Vara Criminal"
                 />
+              </div>
+
+              <div className="space-y-3 pt-6 border-t mt-6">
+                <Label className="text-base font-semibold">Assinatura do Documento</Label>
+                <RadioGroup
+                  value={formData.assinatura}
+                  onValueChange={(val) => setFormData({ ...formData, assinatura: val })}
+                  className="flex flex-col gap-3 mt-2"
+                >
+                  <div className="flex items-center space-x-2 border p-3 rounded-md hover:bg-muted/50 transition-colors">
+                    <RadioGroupItem value="luiz" id="r-luiz" />
+                    <Label htmlFor="r-luiz" className="font-medium cursor-pointer flex-1">
+                      LUIZ MOREIRA GOMES JUNIOR{' '}
+                      <span className="text-muted-foreground ml-1 font-normal">
+                        (OAB/MG 247.000)
+                      </span>
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2 border p-3 rounded-md hover:bg-muted/50 transition-colors">
+                    <RadioGroupItem value="sanders" id="r-sanders" />
+                    <Label htmlFor="r-sanders" className="font-medium cursor-pointer flex-1">
+                      Sanders Barão{' '}
+                      <span className="text-muted-foreground ml-1 font-normal">
+                        (OAB/MG 112.898)
+                      </span>
+                    </Label>
+                  </div>
+                </RadioGroup>
               </div>
             </div>
           )}
