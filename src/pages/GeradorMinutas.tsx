@@ -273,15 +273,15 @@ export default function GeradorMinutas() {
               className="gap-2"
               title="Exportar para DOCX"
             >
-              <Download className="h-4 w-4" /> DOCX
+              <Download className="h-4 w-4" /> Exportar para DOCX
             </Button>
             <Button
               variant="outline"
               onClick={() => window.print()}
               className="gap-2"
-              title="Imprimir / Exportar PDF"
+              title="Exportar para PDF"
             >
-              <Printer className="h-4 w-4" /> PDF
+              <Printer className="h-4 w-4" /> Exportar para PDF
             </Button>
             <Button onClick={handleSave} disabled={isSaving} className="gap-2">
               <Save className="h-4 w-4" /> {isSaving ? 'Salvando...' : 'Salvar no Banco'}

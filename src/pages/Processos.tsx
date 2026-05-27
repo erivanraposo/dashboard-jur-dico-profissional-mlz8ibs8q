@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -9,8 +9,205 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Briefcase } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Briefcase, FileText, Upload, Download, Trash2, File as FileIcon } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
+import { useToast } from '@/hooks/use-toast'
+
+const ProcessDocuments = ({
+  processId,
+  processName,
+}: {
+  processId: string
+  processName: string
+}) => {
+  const [documents, setDocuments] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { toast } = useToast()
+
+  const loadDocuments = async () => {
+    setLoading(true)
+    const { data, error } = await (supabase as any)
+      .from('process_attachments')
+      .select('*')
+      .eq('process_id', processId)
+      .order('created_at', { ascending: false })
+
+    if (data) setDocuments(data)
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    loadDocuments()
+  }, [processId])
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: 'Erro',
+        description: 'O arquivo não pode ter mais de 10MB.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setUploading(true)
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${processId}/${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('legal_documents')
+      .upload(fileName, file)
+
+    if (uploadError) {
+      toast({ title: 'Erro no upload', description: uploadError.message, variant: 'destructive' })
+      setUploading(false)
+      return
+    }
+
+    const { error: dbError } = await (supabase as any).from('process_attachments').insert({
+      process_id: processId,
+      file_name: file.name,
+      file_path: fileName,
+      file_type: file.type || 'application/octet-stream',
+      file_size: file.size,
+    })
+
+    if (dbError) {
+      toast({ title: 'Erro ao salvar', description: dbError.message, variant: 'destructive' })
+    } else {
+      toast({ title: 'Sucesso', description: 'Documento anexado com sucesso.' })
+      loadDocuments()
+    }
+    setUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleDownload = async (doc: any) => {
+    const { data, error } = await supabase.storage.from('legal_documents').download(doc.file_path)
+
+    if (error) {
+      toast({ title: 'Erro no download', description: error.message, variant: 'destructive' })
+      return
+    }
+
+    const url = URL.createObjectURL(data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = doc.file_name
+    document.body.appendChild(a)
+    a.click()
+    URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+  }
+
+  const handleDelete = async (doc: any) => {
+    const { error: storageError } = await supabase.storage
+      .from('legal_documents')
+      .remove([doc.file_path])
+
+    if (storageError) {
+      toast({ title: 'Erro', description: storageError.message, variant: 'destructive' })
+      return
+    }
+
+    const { error: dbError } = await (supabase as any)
+      .from('process_attachments')
+      .delete()
+      .eq('id', doc.id)
+
+    if (dbError) {
+      toast({ title: 'Erro', description: dbError.message, variant: 'destructive' })
+    } else {
+      toast({ title: 'Sucesso', description: 'Documento removido.' })
+      loadDocuments()
+    }
+  }
+
+  return (
+    <div className="space-y-4 pt-4">
+      <div className="flex justify-between items-center">
+        <h3 className="font-semibold text-sm">Anexos</h3>
+        <div>
+          <input
+            type="file"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+          />
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            size="sm"
+            className="gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            {uploading ? 'Enviando...' : 'Anexar'}
+          </Button>
+        </div>
+      </div>
+
+      <div className="border rounded-md divide-y">
+        {loading ? (
+          <div className="p-4 text-center text-sm text-muted-foreground">
+            Carregando documentos...
+          </div>
+        ) : documents.length === 0 ? (
+          <div className="p-4 text-center text-sm text-muted-foreground">
+            Nenhum documento anexado.
+          </div>
+        ) : (
+          documents.map((doc) => (
+            <div key={doc.id} className="flex items-center justify-between p-3">
+              <div className="flex items-center gap-3 overflow-hidden">
+                <FileIcon className="h-5 w-5 text-muted-foreground shrink-0" />
+                <div className="truncate">
+                  <p className="text-sm font-medium truncate">{doc.file_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(doc.created_at).toLocaleDateString()} •{' '}
+                    {(doc.file_size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDownload(doc)}
+                  title="Baixar"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDelete(doc)}
+                  title="Excluir"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function Processos() {
   const [processes, setProcesses] = useState<any[]>([])
@@ -46,18 +243,19 @@ export default function Processos() {
                 <TableHead>Cliente</TableHead>
                 <TableHead>Área</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8">
+                  <TableCell colSpan={5} className="text-center py-8">
                     Carregando...
                   </TableCell>
                 </TableRow>
               ) : processes.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8">
+                  <TableCell colSpan={5} className="text-center py-8">
                     Nenhum processo encontrado.
                   </TableCell>
                 </TableRow>
@@ -82,6 +280,25 @@ export default function Processos() {
                       <Badge variant={p.status === 'Prazo Fatal' ? 'destructive' : 'secondary'}>
                         {p.status}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm" className="gap-2">
+                            <FileText className="h-4 w-4" />
+                            Documentos
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Documentos do Processo</DialogTitle>
+                          </DialogHeader>
+                          <div className="text-sm text-muted-foreground mb-4">
+                            Processo nº {p.case_number} - Cliente: {p.client_name}
+                          </div>
+                          <ProcessDocuments processId={p.id} processName={p.case_number} />
+                        </DialogContent>
+                      </Dialog>
                     </TableCell>
                   </TableRow>
                 ))
