@@ -149,8 +149,15 @@ export default function GeradorMinutas() {
     setIsAnalyzing(true)
     setAiSuggestions([])
     try {
+      const selectedAgent = agents.find((a) => a.id === selectedAgentId)
+
       const { data, error } = await supabase.functions.invoke('analyze-legal-text', {
-        body: { content: editorContent, agent_id: selectedAgentId },
+        body: {
+          content: editorContent,
+          agent_id: selectedAgentId,
+          system_prompt: selectedAgent?.system_prompt,
+          model: selectedAgent?.model,
+        },
       })
 
       if (error) {

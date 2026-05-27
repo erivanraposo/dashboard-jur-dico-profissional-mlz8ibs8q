@@ -125,6 +125,13 @@ export type Database = {
             referencedRelation: 'invocacoes'
             referencedColumns: ['id']
           },
+          {
+            foreignKeyName: 'custos_invocation_id_fkey'
+            columns: ['invocation_id']
+            isOneToOne: false
+            referencedRelation: 'vw_recent_invocations'
+            referencedColumns: ['id']
+          },
         ]
       }
       invocacoes: {
@@ -339,12 +346,123 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string
+          id: string
+          role: string
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          full_name: string
+          id: string
+          role?: string
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          id?: string
+          role?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'profiles_workspace_id_fkey'
+            columns: ['workspace_id']
+            isOneToOne: false
+            referencedRelation: 'workspaces'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      workspaces: {
+        Row: {
+          budget_mensal_usd: number
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          budget_mensal_usd?: number
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          budget_mensal_usd?: number
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      vw_recent_invocations: {
+        Row: {
+          agent_id: string | null
+          agent_model: string | null
+          agent_name: string | null
+          created_at: string | null
+          currency: string | null
+          estimated_cost: number | null
+          id: string | null
+          input_tokens: number | null
+          output_tokens: number | null
+          process_id: string | null
+          user_id: string | null
+          user_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'invocacoes_agent_id_fkey'
+            columns: ['agent_id']
+            isOneToOne: false
+            referencedRelation: 'agentes'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'invocacoes_process_id_fkey'
+            columns: ['process_id']
+            isOneToOne: false
+            referencedRelation: 'processes'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Functions: {
-      [_ in never]: never
+      get_agent_ranking: {
+        Args: { end_date: string; start_date: string }
+        Returns: {
+          agent_id: string
+          agent_name: string
+          invocations_count: number
+          total_cost: number
+          total_tokens: number
+        }[]
+      }
+      get_daily_consumption: {
+        Args: { end_date: string; start_date: string }
+        Returns: {
+          cost: number
+          date: string
+          invocations: number
+        }[]
+      }
+      get_user_ranking: {
+        Args: { end_date: string; start_date: string }
+        Returns: {
+          full_name: string
+          invocations_count: number
+          last_activity: string
+          total_cost: number
+          user_id: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
@@ -560,6 +678,30 @@ export const Constants = {
 //   status: text (not null)
 //   description: text (nullable)
 //   created_at: timestamp with time zone (not null, default: now())
+// Table: profiles
+//   id: uuid (not null)
+//   workspace_id: uuid (nullable)
+//   full_name: text (not null)
+//   role: text (not null, default: 'member'::text)
+//   created_at: timestamp with time zone (not null, default: now())
+// Table: vw_recent_invocations
+//   id: uuid (nullable)
+//   created_at: timestamp with time zone (nullable)
+//   input_tokens: integer (nullable)
+//   output_tokens: integer (nullable)
+//   user_id: uuid (nullable)
+//   agent_id: uuid (nullable)
+//   process_id: uuid (nullable)
+//   estimated_cost: numeric (nullable)
+//   currency: text (nullable)
+//   agent_name: text (nullable)
+//   agent_model: text (nullable)
+//   user_name: text (nullable)
+// Table: workspaces
+//   id: uuid (not null, default: gen_random_uuid())
+//   name: text (not null)
+//   budget_mensal_usd: numeric (not null, default: 0)
+//   created_at: timestamp with time zone (not null, default: now())
 
 // --- CONSTRAINTS ---
 // Table: agentes
@@ -591,6 +733,13 @@ export const Constants = {
 //   FOREIGN KEY process_attachments_process_id_fkey: FOREIGN KEY (process_id) REFERENCES processes(id) ON DELETE CASCADE
 // Table: processes
 //   PRIMARY KEY processes_pkey: PRIMARY KEY (id)
+// Table: profiles
+//   FOREIGN KEY profiles_id_fkey: FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE
+//   PRIMARY KEY profiles_pkey: PRIMARY KEY (id)
+//   CHECK profiles_role_check: CHECK ((role = ANY (ARRAY['admin'::text, 'owner'::text, 'member'::text, 'viewer'::text])))
+//   FOREIGN KEY profiles_workspace_id_fkey: FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
+// Table: workspaces
+//   PRIMARY KEY workspaces_pkey: PRIMARY KEY (id)
 
 // --- ROW LEVEL SECURITY POLICIES ---
 // Table: agentes
@@ -604,12 +753,12 @@ export const Constants = {
 //   Policy "authenticated_insert_custos" (INSERT, PERMISSIVE) roles={authenticated}
 //     WITH CHECK: (EXISTS ( SELECT 1    FROM invocacoes   WHERE ((invocacoes.id = custos.invocation_id) AND (invocacoes.user_id = auth.uid()))))
 //   Policy "authenticated_select_custos" (SELECT, PERMISSIVE) roles={authenticated}
-//     USING: (EXISTS ( SELECT 1    FROM invocacoes   WHERE ((invocacoes.id = custos.invocation_id) AND (invocacoes.user_id = auth.uid()))))
+//     USING: (EXISTS ( SELECT 1    FROM invocacoes   WHERE ((invocacoes.id = custos.invocation_id) AND ((invocacoes.user_id = auth.uid()) OR (EXISTS ( SELECT 1            FROM profiles           WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::text, 'owner'::text])))))))))
 // Table: invocacoes
 //   Policy "authenticated_insert_invocacoes" (INSERT, PERMISSIVE) roles={authenticated}
 //     WITH CHECK: (auth.uid() = user_id)
 //   Policy "authenticated_select_invocacoes" (SELECT, PERMISSIVE) roles={authenticated}
-//     USING: (auth.uid() = user_id)
+//     USING: ((user_id = auth.uid()) OR (EXISTS ( SELECT 1    FROM profiles   WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::text, 'owner'::text]))))))
 // Table: jurisprudence
 //   Policy "authenticated_all_jurisprudence" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: true
@@ -629,6 +778,77 @@ export const Constants = {
 //   Policy "authenticated_all_processes" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: true
 //     WITH CHECK: true
+// Table: profiles
+//   Policy "authenticated_select_profiles" (SELECT, PERMISSIVE) roles={authenticated}
+//     USING: (workspace_id IN ( SELECT profiles_1.workspace_id    FROM profiles profiles_1   WHERE (profiles_1.id = auth.uid())))
+// Table: workspaces
+//   Policy "authenticated_select_workspaces" (SELECT, PERMISSIVE) roles={authenticated}
+//     USING: (EXISTS ( SELECT 1    FROM profiles   WHERE ((profiles.workspace_id = workspaces.id) AND (profiles.id = auth.uid()))))
+
+// --- DATABASE FUNCTIONS ---
+// FUNCTION get_agent_ranking(timestamp with time zone, timestamp with time zone)
+//   CREATE OR REPLACE FUNCTION public.get_agent_ranking(start_date timestamp with time zone, end_date timestamp with time zone)
+//    RETURNS TABLE(agent_id uuid, agent_name text, invocations_count bigint, total_tokens bigint, total_cost numeric)
+//    LANGUAGE plpgsql
+//   AS $function$
+//   BEGIN
+//     RETURN QUERY
+//     SELECT
+//       a.id,
+//       a.name,
+//       COUNT(i.id) AS invocations_count,
+//       COALESCE(SUM(i.input_tokens + i.output_tokens), 0) AS total_tokens,
+//       COALESCE(SUM(c.estimated_cost), 0) AS total_cost
+//     FROM public.invocacoes i
+//     JOIN public.agentes a ON a.id = i.agent_id
+//     LEFT JOIN public.custos c ON c.invocation_id = i.id
+//     WHERE i.created_at >= start_date AND i.created_at <= end_date
+//     GROUP BY a.id, a.name
+//     ORDER BY total_cost DESC;
+//   END;
+//   $function$
+//
+// FUNCTION get_daily_consumption(timestamp with time zone, timestamp with time zone)
+//   CREATE OR REPLACE FUNCTION public.get_daily_consumption(start_date timestamp with time zone, end_date timestamp with time zone)
+//    RETURNS TABLE(date text, cost numeric, invocations bigint)
+//    LANGUAGE plpgsql
+//   AS $function$
+//   BEGIN
+//     RETURN QUERY
+//     SELECT
+//       TO_CHAR(date_trunc('day', i.created_at), 'YYYY-MM-DD') AS date,
+//       COALESCE(SUM(c.estimated_cost), 0) AS cost,
+//       COUNT(i.id) AS invocations
+//     FROM public.invocacoes i
+//     LEFT JOIN public.custos c ON c.invocation_id = i.id
+//     WHERE i.created_at >= start_date AND i.created_at <= end_date
+//     GROUP BY date_trunc('day', i.created_at)
+//     ORDER BY date_trunc('day', i.created_at) ASC;
+//   END;
+//   $function$
+//
+// FUNCTION get_user_ranking(timestamp with time zone, timestamp with time zone)
+//   CREATE OR REPLACE FUNCTION public.get_user_ranking(start_date timestamp with time zone, end_date timestamp with time zone)
+//    RETURNS TABLE(user_id uuid, full_name text, invocations_count bigint, total_cost numeric, last_activity timestamp with time zone)
+//    LANGUAGE plpgsql
+//   AS $function$
+//   BEGIN
+//     RETURN QUERY
+//     SELECT
+//       p.id,
+//       p.full_name,
+//       COUNT(i.id) AS invocations_count,
+//       COALESCE(SUM(c.estimated_cost), 0) AS total_cost,
+//       MAX(i.created_at) AS last_activity
+//     FROM public.invocacoes i
+//     JOIN public.profiles p ON p.id = i.user_id
+//     LEFT JOIN public.custos c ON c.invocation_id = i.id
+//     WHERE i.created_at >= start_date AND i.created_at <= end_date
+//     GROUP BY p.id, p.full_name
+//     ORDER BY total_cost DESC;
+//   END;
+//   $function$
+//
 
 // --- INDEXES ---
 // Table: agentes

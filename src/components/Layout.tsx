@@ -20,6 +20,7 @@ import {
   Bell,
   LayoutDashboard,
   LogOut,
+  Activity,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,6 +32,7 @@ const navigation = [
   { name: 'Processos', path: '/processos', icon: Briefcase },
   { name: 'Jurisprudência', path: '/jurisprudencia', icon: Search },
   { name: 'Gerador de Minutas', path: '/gerador', icon: FileText },
+  { name: 'Auditoria', path: '/auditoria', icon: Activity },
   { name: 'Configurações', path: '/configuracoes', icon: Settings },
 ]
 

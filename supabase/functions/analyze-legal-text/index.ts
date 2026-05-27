@@ -1,12 +1,6 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
-}
+import { corsHeaders } from '../_shared/cors.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -14,13 +8,18 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { content, agent_id } = await req.json()
+    const {
+      content,
+      agent_id,
+      system_prompt: req_system_prompt,
+      model: req_model,
+    } = await req.json()
 
     if (!content || !agent_id) {
       throw new Error('Missing content or agent_id')
     }
 
-    const authHeader = req.headers.get('Authorization')!
+    const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       throw new Error('Missing Authorization header')
     }
@@ -55,17 +54,19 @@ Deno.serve(async (req: Request) => {
     let outputTokens = 0
     let cachedTokens = 0
 
-    if (anthropicKey) {
-      const isHaiku = agent.model.includes('haiku')
-      const maxTokens = agent.max_tokens || 4096
+    const finalModel = req_model || agent.model
+    const finalSystemPrompt = req_system_prompt || agent.system_prompt
+    const isHaiku = finalModel.includes('haiku')
+    const maxTokens = agent.max_tokens || 4096
 
+    if (anthropicKey) {
       const payload: any = {
-        model: agent.model,
+        model: finalModel,
         max_tokens: maxTokens,
         system: [
           {
             type: 'text',
-            text: agent.system_prompt,
+            text: finalSystemPrompt,
             cache_control: { type: 'ephemeral' },
           },
         ],
@@ -78,7 +79,7 @@ Deno.serve(async (req: Request) => {
       }
 
       if (!isHaiku) {
-        const isClaude37 = agent.model.includes('3-7')
+        const isClaude37 = finalModel.includes('3-7')
         if (isClaude37 && agent.thinking_mode === 'enabled') {
           payload.thinking = {
             type: 'enabled',
@@ -153,9 +154,19 @@ Deno.serve(async (req: Request) => {
       cachedTokens = 0
     }
 
-    // Cost Calculation for logging (Claude 3.5 Sonnet approximation)
-    const costInput = (inputTokens / 1000000) * 3.0
-    const costOutput = (outputTokens / 1000000) * 15.0
+    // Cost Calculation for logging
+    let costInput = 0
+    let costOutput = 0
+    if (finalModel.includes('3-7-sonnet') || finalModel.includes('3-5-sonnet')) {
+      costInput = (inputTokens / 1000000) * 3.0
+      costOutput = (outputTokens / 1000000) * 15.0
+    } else if (finalModel.includes('haiku')) {
+      costInput = (inputTokens / 1000000) * 0.25
+      costOutput = (outputTokens / 1000000) * 1.25
+    } else {
+      costInput = (inputTokens / 1000000) * 3.0
+      costOutput = (outputTokens / 1000000) * 15.0
+    }
     const estimatedCost = costInput + costOutput
 
     const { data: invocation, error: invError } = await supabase
