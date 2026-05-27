@@ -855,3 +855,7 @@ export const Constants = {
 //   CREATE UNIQUE INDEX agentes_name_key ON public.agentes USING btree (name)
 // Table: clipped_cases
 //   CREATE UNIQUE INDEX clipped_cases_user_id_jurisprudence_id_key ON public.clipped_cases USING btree (user_id, jurisprudence_id)
+// Table: custos
+//   CREATE INDEX idx_custos_invocation_id ON public.custos USING btree (invocation_id)
+// Table: invocacoes
+//   CREATE INDEX idx_invocacoes_created_at ON public.invocacoes USING btree (created_at DESC)

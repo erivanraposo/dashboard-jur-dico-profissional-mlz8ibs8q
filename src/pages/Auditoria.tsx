@@ -266,7 +266,7 @@ export default function Auditoria() {
         </div>
         <Button onClick={handleExportCSV} variant="outline" className="gap-2 shrink-0">
           <Download className="h-4 w-4" />
-          Exportar Relatório
+          Exportar CSV
         </Button>
       </div>
 

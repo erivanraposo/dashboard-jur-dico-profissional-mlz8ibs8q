@@ -92,7 +92,7 @@ export function RichTextEditor({
         onInput={handleChange}
         onBlur={handleChange}
         className={cn(
-          'flex-1 p-8 outline-none bg-white',
+          'flex-1 p-8 outline-none bg-white overflow-y-auto cursor-text',
           'prose prose-slate max-w-none font-serif leading-relaxed',
           'prose-headings:font-bold prose-headings:text-slate-800',
           'prose-p:text-justify prose-blockquote:border-l-4 prose-blockquote:border-slate-300 prose-blockquote:pl-4 prose-blockquote:italic',
