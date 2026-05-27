@@ -46,3 +46,6 @@ screenshot.png
 
 # Linux kernel core dumps (e.g. when oxfmt or pnpm crash)
 core.[0-9]*
+
+# Generated output, caches, and crash artifacts (Skip-managed)
+*.tmp

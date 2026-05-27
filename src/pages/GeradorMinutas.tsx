@@ -50,6 +50,9 @@ export default function GeradorMinutas() {
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
 
+  const [agents, setAgents] = useState<any[]>([])
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('')
+
   const [formData, setFormData] = useState({
     cliente: '',
     comarca: '',
@@ -66,6 +69,17 @@ export default function GeradorMinutas() {
         if (data && data.length > 0) {
           setLawyers(data)
           setSelectedLawyerId(data[0].id)
+        }
+      })
+
+    supabase
+      .from('agentes')
+      .select('*')
+      .eq('is_active', true)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setAgents(data)
+          setSelectedAgentId(data[0].id)
         }
       })
   }, [])
@@ -124,11 +138,19 @@ export default function GeradorMinutas() {
   }
 
   const handleAnalyzeAI = async () => {
+    if (!selectedAgentId) {
+      toast({
+        title: 'Atenção',
+        description: 'Selecione um agente de IA primeiro.',
+        variant: 'destructive',
+      })
+      return
+    }
     setIsAnalyzing(true)
     setAiSuggestions([])
     try {
       const { data, error } = await supabase.functions.invoke('analyze-legal-text', {
-        body: { content: editorContent },
+        body: { content: editorContent, agent_id: selectedAgentId },
       })
       if (error) throw error
       if (data?.suggestions) {
@@ -258,10 +280,24 @@ export default function GeradorMinutas() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {agents.length > 0 && (
+              <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+                <SelectTrigger className="w-[200px] h-10">
+                  <SelectValue placeholder="Agente de IA" />
+                </SelectTrigger>
+                <SelectContent>
+                  {agents.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Button
               variant="outline"
               onClick={handleAnalyzeAI}
-              disabled={isAnalyzing}
+              disabled={isAnalyzing || !selectedAgentId}
               className="gap-2"
             >
               <Sparkles className="h-4 w-4 text-purple-500" />

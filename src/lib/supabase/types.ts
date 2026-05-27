@@ -137,6 +137,44 @@ export type Database = {
           },
         ]
       }
+      process_attachments: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_path: string
+          file_size: number
+          file_type: string
+          id: string
+          process_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_path: string
+          file_size: number
+          file_type: string
+          id?: string
+          process_id: string
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          file_type?: string
+          id?: string
+          process_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'process_attachments_process_id_fkey'
+            columns: ['process_id']
+            isOneToOne: false
+            referencedRelation: 'processes'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       processes: {
         Row: {
           area: string
@@ -341,6 +379,14 @@ export const Constants = {
 //   status: text (not null, default: 'Draft'::text)
 //   created_at: timestamp with time zone (not null, default: now())
 //   updated_at: timestamp with time zone (not null, default: now())
+// Table: process_attachments
+//   id: uuid (not null, default: gen_random_uuid())
+//   process_id: uuid (not null)
+//   file_name: text (not null)
+//   file_path: text (not null)
+//   file_type: text (not null)
+//   file_size: bigint (not null)
+//   created_at: timestamp with time zone (not null, default: now())
 // Table: processes
 //   id: uuid (not null, default: gen_random_uuid())
 //   case_number: text (not null)
@@ -364,6 +410,9 @@ export const Constants = {
 //   FOREIGN KEY minutes_lawyer_id_fkey: FOREIGN KEY (lawyer_id) REFERENCES lawyers(id)
 //   PRIMARY KEY minutes_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY minutes_process_id_fkey: FOREIGN KEY (process_id) REFERENCES processes(id)
+// Table: process_attachments
+//   PRIMARY KEY process_attachments_pkey: PRIMARY KEY (id)
+//   FOREIGN KEY process_attachments_process_id_fkey: FOREIGN KEY (process_id) REFERENCES processes(id) ON DELETE CASCADE
 // Table: processes
 //   PRIMARY KEY processes_pkey: PRIMARY KEY (id)
 
@@ -381,6 +430,10 @@ export const Constants = {
 //     USING: true
 // Table: minutes
 //   Policy "authenticated_all_minutes" (ALL, PERMISSIVE) roles={authenticated}
+//     USING: true
+//     WITH CHECK: true
+// Table: process_attachments
+//   Policy "authenticated_all_process_attachments" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: true
 //     WITH CHECK: true
 // Table: processes
