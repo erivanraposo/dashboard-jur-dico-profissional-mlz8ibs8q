@@ -46,7 +46,9 @@ export default function GeradorMinutas() {
 
   const [editorContent, setEditorContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisStatus, setAnalysisStatus] = useState<
+    'idle' | 'analyzing' | 'completed' | 'applying' | 'applied'
+  >('idle')
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
 
@@ -75,12 +77,16 @@ export default function GeradorMinutas() {
     supabase
       .from('agentes')
       .select('*')
-      .eq('name', 'revisao-peticao')
       .eq('is_active', true)
       .then(({ data }) => {
         if (data && data.length > 0) {
           setAgents(data)
-          setSelectedAgentId(data[0].id)
+          const defaultAgent = data.find((a) => a.name === 'revisao-peticao')
+          if (defaultAgent) {
+            setSelectedAgentId(defaultAgent.id)
+          } else {
+            setSelectedAgentId(data[0].id)
+          }
         }
       })
   }, [])
@@ -147,7 +153,7 @@ export default function GeradorMinutas() {
       })
       return
     }
-    setIsAnalyzing(true)
+    setAnalysisStatus('analyzing')
     setAiSuggestions([])
     try {
       const selectedAgent = agents.find((a) => a.id === selectedAgentId)
@@ -176,6 +182,7 @@ export default function GeradorMinutas() {
 
       if (data?.suggestions) {
         setAiSuggestions(data.suggestions)
+        setAnalysisStatus('completed')
         toast({ title: 'Análise Concluída', description: 'Veja as sugestões na aba lateral.' })
       }
     } catch (err: any) {
@@ -201,8 +208,45 @@ export default function GeradorMinutas() {
         description: msg,
         variant: 'destructive',
       })
-    } finally {
-      setIsAnalyzing(false)
+      setAnalysisStatus('idle')
+    }
+  }
+
+  const handleApplySuggestions = async () => {
+    if (!selectedAgentId || aiSuggestions.length === 0) return
+
+    setAnalysisStatus('applying')
+    try {
+      const selectedAgent = agents.find((a) => a.id === selectedAgentId)
+
+      const { data, error } = await supabase.functions.invoke('analyze-legal-text', {
+        body: {
+          content: editorContent,
+          agent_id: selectedAgentId,
+          system_prompt: selectedAgent?.system_prompt,
+          model: selectedAgent?.model,
+          action: 'apply',
+          suggestions: aiSuggestions,
+        },
+      })
+
+      if (error) throw new Error(error.message)
+
+      if (data?.revised_content) {
+        setEditorContent(data.revised_content)
+        setAnalysisStatus('applied')
+        toast({
+          title: 'Sugestões Aplicadas',
+          description: 'O documento foi atualizado com base nas sugestões da IA.',
+        })
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao Aplicar',
+        description: err.message || 'Falha ao aplicar sugestões.',
+        variant: 'destructive',
+      })
+      setAnalysisStatus('completed')
     }
   }
 
@@ -321,15 +365,31 @@ export default function GeradorMinutas() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="hidden sm:block">
+              <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+                <SelectTrigger className="w-[180px] h-9">
+                  <SelectValue placeholder="Agente IA" />
+                </SelectTrigger>
+                <SelectContent>
+                  {agents.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.titulo || a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               variant="outline"
               onClick={handleAnalyzeAI}
-              disabled={isAnalyzing || !selectedAgentId}
+              disabled={
+                analysisStatus === 'analyzing' || analysisStatus === 'applying' || !selectedAgentId
+              }
               className="gap-2"
             >
               <Sparkles className="h-4 w-4 text-purple-500" />
-              {isAnalyzing ? 'Analisando...' : 'Revisão IA'}
+              {analysisStatus === 'analyzing' ? 'Analisando...' : 'Revisão IA'}
             </Button>
             <Button
               variant="outline"
@@ -363,25 +423,66 @@ export default function GeradorMinutas() {
           </div>
 
           {aiSuggestions.length > 0 && (
-            <div className="w-80 overflow-y-auto border rounded-lg bg-card p-4 space-y-4 no-print animate-fade-in-right">
-              <h3 className="font-semibold flex items-center gap-2 text-purple-700">
-                <Sparkles className="h-4 w-4" /> Sugestões da IA
-              </h3>
-              {aiSuggestions.map((sug, i) => (
-                <div
-                  key={i}
-                  className="p-3 bg-purple-50 border border-purple-100 rounded-md text-sm text-slate-700"
-                >
-                  {sug}
+            <div className="w-80 overflow-y-auto border rounded-lg bg-card p-4 space-y-4 no-print animate-fade-in-right flex flex-col">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold flex items-center gap-2 text-purple-700">
+                  <Sparkles className="h-4 w-4" /> Sugestões da IA
+                </h3>
+              </div>
+
+              {(analysisStatus === 'completed' || analysisStatus === 'applied') && (
+                <div className="flex gap-2">
+                  {analysisStatus === 'completed' && (
+                    <span className="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+                      Análise Concluída
+                    </span>
+                  )}
+                  {analysisStatus === 'applied' && (
+                    <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                      Modificações Aplicadas
+                    </span>
+                  )}
                 </div>
-              ))}
-              <Button
-                variant="ghost"
-                className="w-full text-xs"
-                onClick={() => setAiSuggestions([])}
-              >
-                Limpar
-              </Button>
+              )}
+
+              <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                {aiSuggestions.map((sug, i) => (
+                  <div
+                    key={i}
+                    className="p-3 bg-purple-50/80 border border-purple-100 rounded-md text-sm text-slate-700 leading-relaxed shadow-sm"
+                  >
+                    {sug}
+                  </div>
+                ))}
+              </div>
+
+              <div className="pt-4 border-t flex flex-col gap-2 mt-auto">
+                <Button
+                  className="w-full gap-2 bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
+                  onClick={handleApplySuggestions}
+                  disabled={analysisStatus === 'applying' || analysisStatus === 'applied'}
+                >
+                  {analysisStatus === 'applying' ? (
+                    'Aplicando...'
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      {analysisStatus === 'applied' ? 'Sugestões Aplicadas' : 'Aplicar Sugestões'}
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full text-xs text-muted-foreground"
+                  onClick={() => {
+                    setAiSuggestions([])
+                    setAnalysisStatus('idle')
+                  }}
+                  disabled={analysisStatus === 'applying'}
+                >
+                  Dispensar
+                </Button>
+              </div>
             </div>
           )}
         </div>
