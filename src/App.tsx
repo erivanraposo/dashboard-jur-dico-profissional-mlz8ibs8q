@@ -4,6 +4,7 @@ import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { LegalStoreProvider } from '@/stores/use-legal-store'
 import { AuthProvider, useAuth } from '@/hooks/use-auth'
+import './print.css'
 
 import Layout from './components/Layout'
 import Index from './pages/Index'

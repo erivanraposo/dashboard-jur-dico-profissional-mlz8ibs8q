@@ -77,6 +77,7 @@ interface RecentInvocation {
 export default function Auditoria() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [budget, setBudget] = useState(0)
   const [role, setRole] = useState('member')
   const [workspaceName, setWorkspaceName] = useState('Workspace')
@@ -92,49 +93,66 @@ export default function Auditoria() {
     async function loadData() {
       if (!user) return
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('workspace_id, role')
-        .eq('id', user.id)
-        .single()
-      if (profile) {
-        setRole(profile.role)
-        if (profile.workspace_id) {
-          const { data: workspace } = await supabase
-            .from('workspaces')
-            .select('name, budget_mensal_usd')
-            .eq('id', profile.workspace_id)
-            .single()
-          if (workspace) {
-            setBudget(workspace.budget_mensal_usd)
-            setWorkspaceName(workspace.name)
+      try {
+        setError(null)
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('workspace_id, role')
+          .eq('id', user.id)
+          .single()
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          throw profileError
+        }
+
+        if (profile) {
+          setRole(profile.role)
+          if (profile.workspace_id) {
+            const { data: workspace } = await supabase
+              .from('workspaces')
+              .select('name, budget_mensal_usd')
+              .eq('id', profile.workspace_id)
+              .single()
+            if (workspace) {
+              setBudget(workspace.budget_mensal_usd)
+              setWorkspaceName(workspace.name)
+            }
           }
         }
+
+        const now = new Date()
+        const currentMonthStart = startOfMonth(now)
+        const start30 = subDays(now, 30)
+        const fetchStart =
+          currentMonthStart < start30 ? currentMonthStart.toISOString() : start30.toISOString()
+        const end = now.toISOString()
+
+        const [dailyRes, agentRes, userRes, recentRes] = await Promise.all([
+          supabase.rpc('get_daily_consumption', { start_date: fetchStart, end_date: end }),
+          supabase.rpc('get_agent_ranking', { start_date: fetchStart, end_date: end }),
+          supabase.rpc('get_user_ranking', { start_date: fetchStart, end_date: end }),
+          supabase
+            .from('vw_recent_invocations')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(20),
+        ])
+
+        if (dailyRes.error) throw dailyRes.error
+        if (agentRes.error) throw agentRes.error
+        if (userRes.error) throw userRes.error
+        if (recentRes.error) throw recentRes.error
+
+        setDailyData(dailyRes.data || [])
+        setAgentRanking(agentRes.data || [])
+        setUserRanking(userRes.data || [])
+        setRecent(recentRes.data || [])
+      } catch (err: any) {
+        console.error('Error loading auditory data:', err)
+        setError('Erro ao carregar dados de uso. Por favor, tente novamente mais tarde.')
+      } finally {
+        setLoading(false)
       }
-
-      const now = new Date()
-      const currentMonthStart = startOfMonth(now)
-      const start30 = subDays(now, 30)
-      const fetchStart =
-        currentMonthStart < start30 ? currentMonthStart.toISOString() : start30.toISOString()
-      const end = now.toISOString()
-
-      const [dailyRes, agentRes, userRes, recentRes] = await Promise.all([
-        supabase.rpc('get_daily_consumption', { start_date: fetchStart, end_date: end }),
-        supabase.rpc('get_agent_ranking', { start_date: fetchStart, end_date: end }),
-        supabase.rpc('get_user_ranking', { start_date: fetchStart, end_date: end }),
-        supabase
-          .from('vw_recent_invocations')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(20),
-      ])
-
-      setDailyData(dailyRes.data || [])
-      setAgentRanking(agentRes.data || [])
-      setUserRanking(userRes.data || [])
-      setRecent(recentRes.data || [])
-      setLoading(false)
     }
     loadData()
   }, [user])
@@ -198,8 +216,7 @@ export default function Auditoria() {
           'Modelo',
           'Tokens Entrada',
           'Tokens Saída',
-          'Custo Estimado',
-          'Moeda',
+          'Custo Estimado (USD)',
           'Status',
         ],
       ]
@@ -212,13 +229,14 @@ export default function Auditoria() {
           item.agent_model || '',
           item.input_tokens?.toString() || '0',
           item.output_tokens?.toString() || '0',
-          (item.estimated_cost || 0).toString().replace('.', ','),
-          item.currency || 'USD',
+          (item.estimated_cost || 0).toString(),
           item.output_tokens && item.output_tokens > 0 ? 'Sucesso' : 'Falha',
         ])
       })
 
-      const csvContent = csvRows.map((e) => e.join(';')).join('\n')
+      const csvContent = csvRows
+        .map((e) => e.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(','))
+        .join('\n')
       const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -248,6 +266,31 @@ export default function Auditoria() {
           <Skeleton className="h-32 w-full" />
         </div>
         <Skeleton className="h-80 w-full" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-4">
+        <AlertCircle className="h-12 w-12 text-destructive" />
+        <h2 className="text-2xl font-bold tracking-tight">Erro ao carregar dados</h2>
+        <p className="text-muted-foreground">{error}</p>
+        <Button onClick={() => window.location.reload()} variant="outline">
+          Tentar novamente
+        </Button>
+      </div>
+    )
+  }
+
+  if (!loading && !error && dailyData.length === 0 && recent.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-4">
+        <Bot className="h-12 w-12 text-muted-foreground" />
+        <h2 className="text-2xl font-bold tracking-tight">Nenhum dado de uso encontrado</h2>
+        <p className="text-muted-foreground">
+          Você ainda não utilizou os agentes de IA ou os dados ainda estão sendo processados.
+        </p>
       </div>
     )
   }
@@ -484,8 +527,9 @@ export default function Auditoria() {
                   {isAdmin && <TableHead>Usuário</TableHead>}
                   <TableHead>Agente</TableHead>
                   <TableHead>Modelo</TableHead>
-                  <TableHead className="text-right">Tokens</TableHead>
-                  <TableHead className="text-right">Custo</TableHead>
+                  <TableHead className="text-right">Tokens Entrada</TableHead>
+                  <TableHead className="text-right">Tokens Saída</TableHead>
+                  <TableHead className="text-right">Custo Estimado</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -493,7 +537,10 @@ export default function Auditoria() {
               <TableBody>
                 {recent.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={isAdmin ? 9 : 8}
+                      className="text-center text-muted-foreground"
+                    >
                       Nenhuma invocação recente.
                     </TableCell>
                   </TableRow>
@@ -513,7 +560,10 @@ export default function Auditoria() {
                       <Badge variant="outline">{item.agent_model}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {(item.input_tokens + item.output_tokens).toLocaleString()}
+                      {item.input_tokens?.toLocaleString() || '0'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {item.output_tokens?.toLocaleString() || '0'}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatUSD(item.estimated_cost || 0)}

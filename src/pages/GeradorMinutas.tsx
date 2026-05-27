@@ -33,6 +33,9 @@ type TemplateType =
   | 'Resposta à Acusação'
   | 'Petição Inicial'
   | 'Contestação'
+  | 'Relatório de Caso'
+  | 'Dossiê de Jurisprudência'
+  | 'Apresentação Executiva'
   | null
 
 export default function GeradorMinutas() {
@@ -61,6 +64,11 @@ export default function GeradorMinutas() {
     vara: '',
     fatos: '',
     pedidos: '',
+    situacao: '',
+    problemas: '',
+    solucoes: '',
+    proximos_passos: '',
+    tema: '',
   })
 
   useEffect(() => {
@@ -93,31 +101,149 @@ export default function GeradorMinutas() {
 
   useEffect(() => {
     if (step === 3 && !editorContent) {
-      const lawyer = lawyers.find((l) => l.id === selectedLawyerId)
-      const html = `
-        <p style="text-align: center; font-weight: bold; text-transform: uppercase;">
-          EXCELENTÍSSIMO SENHOR DOUTOR JUIZ DE DIREITO DA ${formData.vara || '[VARA]'} DA COMARCA DE ${formData.comarca || '[COMARCA]'}
-        </p>
-        <br/><br/>
-        <p><strong>${formData.cliente || '[NOME DO CLIENTE]'}</strong>, devidamente qualificado nos autos do processo em epígrafe, vem, mui respeitosamente, à presença de Vossa Excelência, apresentar a presente</p>
-        <p style="text-align: center; font-weight: bold; text-transform: uppercase; margin: 2rem 0; font-size: 1.25rem;">${template}</p>
-        <p>pelos motivos de fato e de direito a seguir aduzidos.</p>
-        <h3>I. DOS FATOS</h3>
-        <p>${formData.fatos.replace(/\n/g, '<br/>')}</p>
-        <h3>II. DO DIREITO</h3>
-        <p>O direito pátrio ampara a pretensão ora deduzida.</p>
-        ${clippedCases.map((c) => `<blockquote>"${c.ementa}" (${c.tribunal}, Relator: ${c.relator}, Ano: ${c.ano})</blockquote>`).join('')}
-        <h3>III. DOS PEDIDOS</h3>
-        <p>${formData.pedidos.replace(/\n/g, '<br/>')}</p>
-        <br/><br/>
-        <p style="text-align: center;">Termos em que,<br/>Pede Deferimento.</p>
-        <p style="text-align: center; margin-top: 1rem;">${formData.comarca || 'Cidade'}, ${new Date().toLocaleDateString('pt-BR')}</p>
-        <br/><br/>
-        <div style="text-align: center; border-top: 1px solid black; width: 300px; margin: 0 auto; padding-top: 10px;">
-          <p><strong>${lawyer?.full_name || 'Advogado'}</strong></p>
-          <p>${lawyer?.oab_number || 'OAB'}</p>
+      const lawyer = lawyers.find((l) => l.id === selectedLawyerId) || {
+        full_name: 'Advogado',
+        oab_number: 'OAB',
+      }
+      let html = ''
+
+      if (template === 'Relatório de Caso') {
+        html = `
+<div class="document-a4">
+  <div class="print-header hidden-screen">
+    <strong>Relatório de Caso</strong> | ${lawyer.full_name} - ${lawyer.oab_number}
+  </div>
+  <div class="cover-page page-break" style="min-height: 800px; display: flex; flex-direction: column; justify-content: center; align-items: center; background-color: #f7f2ea; padding: 2rem;">
+    <h1 style="color: #68452f; font-size: 2.5rem; text-align: center; margin-bottom: 2rem; font-family: serif;">Relatório de Caso</h1>
+    <h2 style="color: #a06840; font-size: 1.5rem; text-align: center; font-family: serif;">${formData.cliente || '[Nome do Cliente]'}</h2>
+    <p style="text-align: center; margin-top: 4rem; color: #825437;">Produzido em: ${new Date().toLocaleDateString('pt-BR')}</p>
+    <p style="text-align: center; color: #825437;">Por: ${lawyer.full_name}</p>
+  </div>
+  <div class="page-break" style="padding: 2rem;">
+    <h2 style="color: #68452f; font-family: serif; border-bottom: 1px solid #d5b385; padding-bottom: 0.5rem;">Índice</h2>
+    <ul style="list-style-type: none; padding: 0; color: #825437; font-size: 1.1rem; line-height: 2;">
+      <li>1. Situação Atual</li>
+      <li>2. Problemas Identificados</li>
+      <li>3. Soluções Possíveis</li>
+      <li>4. Próximos Passos</li>
+    </ul>
+  </div>
+  <div style="padding: 2rem;">
+    <h2 style="color: #68452f; font-family: serif; border-bottom: 1px solid #d5b385; padding-bottom: 0.5rem; margin-top: 2rem;">1. Situação Atual</h2>
+    <p style="text-align: justify; line-height: 1.6;">${formData.situacao.replace(/\n/g, '<br/>')}</p>
+    
+    <h2 style="color: #68452f; font-family: serif; border-bottom: 1px solid #d5b385; padding-bottom: 0.5rem; margin-top: 2rem;">2. Problemas Identificados</h2>
+    <p style="text-align: justify; line-height: 1.6;">${formData.problemas.replace(/\n/g, '<br/>')}</p>
+
+    <h2 style="color: #68452f; font-family: serif; border-bottom: 1px solid #d5b385; padding-bottom: 0.5rem; margin-top: 2rem;">3. Soluções Possíveis</h2>
+    <p style="text-align: justify; line-height: 1.6;">${formData.solucoes.replace(/\n/g, '<br/>')}</p>
+
+    <h2 style="color: #68452f; font-family: serif; border-bottom: 1px solid #d5b385; padding-bottom: 0.5rem; margin-top: 2rem;">4. Próximos Passos</h2>
+    <p style="text-align: justify; line-height: 1.6;">${formData.proximos_passos.replace(/\n/g, '<br/>')}</p>
+  </div>
+  <div class="print-footer hidden-screen">
+    Documento Confidencial | Estritamente Profissional | Página <span class="pageNumber"></span>
+  </div>
+</div>`
+      } else if (template === 'Dossiê de Jurisprudência') {
+        html = `
+<div class="document-a4">
+  <div class="print-header hidden-screen">
+    <strong>Dossiê de Jurisprudência</strong> | ${lawyer.full_name} - ${lawyer.oab_number}
+  </div>
+  <div class="cover-page page-break" style="min-height: 800px; display: flex; flex-direction: column; justify-content: center; align-items: center; background-color: #f7f2ea; padding: 2rem;">
+    <h1 style="color: #68452f; font-size: 2.5rem; text-align: center; margin-bottom: 2rem; font-family: serif;">Dossiê de Jurisprudência</h1>
+    <h2 style="color: #a06840; font-size: 1.5rem; text-align: center; font-family: serif;">Tema: ${formData.tema || '[Tema do Dossiê]'}</h2>
+    <p style="text-align: center; margin-top: 4rem; color: #825437;">Produzido em: ${new Date().toLocaleDateString('pt-BR')}</p>
+    <p style="text-align: center; color: #825437;">Por: ${lawyer.full_name}</p>
+  </div>
+  <div class="page-break" style="padding: 2rem;">
+    <h2 style="color: #68452f; font-family: serif; border-bottom: 1px solid #d5b385; padding-bottom: 0.5rem;">Índice Analítico</h2>
+    <ul style="color: #825437; font-size: 1.1rem; line-height: 2;">
+      ${clippedCases.map((c, i) => `<li>${i + 1}. ${c.tribunal} - Relator: ${c.relator}</li>`).join('')}
+    </ul>
+  </div>
+  <div style="padding: 2rem;">
+    ${
+      clippedCases.length === 0
+        ? '<p>Nenhuma jurisprudência selecionada.</p>'
+        : clippedCases
+            .map(
+              (c, i) => `
+      <div style="margin-bottom: 3rem; page-break-inside: avoid;">
+        <h3 style="color: #68452f; font-family: serif; border-bottom: 1px dashed #d5b385; padding-bottom: 0.25rem;">${i + 1}. ${c.tribunal}</h3>
+        <p style="margin-top: 0.5rem; color: #825437;"><strong>Relator:</strong> ${c.relator} | <strong>Ano:</strong> ${c.ano}</p>
+        <div style="background-color: #fcfaf8; padding: 1.5rem; border-left: 4px solid #cc9b63; margin-top: 1rem; text-align: justify; line-height: 1.6;">
+          <strong>Ementa:</strong><br/><br/>
+          ${c.ementa}
+        </div>
+        ${c.link ? `<p style="margin-top: 1rem;"><a href="${c.link}" style="color: #c0834c; text-decoration: none; font-weight: bold;">[Ver Inteiro Teor]</a></p>` : ''}
+      </div>
+    `,
+            )
+            .join('')
+    }
+  </div>
+  <div class="print-footer hidden-screen">
+    Documento Confidencial | Estritamente Profissional | Página <span class="pageNumber"></span>
+  </div>
+</div>`
+      } else if (template === 'Apresentação Executiva') {
+        html = `
+<div class="presentation-landscape">
+  <div class="slide-page" style="background-color: #382317; color: #f7f2ea; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+    <h1 style="font-size: 3rem; margin-bottom: 1rem; font-family: serif;">Resumo Executivo</h1>
+    <h2 style="font-size: 1.5rem; color: #d5b385;">${formData.cliente || '[Nome do Cliente]'}</h2>
+    <p style="margin-top: 3rem; font-size: 1rem; color: #a06840;">${lawyer.full_name} | ${new Date().toLocaleDateString('pt-BR')}</p>
+  </div>
+  <div class="slide-page" style="background-color: #fcfaf8; padding: 3rem; display: flex; flex-direction: column; justify-content: center;">
+    <h2 style="color: #68452f; border-bottom: 2px solid #cc9b63; padding-bottom: 1rem; margin-bottom: 2rem; font-family: serif; font-size: 2rem;">Situação Atual</h2>
+    <p style="font-size: 1.5rem; line-height: 1.6; color: #382317; text-align: justify;">${formData.situacao}</p>
+  </div>
+  <div class="slide-page" style="background-color: #f7f2ea; padding: 3rem; display: flex; flex-direction: column; justify-content: center;">
+    <h2 style="color: #68452f; border-bottom: 2px solid #cc9b63; padding-bottom: 1rem; margin-bottom: 2rem; font-family: serif; font-size: 2rem;">Problemas Identificados</h2>
+    <p style="font-size: 1.5rem; line-height: 1.6; color: #382317; text-align: justify;">${formData.problemas}</p>
+  </div>
+  <div class="slide-page" style="background-color: #fcfaf8; padding: 3rem; display: flex; flex-direction: column; justify-content: center;">
+    <h2 style="color: #68452f; border-bottom: 2px solid #cc9b63; padding-bottom: 1rem; margin-bottom: 2rem; font-family: serif; font-size: 2rem;">Soluções Estratégicas</h2>
+    <p style="font-size: 1.5rem; line-height: 1.6; color: #382317; text-align: justify;">${formData.solucoes}</p>
+  </div>
+  <div class="slide-page" style="background-color: #68452f; color: #f7f2ea; padding: 3rem; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+    <h2 style="font-size: 2.5rem; color: #d5b385; margin-bottom: 2rem; font-family: serif;">Próximos Passos</h2>
+    <p style="font-size: 1.5rem; line-height: 1.6; max-width: 800px;">${formData.proximos_passos}</p>
+  </div>
+</div>`
+      } else {
+        html = `
+        <div class="document-a4">
+          <p style="text-align: center; font-weight: bold; text-transform: uppercase;">
+            EXCELENTÍSSIMO SENHOR DOUTOR JUIZ DE DIREITO DA ${formData.vara || '[VARA]'} DA COMARCA DE ${formData.comarca || '[COMARCA]'}
+          </p>
+          <br/><br/>
+          <p><strong>${formData.cliente || '[NOME DO CLIENTE]'}</strong>, devidamente qualificado nos autos do processo em epígrafe, vem, mui respeitosamente, à presença de Vossa Excelência, apresentar a presente</p>
+          <p style="text-align: center; font-weight: bold; text-transform: uppercase; margin: 2rem 0; font-size: 1.25rem;">${template}</p>
+          <p>pelos motivos de fato e de direito a seguir aduzidos.</p>
+          <h3>I. DOS FATOS</h3>
+          <p>${formData.fatos.replace(/\n/g, '<br/>')}</p>
+          <h3>II. DO DIREITO</h3>
+          <p>O direito pátrio ampara a pretensão ora deduzida.</p>
+          ${clippedCases.map((c) => `<blockquote style="margin-left: 2rem; font-style: italic;">"${c.ementa}" (${c.tribunal}, Relator: ${c.relator}, Ano: ${c.ano})</blockquote>`).join('')}
+          <h3>III. DOS PEDIDOS</h3>
+          <p>${formData.pedidos.replace(/\n/g, '<br/>')}</p>
+          <br/><br/>
+          <p style="text-align: center;">Termos em que,<br/>Pede Deferimento.</p>
+          <p style="text-align: center; margin-top: 1rem;">${formData.comarca || 'Cidade'}, ${new Date().toLocaleDateString('pt-BR')}</p>
+          <br/><br/>
+          <div style="text-align: center; border-top: 1px solid black; width: 300px; margin: 0 auto; padding-top: 10px;">
+            <p><strong>${lawyer?.full_name || 'Advogado'}</strong></p>
+            <p>${lawyer?.oab_number || 'OAB'}</p>
+          </div>
+          <div class="print-footer hidden-screen">
+            Página <span class="pageNumber"></span>
+          </div>
         </div>
       `
+      }
       setEditorContent(html)
     }
   }, [step, template, formData, clippedCases, lawyers, selectedLawyerId])
@@ -338,6 +464,47 @@ export default function GeradorMinutas() {
               </CardHeader>
             </Card>
           </div>
+
+          <div className="space-y-4 md:col-span-2 mt-4">
+            <h2 className="font-semibold text-lg flex items-center gap-2 text-amber-800">
+              <FileText className="h-5 w-5" /> Documentos Estratégicos (Branding Areia)
+            </h2>
+            <div className="grid md:grid-cols-3 gap-4">
+              <Card
+                className="hover:border-amber-400 hover:shadow-md transition-all cursor-pointer group"
+                onClick={() => setTemplate('Relatório de Caso')}
+              >
+                <CardHeader>
+                  <CardTitle className="text-base group-hover:text-amber-700 transition-colors">
+                    Relatório de Caso
+                  </CardTitle>
+                  <CardDescription>Relatório A4 com sumário e capítulos.</CardDescription>
+                </CardHeader>
+              </Card>
+              <Card
+                className="hover:border-amber-400 hover:shadow-md transition-all cursor-pointer group"
+                onClick={() => setTemplate('Dossiê de Jurisprudência')}
+              >
+                <CardHeader>
+                  <CardTitle className="text-base group-hover:text-amber-700 transition-colors">
+                    Dossiê de Jurisprudência
+                  </CardTitle>
+                  <CardDescription>Compilado A4 de casos selecionados.</CardDescription>
+                </CardHeader>
+              </Card>
+              <Card
+                className="hover:border-amber-400 hover:shadow-md transition-all cursor-pointer group"
+                onClick={() => setTemplate('Apresentação Executiva')}
+              >
+                <CardHeader>
+                  <CardTitle className="text-base group-hover:text-amber-700 transition-colors">
+                    Apresentação Executiva
+                  </CardTitle>
+                  <CardDescription>Slides (Paisagem) para reuniões com clientes.</CardDescription>
+                </CardHeader>
+              </Card>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -520,26 +687,30 @@ export default function GeradorMinutas() {
                   placeholder="Ex: João da Silva"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Comarca</Label>
-                  <Input
-                    name="comarca"
-                    value={formData.comarca}
-                    onChange={handleChange}
-                    placeholder="Ex: São Paulo - SP"
-                  />
+              {['Habeas Corpus', 'Resposta à Acusação', 'Petição Inicial', 'Contestação'].includes(
+                template,
+              ) && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Comarca</Label>
+                    <Input
+                      name="comarca"
+                      value={formData.comarca}
+                      onChange={handleChange}
+                      placeholder="Ex: São Paulo - SP"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Vara / Juízo</Label>
+                    <Input
+                      name="vara"
+                      value={formData.vara}
+                      onChange={handleChange}
+                      placeholder="Ex: 1ª Vara Criminal"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Vara / Juízo</Label>
-                  <Input
-                    name="vara"
-                    value={formData.vara}
-                    onChange={handleChange}
-                    placeholder="Ex: 1ª Vara Criminal"
-                  />
-                </div>
-              </div>
+              )}
 
               <div className="space-y-3 pt-6 border-t mt-6">
                 <Label className="text-base font-semibold">Assinatura do Documento</Label>
@@ -561,27 +732,98 @@ export default function GeradorMinutas() {
 
           {step === 2 && (
             <div className="space-y-4 animate-fade-in-up">
-              <h3 className="font-semibold mb-4">Fatos e Pedidos</h3>
-              <div className="space-y-2">
-                <Label>Relato dos Fatos</Label>
-                <Textarea
-                  name="fatos"
-                  value={formData.fatos}
-                  onChange={handleChange}
-                  className="min-h-[150px]"
-                  placeholder="Descreva a situação fática de forma objetiva..."
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Pedidos Específicos</Label>
-                <Textarea
-                  name="pedidos"
-                  value={formData.pedidos}
-                  onChange={handleChange}
-                  className="min-h-[100px]"
-                  placeholder="Ex: a) A concessão da ordem para relaxamento da prisão..."
-                />
-              </div>
+              {['Habeas Corpus', 'Resposta à Acusação', 'Petição Inicial', 'Contestação'].includes(
+                template,
+              ) ? (
+                <>
+                  <h3 className="font-semibold mb-4">Fatos e Pedidos</h3>
+                  <div className="space-y-2">
+                    <Label>Relato dos Fatos</Label>
+                    <Textarea
+                      name="fatos"
+                      value={formData.fatos}
+                      onChange={handleChange}
+                      className="min-h-[150px]"
+                      placeholder="Descreva a situação fática de forma objetiva..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Pedidos Específicos</Label>
+                    <Textarea
+                      name="pedidos"
+                      value={formData.pedidos}
+                      onChange={handleChange}
+                      className="min-h-[100px]"
+                      placeholder="Ex: a) A concessão da ordem para relaxamento da prisão..."
+                    />
+                  </div>
+                </>
+              ) : template === 'Dossiê de Jurisprudência' ? (
+                <>
+                  <h3 className="font-semibold mb-4">Tema do Dossiê</h3>
+                  <div className="space-y-2">
+                    <Label>Qual o tema principal desta pesquisa?</Label>
+                    <Input
+                      name="tema"
+                      value={formData.tema}
+                      onChange={handleChange}
+                      placeholder="Ex: Nulidade de provas por busca ilegal"
+                    />
+                  </div>
+                  <div className="mt-6 p-4 bg-muted/50 rounded-lg">
+                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                      <Scale className="h-4 w-4" /> {clippedCases.length} Casos selecionados
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Os casos clipados na aba Jurisprudência serão anexados automaticamente.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="font-semibold mb-4">Estrutura do Relatório / Apresentação</h3>
+                  <div className="space-y-2">
+                    <Label>Situação Atual</Label>
+                    <Textarea
+                      name="situacao"
+                      value={formData.situacao}
+                      onChange={handleChange}
+                      className="min-h-[80px]"
+                      placeholder="Contexto geral e histórico..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Problemas Identificados</Label>
+                    <Textarea
+                      name="problemas"
+                      value={formData.problemas}
+                      onChange={handleChange}
+                      className="min-h-[80px]"
+                      placeholder="Desafios e riscos..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Soluções Estratégicas</Label>
+                    <Textarea
+                      name="solucoes"
+                      value={formData.solucoes}
+                      onChange={handleChange}
+                      className="min-h-[80px]"
+                      placeholder="Ações recomendadas..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Próximos Passos</Label>
+                    <Textarea
+                      name="proximos_passos"
+                      value={formData.proximos_passos}
+                      onChange={handleChange}
+                      className="min-h-[80px]"
+                      placeholder="Cronograma ou ações imediatas..."
+                    />
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
