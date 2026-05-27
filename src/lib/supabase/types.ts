@@ -11,31 +11,55 @@ export type Database = {
     Tables: {
       agentes: {
         Row: {
+          categoria: string | null
           created_at: string
+          descricao: string | null
           description: string | null
+          effort: string | null
           id: string
           is_active: boolean
+          max_tokens: number | null
           model: string
           name: string
           system_prompt: string
+          thinking_mode: string | null
+          titulo: string | null
+          tools: Json | null
+          versao: number | null
         }
         Insert: {
+          categoria?: string | null
           created_at?: string
+          descricao?: string | null
           description?: string | null
+          effort?: string | null
           id?: string
           is_active?: boolean
+          max_tokens?: number | null
           model: string
           name: string
           system_prompt: string
+          thinking_mode?: string | null
+          titulo?: string | null
+          tools?: Json | null
+          versao?: number | null
         }
         Update: {
+          categoria?: string | null
           created_at?: string
+          descricao?: string | null
           description?: string | null
+          effort?: string | null
           id?: string
           is_active?: boolean
+          max_tokens?: number | null
           model?: string
           name?: string
           system_prompt?: string
+          thinking_mode?: string | null
+          titulo?: string | null
+          tools?: Json | null
+          versao?: number | null
         }
         Relationships: []
       }
@@ -470,6 +494,14 @@ export const Constants = {
 //   model: text (not null)
 //   is_active: boolean (not null, default: true)
 //   created_at: timestamp with time zone (not null, default: now())
+//   titulo: text (nullable)
+//   descricao: text (nullable)
+//   categoria: text (nullable)
+//   max_tokens: integer (nullable, default: 4096)
+//   thinking_mode: text (nullable, default: 'disabled'::text)
+//   effort: text (nullable, default: 'low'::text)
+//   tools: jsonb (nullable, default: '[]'::jsonb)
+//   versao: integer (nullable, default: 1)
 // Table: clipped_cases
 //   id: uuid (not null, default: gen_random_uuid())
 //   user_id: uuid (nullable)

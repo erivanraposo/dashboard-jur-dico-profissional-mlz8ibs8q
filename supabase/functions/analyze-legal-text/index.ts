@@ -72,7 +72,8 @@ Deno.serve(async (req: Request) => {
       }
 
       if (!isHaiku) {
-        if (agent.thinking_mode === 'enabled') {
+        const supportsThinking = agent.model.includes('3-7')
+        if (supportsThinking && agent.thinking_mode === 'enabled') {
           payload.thinking = {
             type: 'enabled',
             budget_tokens: Math.max(1024, Math.floor(maxTokens * 0.8)),
