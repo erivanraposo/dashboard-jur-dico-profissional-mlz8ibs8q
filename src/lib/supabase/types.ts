@@ -9,6 +9,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      agentes: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          model: string
+          name: string
+          system_prompt: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          model: string
+          name: string
+          system_prompt: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          model?: string
+          name?: string
+          system_prompt?: string
+        }
+        Relationships: []
+      }
       clipped_cases: {
         Row: {
           created_at: string
@@ -34,6 +64,86 @@ export type Database = {
             columns: ['jurisprudence_id']
             isOneToOne: false
             referencedRelation: 'jurisprudence'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      custos: {
+        Row: {
+          cached_tokens: number
+          created_at: string
+          currency: string
+          estimated_cost: number
+          id: string
+          invocation_id: string
+        }
+        Insert: {
+          cached_tokens?: number
+          created_at?: string
+          currency?: string
+          estimated_cost?: number
+          id?: string
+          invocation_id: string
+        }
+        Update: {
+          cached_tokens?: number
+          created_at?: string
+          currency?: string
+          estimated_cost?: number
+          id?: string
+          invocation_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'custos_invocation_id_fkey'
+            columns: ['invocation_id']
+            isOneToOne: false
+            referencedRelation: 'invocacoes'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      invocacoes: {
+        Row: {
+          agent_id: string
+          created_at: string
+          id: string
+          input_tokens: number
+          output_tokens: number
+          process_id: string | null
+          user_id: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          id?: string
+          input_tokens?: number
+          output_tokens?: number
+          process_id?: string | null
+          user_id: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          id?: string
+          input_tokens?: number
+          output_tokens?: number
+          process_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'invocacoes_agent_id_fkey'
+            columns: ['agent_id']
+            isOneToOne: false
+            referencedRelation: 'agentes'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'invocacoes_process_id_fkey'
+            columns: ['process_id']
+            isOneToOne: false
+            referencedRelation: 'processes'
             referencedColumns: ['id']
           },
         ]
@@ -352,10 +462,33 @@ export const Constants = {
 // --- COLUMN TYPES (actual PostgreSQL types) ---
 // Use this to know the real database type when writing migrations.
 // "string" in TypeScript types above may be uuid, text, varchar, timestamptz, etc.
+// Table: agentes
+//   id: uuid (not null, default: gen_random_uuid())
+//   name: text (not null)
+//   description: text (nullable)
+//   system_prompt: text (not null)
+//   model: text (not null)
+//   is_active: boolean (not null, default: true)
+//   created_at: timestamp with time zone (not null, default: now())
 // Table: clipped_cases
 //   id: uuid (not null, default: gen_random_uuid())
 //   user_id: uuid (nullable)
 //   jurisprudence_id: uuid (nullable)
+//   created_at: timestamp with time zone (not null, default: now())
+// Table: custos
+//   id: uuid (not null, default: gen_random_uuid())
+//   invocation_id: uuid (not null)
+//   estimated_cost: numeric (not null, default: 0)
+//   currency: text (not null, default: 'USD'::text)
+//   cached_tokens: integer (not null, default: 0)
+//   created_at: timestamp with time zone (not null, default: now())
+// Table: invocacoes
+//   id: uuid (not null, default: gen_random_uuid())
+//   user_id: uuid (not null)
+//   agent_id: uuid (not null)
+//   process_id: uuid (nullable)
+//   input_tokens: integer (not null, default: 0)
+//   output_tokens: integer (not null, default: 0)
 //   created_at: timestamp with time zone (not null, default: now())
 // Table: jurisprudence
 //   id: uuid (not null, default: gen_random_uuid())
@@ -397,11 +530,22 @@ export const Constants = {
 //   created_at: timestamp with time zone (not null, default: now())
 
 // --- CONSTRAINTS ---
+// Table: agentes
+//   UNIQUE agentes_name_key: UNIQUE (name)
+//   PRIMARY KEY agentes_pkey: PRIMARY KEY (id)
 // Table: clipped_cases
 //   FOREIGN KEY clipped_cases_jurisprudence_id_fkey: FOREIGN KEY (jurisprudence_id) REFERENCES jurisprudence(id)
 //   PRIMARY KEY clipped_cases_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY clipped_cases_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id)
 //   UNIQUE clipped_cases_user_id_jurisprudence_id_key: UNIQUE (user_id, jurisprudence_id)
+// Table: custos
+//   FOREIGN KEY custos_invocation_id_fkey: FOREIGN KEY (invocation_id) REFERENCES invocacoes(id) ON DELETE CASCADE
+//   PRIMARY KEY custos_pkey: PRIMARY KEY (id)
+// Table: invocacoes
+//   FOREIGN KEY invocacoes_agent_id_fkey: FOREIGN KEY (agent_id) REFERENCES agentes(id) ON DELETE CASCADE
+//   PRIMARY KEY invocacoes_pkey: PRIMARY KEY (id)
+//   FOREIGN KEY invocacoes_process_id_fkey: FOREIGN KEY (process_id) REFERENCES processes(id) ON DELETE SET NULL
+//   FOREIGN KEY invocacoes_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 // Table: jurisprudence
 //   PRIMARY KEY jurisprudence_pkey: PRIMARY KEY (id)
 // Table: lawyers
@@ -417,10 +561,23 @@ export const Constants = {
 //   PRIMARY KEY processes_pkey: PRIMARY KEY (id)
 
 // --- ROW LEVEL SECURITY POLICIES ---
+// Table: agentes
+//   Policy "authenticated_select_agentes" (SELECT, PERMISSIVE) roles={authenticated}
+//     USING: true
 // Table: clipped_cases
 //   Policy "authenticated_all_clipped_cases" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: (auth.uid() = user_id)
 //     WITH CHECK: (auth.uid() = user_id)
+// Table: custos
+//   Policy "authenticated_insert_custos" (INSERT, PERMISSIVE) roles={authenticated}
+//     WITH CHECK: (EXISTS ( SELECT 1    FROM invocacoes   WHERE ((invocacoes.id = custos.invocation_id) AND (invocacoes.user_id = auth.uid()))))
+//   Policy "authenticated_select_custos" (SELECT, PERMISSIVE) roles={authenticated}
+//     USING: (EXISTS ( SELECT 1    FROM invocacoes   WHERE ((invocacoes.id = custos.invocation_id) AND (invocacoes.user_id = auth.uid()))))
+// Table: invocacoes
+//   Policy "authenticated_insert_invocacoes" (INSERT, PERMISSIVE) roles={authenticated}
+//     WITH CHECK: (auth.uid() = user_id)
+//   Policy "authenticated_select_invocacoes" (SELECT, PERMISSIVE) roles={authenticated}
+//     USING: (auth.uid() = user_id)
 // Table: jurisprudence
 //   Policy "authenticated_all_jurisprudence" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: true
@@ -442,5 +599,7 @@ export const Constants = {
 //     WITH CHECK: true
 
 // --- INDEXES ---
+// Table: agentes
+//   CREATE UNIQUE INDEX agentes_name_key ON public.agentes USING btree (name)
 // Table: clipped_cases
 //   CREATE UNIQUE INDEX clipped_cases_user_id_jurisprudence_id_key ON public.clipped_cases USING btree (user_id, jurisprudence_id)

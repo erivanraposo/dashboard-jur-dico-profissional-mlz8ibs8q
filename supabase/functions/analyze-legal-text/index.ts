@@ -50,6 +50,39 @@ Deno.serve(async (req: Request) => {
     let cachedTokens = 0
 
     if (anthropicKey) {
+      const isHaiku = agent.model.includes('haiku')
+      const maxTokens = agent.max_tokens || 1024
+
+      const payload: any = {
+        model: agent.model,
+        max_tokens: maxTokens,
+        system: [
+          {
+            type: 'text',
+            text: agent.system_prompt,
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+        messages: [
+          {
+            role: 'user',
+            content: `Por favor, forneça sugestões objetivas de melhoria em formato de lista (bullet points) para a seguinte peça jurídica:\n\n${content}`,
+          },
+        ],
+      }
+
+      if (!isHaiku) {
+        if (agent.thinking_mode === 'enabled') {
+          payload.thinking = {
+            type: 'enabled',
+            budget_tokens: Math.max(1024, Math.floor(maxTokens * 0.8)),
+          }
+        }
+        if (agent.effort) {
+          payload.output_config = { effort: agent.effort }
+        }
+      }
+
       const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -58,23 +91,7 @@ Deno.serve(async (req: Request) => {
           'anthropic-version': '2023-06-01',
           'anthropic-beta': 'prompt-caching-2024-07-31',
         },
-        body: JSON.stringify({
-          model: agent.model,
-          max_tokens: 1024,
-          system: [
-            {
-              type: 'text',
-              text: agent.system_prompt,
-              cache_control: { type: 'ephemeral' },
-            },
-          ],
-          messages: [
-            {
-              role: 'user',
-              content: `Por favor, forneça sugestões objetivas de melhoria em formato de lista (bullet points) para a seguinte peça jurídica:\n\n${content}`,
-            },
-          ],
-        }),
+        body: JSON.stringify(payload),
       })
 
       if (!anthropicRes.ok) {
@@ -111,7 +128,7 @@ Deno.serve(async (req: Request) => {
       // Simulate Anthropic API if key is not provided (Fallback mode for prototype)
       await new Promise((r) => setTimeout(r, 1500))
       suggestions = [
-        `Considere adicionar fundamentação baseada no Princípio da Proporcionalidade (Sugestão gerada pelo agente: ${agent.name}).`,
+        `Considere adicionar fundamentação baseada no Princípio da Proporcionalidade (Sugestão gerada pelo agente: ${agent.titulo || agent.name}).`,
         'A jurisprudência recente do STJ tem pacificado entendimento favorável a este pleito quando ausente violência ou grave ameaça.',
         'Sugerimos revisar a estruturação dos fatos para destacar mais a ausência de indícios de autoria.',
       ]
