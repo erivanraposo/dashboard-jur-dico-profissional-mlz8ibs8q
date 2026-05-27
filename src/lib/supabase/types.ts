@@ -751,9 +751,9 @@ export const Constants = {
 //     WITH CHECK: (auth.uid() = user_id)
 // Table: custos
 //   Policy "authenticated_insert_custos" (INSERT, PERMISSIVE) roles={authenticated}
-//     WITH CHECK: (EXISTS ( SELECT 1    FROM invocacoes   WHERE ((invocacoes.id = custos.invocation_id) AND (invocacoes.user_id = auth.uid()))))
+//     WITH CHECK: (EXISTS ( SELECT 1    FROM invocacoes i   WHERE ((i.id = custos.invocation_id) AND (i.user_id = auth.uid()))))
 //   Policy "authenticated_select_custos" (SELECT, PERMISSIVE) roles={authenticated}
-//     USING: (EXISTS ( SELECT 1    FROM invocacoes   WHERE ((invocacoes.id = custos.invocation_id) AND ((invocacoes.user_id = auth.uid()) OR (EXISTS ( SELECT 1            FROM profiles           WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::text, 'owner'::text])))))))))
+//     USING: (EXISTS ( SELECT 1    FROM invocacoes i   WHERE ((i.id = custos.invocation_id) AND ((i.user_id = auth.uid()) OR (EXISTS ( SELECT 1            FROM profiles           WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::text, 'owner'::text])))))))))
 // Table: invocacoes
 //   Policy "authenticated_insert_invocacoes" (INSERT, PERMISSIVE) roles={authenticated}
 //     WITH CHECK: (auth.uid() = user_id)

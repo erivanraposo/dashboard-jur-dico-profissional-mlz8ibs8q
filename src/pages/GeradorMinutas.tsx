@@ -75,6 +75,7 @@ export default function GeradorMinutas() {
     supabase
       .from('agentes')
       .select('*')
+      .eq('name', 'revisao-peticao')
       .eq('is_active', true)
       .then(({ data }) => {
         if (data && data.length > 0) {
@@ -304,30 +305,6 @@ export default function GeradorMinutas() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {agents.length > 0 && (
-              <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-                <SelectTrigger className="w-[300px] h-10 bg-white">
-                  <SelectValue placeholder="Selecione o Especialista" />
-                </SelectTrigger>
-                <SelectContent>
-                  {agents.map((a: any) => (
-                    <SelectItem key={a.id} value={a.id} className="py-2">
-                      <div className="flex flex-col gap-0.5 text-left">
-                        <span className="font-medium text-sm">
-                          {a.titulo || a.name}
-                          {a.versao && (
-                            <span className="text-xs text-muted-foreground ml-2">v{a.versao}</span>
-                          )}
-                        </span>
-                        <span className="text-xs text-muted-foreground line-clamp-1">
-                          {a.descricao || a.description}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
             <Button
               variant="outline"
               onClick={handleAnalyzeAI}

@@ -79,8 +79,8 @@ Deno.serve(async (req: Request) => {
       }
 
       if (!isHaiku) {
-        const isClaude37 = finalModel.includes('3-7')
-        if (isClaude37 && agent.thinking_mode === 'enabled') {
+        const isSonnet = finalModel.includes('sonnet')
+        if (isSonnet && agent.thinking_mode === 'enabled') {
           payload.thinking = {
             type: 'enabled',
             budget_tokens: Math.max(1024, Math.floor(maxTokens * 0.8)),
@@ -157,13 +157,14 @@ Deno.serve(async (req: Request) => {
     // Cost Calculation for logging
     let costInput = 0
     let costOutput = 0
-    if (finalModel.includes('3-7-sonnet') || finalModel.includes('3-5-sonnet')) {
-      costInput = (inputTokens / 1000000) * 3.0
-      costOutput = (outputTokens / 1000000) * 15.0
+    if (finalModel.includes('opus')) {
+      costInput = (inputTokens / 1000000) * 15.0
+      costOutput = (outputTokens / 1000000) * 75.0
     } else if (finalModel.includes('haiku')) {
       costInput = (inputTokens / 1000000) * 0.25
       costOutput = (outputTokens / 1000000) * 1.25
     } else {
+      // sonnet and others
       costInput = (inputTokens / 1000000) * 3.0
       costOutput = (outputTokens / 1000000) * 15.0
     }
