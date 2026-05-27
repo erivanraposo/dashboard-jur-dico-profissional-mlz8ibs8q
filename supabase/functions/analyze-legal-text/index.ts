@@ -86,9 +86,7 @@ Deno.serve(async (req: Request) => {
             budget_tokens: Math.max(1024, Math.floor(maxTokens * 0.8)),
           }
         }
-        if (agent.effort) {
-          payload.output_config = { effort: agent.effort }
-        }
+        // Disabled output_config effort to ensure compatibility with all new sonnet aliases
       }
 
       const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -114,7 +112,7 @@ Deno.serve(async (req: Request) => {
         } catch (e) {
           // ignore parsing error
         }
-        throw new Error(`Anthropic API Error: ${parsedErr}`)
+        throw new Error(parsedErr)
       }
 
       const aiData = await anthropicRes.json()

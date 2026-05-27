@@ -179,9 +179,26 @@ export default function GeradorMinutas() {
         toast({ title: 'Análise Concluída', description: 'Veja as sugestões na aba lateral.' })
       }
     } catch (err: any) {
+      let msg = err.message || 'Ocorreu um erro ao processar a requisição'
+      const lowerMsg = msg.toLowerCase()
+
+      if (
+        lowerMsg.includes('model not found') ||
+        lowerMsg.includes('does not exist') ||
+        lowerMsg.includes('invalid model')
+      ) {
+        msg = 'O modelo de IA selecionado não está disponível. Por favor, contate o suporte.'
+      } else if (
+        lowerMsg.includes('balance') ||
+        lowerMsg.includes('credit') ||
+        lowerMsg.includes('billing')
+      ) {
+        msg = 'Saldo insuficiente para realizar esta operação. Verifique seus créditos.'
+      }
+
       toast({
         title: 'Erro na IA',
-        description: err.message || 'Ocorreu um erro ao processar a requisição',
+        description: msg,
         variant: 'destructive',
       })
     } finally {
