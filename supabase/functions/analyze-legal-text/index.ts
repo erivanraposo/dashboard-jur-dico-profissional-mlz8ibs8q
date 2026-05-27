@@ -51,7 +51,7 @@ Deno.serve(async (req: Request) => {
 
     if (anthropicKey) {
       const isHaiku = agent.model.includes('haiku')
-      const maxTokens = agent.max_tokens || 1024
+      const maxTokens = agent.max_tokens || 4096
 
       const payload: any = {
         model: agent.model,
@@ -72,8 +72,8 @@ Deno.serve(async (req: Request) => {
       }
 
       if (!isHaiku) {
-        const supportsThinking = agent.model.includes('3-7')
-        if (supportsThinking && agent.thinking_mode === 'enabled') {
+        const isClaude37 = agent.model.includes('3-7')
+        if (isClaude37 && agent.thinking_mode === 'enabled') {
           payload.thinking = {
             type: 'enabled',
             budget_tokens: Math.max(1024, Math.floor(maxTokens * 0.8)),
@@ -97,8 +97,17 @@ Deno.serve(async (req: Request) => {
 
       if (!anthropicRes.ok) {
         const err = await anthropicRes.text()
-        console.error('Anthropic error', err)
-        throw new Error('AI API Error')
+        console.error('Anthropic error response:', anthropicRes.status, err)
+        let parsedErr = err
+        try {
+          const jsonErr = JSON.parse(err)
+          if (jsonErr.error && jsonErr.error.message) {
+            parsedErr = jsonErr.error.message
+          }
+        } catch (e) {
+          // ignore parsing error
+        }
+        throw new Error(`Anthropic API Error: ${parsedErr}`)
       }
 
       const aiData = await anthropicRes.json()

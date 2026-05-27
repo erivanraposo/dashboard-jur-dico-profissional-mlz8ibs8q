@@ -152,13 +152,30 @@ export default function GeradorMinutas() {
       const { data, error } = await supabase.functions.invoke('analyze-legal-text', {
         body: { content: editorContent, agent_id: selectedAgentId },
       })
-      if (error) throw error
+
+      if (error) {
+        let errorMessage = error.message
+        if (error.name === 'FunctionsHttpError' && (error as any).context) {
+          try {
+            const body = await (error as any).context.json()
+            if (body && body.error) errorMessage = body.error
+          } catch {
+            // keep default message
+          }
+        }
+        throw new Error(errorMessage)
+      }
+
       if (data?.suggestions) {
         setAiSuggestions(data.suggestions)
         toast({ title: 'Análise Concluída', description: 'Veja as sugestões na aba lateral.' })
       }
     } catch (err: any) {
-      toast({ title: 'Erro na IA', description: err.message, variant: 'destructive' })
+      toast({
+        title: 'Erro na IA',
+        description: err.message || 'Ocorreu um erro ao processar a requisição',
+        variant: 'destructive',
+      })
     } finally {
       setIsAnalyzing(false)
     }
