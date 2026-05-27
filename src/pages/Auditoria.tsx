@@ -28,9 +28,20 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts'
 import { format, subDays, startOfMonth } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { DollarSign, Activity, Users, Bot, Zap, Info, Clock, AlertCircle } from 'lucide-react'
+import {
+  DollarSign,
+  Activity,
+  Users,
+  Bot,
+  Zap,
+  Info,
+  Clock,
+  AlertCircle,
+  Download,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
 
 interface DailyStats {
   date: string
@@ -166,6 +177,64 @@ export default function Auditoria() {
     invocations: { label: 'Invocações', color: 'hsl(var(--destructive))' },
   }
 
+  const handleExportCSV = async () => {
+    try {
+      const now = new Date()
+      const start30 = subDays(now, 30)
+
+      const { data, error } = await supabase
+        .from('vw_recent_invocations')
+        .select('*')
+        .gte('created_at', start30.toISOString())
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      const csvRows = [
+        [
+          'Data/Hora',
+          'Usuário',
+          'Agente',
+          'Modelo',
+          'Tokens Entrada',
+          'Tokens Saída',
+          'Custo Estimado',
+          'Moeda',
+          'Status',
+        ],
+      ]
+
+      ;(data || []).forEach((item) => {
+        csvRows.push([
+          item.created_at ? format(new Date(item.created_at), 'dd/MM/yyyy HH:mm') : '',
+          item.user_name || 'Desconhecido',
+          item.agent_name || '',
+          item.agent_model || '',
+          item.input_tokens?.toString() || '0',
+          item.output_tokens?.toString() || '0',
+          (item.estimated_cost || 0).toString().replace('.', ','),
+          item.currency || 'USD',
+          item.output_tokens && item.output_tokens > 0 ? 'Sucesso' : 'Falha',
+        ])
+      })
+
+      const csvContent = csvRows.map((e) => e.join(';')).join('\n')
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute(
+        'download',
+        `relatorio_auditoria_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`,
+      )
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (err) {
+      console.error('Error exporting CSV:', err)
+    }
+  }
+
   const totalWorkspaceCost = agentRanking.reduce((acc, curr) => acc + Number(curr.total_cost), 0)
 
   if (loading) {
@@ -195,6 +264,10 @@ export default function Auditoria() {
             <Badge variant={isAdmin ? 'default' : 'secondary'}>{role.toUpperCase()}</Badge>
           </p>
         </div>
+        <Button onClick={handleExportCSV} variant="outline" className="gap-2 shrink-0">
+          <Download className="h-4 w-4" />
+          Exportar Relatório
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

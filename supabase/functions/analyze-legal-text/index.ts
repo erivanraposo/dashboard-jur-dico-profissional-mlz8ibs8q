@@ -54,7 +54,7 @@ Deno.serve(async (req: Request) => {
     let outputTokens = 0
     let cachedTokens = 0
 
-    const finalModel = req_model || agent.model
+    const finalModel = req_model || agent.model || 'claude-sonnet-4-6'
     const finalSystemPrompt = req_system_prompt || agent.system_prompt
     const isHaiku = finalModel.includes('haiku')
     const maxTokens = agent.max_tokens || 4096
@@ -86,7 +86,6 @@ Deno.serve(async (req: Request) => {
             budget_tokens: Math.max(1024, Math.floor(maxTokens * 0.8)),
           }
         }
-        // Disabled output_config effort to ensure compatibility with all new sonnet aliases
       }
 
       const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -140,10 +139,11 @@ Deno.serve(async (req: Request) => {
         suggestions = [aiText]
       }
     } else {
-      // Simulate Anthropic API if key is not provided (Fallback mode for prototype)
+      // Simulate Anthropic API if key is not provided (Fallback mode)
       await new Promise((r) => setTimeout(r, 1500))
       suggestions = [
         `Considere adicionar fundamentação baseada no Princípio da Proporcionalidade (Sugestão gerada pelo agente: ${agent.titulo || agent.name}).`,
+        `Modelo utilizado: ${finalModel}`,
         'A jurisprudência recente do STJ tem pacificado entendimento favorável a este pleito quando ausente violência ou grave ameaça.',
         'Sugerimos revisar a estruturação dos fatos para destacar mais a ausência de indícios de autoria.',
       ]
@@ -152,17 +152,17 @@ Deno.serve(async (req: Request) => {
       cachedTokens = 0
     }
 
-    // Cost Calculation for logging
+    // Cost Calculation for standardization aliases
     let costInput = 0
     let costOutput = 0
-    if (finalModel.includes('opus')) {
+    if (finalModel === 'claude-opus-4-7' || finalModel.includes('opus')) {
       costInput = (inputTokens / 1000000) * 15.0
       costOutput = (outputTokens / 1000000) * 75.0
-    } else if (finalModel.includes('haiku')) {
+    } else if (finalModel === 'claude-haiku-4-5' || finalModel.includes('haiku')) {
       costInput = (inputTokens / 1000000) * 0.25
       costOutput = (outputTokens / 1000000) * 1.25
     } else {
-      // sonnet and others
+      // claude-sonnet-4-6 and defaults
       costInput = (inputTokens / 1000000) * 3.0
       costOutput = (outputTokens / 1000000) * 15.0
     }
