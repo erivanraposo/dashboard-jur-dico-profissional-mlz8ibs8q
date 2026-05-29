@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { useAuth } from '@/hooks/use-auth'
 import {
   Table,
   TableBody,
@@ -29,8 +30,12 @@ export default function Index() {
   const [recentActivity, setRecentActivity] = useState<any[]>([])
   const [agentsRanking, setAgentsRanking] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const { user, loading: authLoading } = useAuth()
+  const [profile, setProfile] = useState<any>(null)
 
   useEffect(() => {
+    if (authLoading) return
+
     const loadData = async () => {
       try {
         const endDate = new Date().toISOString()
@@ -44,6 +49,7 @@ export default function Index() {
           { data: dailyConsumption },
           { data: recentInvocations },
           { data: agentRanking },
+          { data: profileData },
         ] = await Promise.all([
           supabase.from('processes').select('*', { count: 'exact', head: true }),
           supabase
@@ -59,7 +65,14 @@ export default function Index() {
             .order('created_at', { ascending: false })
             .limit(6),
           supabase.rpc('get_agent_ranking', { start_date: startDate, end_date: endDate }),
+          user
+            ? supabase.from('profiles').select('*').eq('id', user.id).single()
+            : Promise.resolve({ data: null }),
         ])
+
+        if (profileData) {
+          setProfile(profileData)
+        }
 
         const totalCost =
           custosData?.reduce((acc, curr) => acc + (curr.estimated_cost || 0), 0) || 0
@@ -94,7 +107,7 @@ export default function Index() {
     }
 
     loadData()
-  }, [])
+  }, [user, authLoading])
 
   const chartConfig = {
     invocations: {
@@ -103,7 +116,7 @@ export default function Index() {
     },
   }
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="space-y-8 max-w-7xl mx-auto p-4 md:p-8">
         <div className="flex justify-between items-center">
@@ -136,6 +149,7 @@ export default function Index() {
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard Geral</h1>
           <p className="text-muted-foreground mt-1">
             Visão completa das suas atividades, processos e consumo de IA.
+            {profile?.workspace_id && <span className="ml-1 opacity-50">(Workspace Ativo)</span>}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -277,17 +291,17 @@ export default function Index() {
             {agentsRanking.length > 0 ? (
               <div className="space-y-5">
                 {agentsRanking.map((agent, i) => (
-                  <div key={agent.agent_id} className="flex items-center justify-between">
+                  <div key={agent?.agent_id || i} className="flex items-center justify-between">
                     <div className="flex items-center gap-3 overflow-hidden">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-sm">
                         #{i + 1}
                       </div>
                       <div className="truncate">
                         <p className="text-sm font-medium leading-none truncate">
-                          {agent.agent_name}
+                          {agent?.agent_name || 'Agente Desconhecido'}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1 truncate">
-                          {agent.invocations_count} invocações
+                          {agent?.invocations_count || 0} invocações
                         </p>
                       </div>
                     </div>
@@ -295,7 +309,7 @@ export default function Index() {
                       {new Intl.NumberFormat('en-US', {
                         style: 'currency',
                         currency: 'USD',
-                      }).format(agent.total_cost || 0)}
+                      }).format(agent?.total_cost || 0)}
                     </div>
                   </div>
                 ))}
@@ -327,18 +341,18 @@ export default function Index() {
                 </TableHeader>
                 <TableBody>
                   {recentActivity.map((act) => (
-                    <TableRow key={act.id}>
+                    <TableRow key={act?.id || crypto.randomUUID()}>
                       <TableCell className="font-medium">
-                        {act.user_name || 'Desconhecido'}
+                        {act?.user_name || 'Desconhecido'}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Bot className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-sm">{act.agent_name || 'Agente Genérico'}</span>
+                          <span className="text-sm">{act?.agent_name || 'Agente Genérico'}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
-                        {act.created_at
+                        {act?.created_at
                           ? format(new Date(act.created_at), 'dd/MM/yyyy HH:mm')
                           : '-'}
                       </TableCell>
@@ -346,7 +360,7 @@ export default function Index() {
                         {new Intl.NumberFormat('en-US', {
                           style: 'currency',
                           currency: 'USD',
-                        }).format(act.estimated_cost || 0)}
+                        }).format(act?.estimated_cost || 0)}
                       </TableCell>
                     </TableRow>
                   ))}
