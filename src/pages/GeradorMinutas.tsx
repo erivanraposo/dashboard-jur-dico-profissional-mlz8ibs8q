@@ -299,8 +299,8 @@ export default function GeradorMinutas() {
                 throw new Error(data.error)
               }
               if (data.type === 'suggestions') {
-                const suggs = data.data.suggestions || data.data.sugerir_secoes || []
-                if (suggs && suggs.length > 0) {
+                const suggs = data.data?.suggestions || data.data?.sugerir_secoes || []
+                if (suggs && Array.isArray(suggs) && suggs.length > 0) {
                   setSuggestions(suggs)
                   receivedSuggestions = true
                 } else {
@@ -547,7 +547,7 @@ export default function GeradorMinutas() {
         )
       }
 
-      let finalContentStr = accumulatedContent.replace('<!-- END_OF_DOCUMENT -->', '')
+      let revised_content = accumulatedContent.replace('<!-- END_OF_DOCUMENT -->', '')
 
       // Sync the content directly from database before finalizing
       if (currentMinuteId) {
@@ -559,17 +559,17 @@ export default function GeradorMinutas() {
             .single()
 
           if (dbMinute?.content && dbMinute.content.length > 0) {
-            finalContentStr = dbMinute.content.replace('<!-- END_OF_DOCUMENT -->', '')
+            revised_content = dbMinute.content.replace('<!-- END_OF_DOCUMENT -->', '')
             accumulatedContent = dbMinute.content
-            setContent(finalContentStr)
-            localStorage.setItem('lexcontrol_gerador_draft', finalContentStr)
+            setContent(revised_content)
+            localStorage.setItem('lexcontrol_gerador_draft', revised_content)
           }
         } catch (dbSyncErr) {
           console.error('Failed to sync final content from database:', dbSyncErr)
         }
       }
 
-      if (!finalContentStr || finalContentStr.trim() === '' || finalContentStr.length === 0) {
+      if (!revised_content || revised_content.trim() === '' || revised_content.length === 0) {
         throw new Error(
           JSON.stringify({
             message: 'A IA não retornou conteúdo',
@@ -605,9 +605,9 @@ export default function GeradorMinutas() {
           <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
           <div class="report-content" style="font-family: inherit;">
         `
-        finalContentStr = templateHead + finalContentStr + '</div>'
-        setContent(finalContentStr)
-        localStorage.setItem('lexcontrol_gerador_draft', finalContentStr)
+        revised_content = templateHead + revised_content + '</div>'
+        setContent(revised_content)
+        localStorage.setItem('lexcontrol_gerador_draft', revised_content)
       }
 
       setSuggestions([])
@@ -617,13 +617,13 @@ export default function GeradorMinutas() {
         await supabase
           .from('minutes')
           .update({
-            content: finalContentStr,
+            content: revised_content,
             updated_at: new Date().toISOString(),
           })
           .eq('id', currentMinuteId)
       }
 
-      const isSaved = await handleSave(finalContentStr, true)
+      const isSaved = await handleSave(revised_content, true)
       if (isSaved) {
         toast({
           title: 'Geração Concluída',
