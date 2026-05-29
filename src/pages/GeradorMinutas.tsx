@@ -266,6 +266,7 @@ export default function GeradorMinutas() {
             message:
               parsedErr.error || errText || `Falha na comunicação com a API. Status: ${res.status}`,
             invocation_id: parsedErr.invocation_id || invocation_id,
+            diagnostic_log: parsedErr.diagnostic_log || errText,
           }),
         )
       }
@@ -330,9 +331,11 @@ export default function GeradorMinutas() {
       let isNotFoundError = false
       let diagId = ''
 
+      let diagnosticLog = ''
       try {
         const parsedErr = JSON.parse(err.message)
         if (parsedErr.invocation_id) diagId = parsedErr.invocation_id
+        if (parsedErr.diagnostic_log) diagnosticLog = parsedErr.diagnostic_log
         if (parsedErr.error && parsedErr.error.message) {
           errorMsg = `Erro da API (${parsedErr.error.type}): ${parsedErr.error.message}`
           if (parsedErr.error.type === 'not_found_error') isNotFoundError = true
@@ -363,9 +366,11 @@ export default function GeradorMinutas() {
         errorMsg = 'A IA não retornou conteúdo'
       }
 
+      const errorDesc = diagnosticLog ? `${errorMsg} \nDetalhes: ${diagnosticLog}` : errorMsg
+
       toast({
         title: 'Falha na Análise',
-        description: `${errorMsg}${diagId ? ` (ID Diagnóstico: ${diagId})` : ''}`,
+        description: `${errorDesc}${diagId ? ` (ID Diagnóstico: ${diagId})` : ''}`,
         variant: 'destructive',
         action: (
           <Button
@@ -471,6 +476,7 @@ export default function GeradorMinutas() {
             message:
               parsedErr.error || errText || `Erro ${res.status}: falha na comunicação com a API.`,
             invocation_id: parsedErr.invocation_id || invocation_id,
+            diagnostic_log: parsedErr.diagnostic_log || errText,
           }),
         )
       }
@@ -674,9 +680,11 @@ export default function GeradorMinutas() {
       let isNotFoundError = false
       let diagId = ''
 
+      let diagnosticLog = ''
       try {
         const parsedErr = JSON.parse(err.message)
         if (parsedErr.invocation_id) diagId = parsedErr.invocation_id
+        if (parsedErr.diagnostic_log) diagnosticLog = parsedErr.diagnostic_log
         if (parsedErr.error && parsedErr.error.message) {
           errorMsg = `Erro da API (${parsedErr.error.type}): ${parsedErr.error.message}`
           isApiError = true
@@ -749,9 +757,11 @@ export default function GeradorMinutas() {
         )
       }
 
+      const errorDesc = diagnosticLog ? `${errorMsg} \nDetalhes: ${diagnosticLog}` : errorMsg
+
       toast({
         title: 'Falha na Geração',
-        description: `${errorMsg} A conexão foi interrompida.${diagId ? ` (ID Diagnóstico: ${diagId})` : ''}`,
+        description: `${errorDesc} A conexão foi interrompida.${diagId ? ` (ID Diagnóstico: ${diagId})` : ''}`,
         variant: 'destructive',
         action: (
           <div className="flex flex-col gap-2 w-full mt-2">
