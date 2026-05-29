@@ -13,27 +13,52 @@ Deno.serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  let activeInvocationId: string | null = null
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+  const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+  let authHeader = req.headers.get('Authorization')
+
   try {
+    const payload = await req.json()
     const {
+      invocation_id,
+      minute_id,
+      content_so_far,
+      editor_text,
       content,
+      agent_ids,
       agent_id,
+      process_context,
+      process_id,
       system_prompt: req_system_prompt,
-      model: req_model,
       action,
       suggestions: req_suggestions,
-    } = await req.json()
+      minute_type,
+      attachments,
+      attachment_paths,
+      metadata,
+      model: req_model,
+    } = payload
 
-    if (!content || !agent_id) {
-      throw new Error('Missing content or agent_id')
+    activeInvocationId = invocation_id || crypto.randomUUID()
+    const finalContent = editor_text || content
+    const finalAttachments = attachments || attachment_paths
+
+    const targetAgentIds =
+      agent_ids && Array.isArray(agent_ids) && agent_ids.length > 0
+        ? agent_ids
+        : agent_id
+          ? [agent_id]
+          : []
+
+    if (!finalContent || targetAgentIds.length === 0) {
+      throw new Error('Missing content or agent_ids')
     }
 
-    const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       throw new Error('Missing Authorization header')
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-    const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     const supabase = createClient(supabaseUrl, supabaseKey, {
       global: { headers: { Authorization: authHeader } },
     })
@@ -46,206 +71,561 @@ Deno.serve(async (req: Request) => {
       throw new Error('Unauthorized')
     }
 
-    const { data: agent, error: agentError } = await supabase
-      .from('agentes')
-      .select('*')
-      .eq('id', agent_id)
-      .single()
-
-    if (agentError || !agent) {
-      throw new Error('Agent not found')
-    }
-
-    const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
-    let suggestions: string[] = []
-    let revised_content = ''
-    let inputTokens = 0
-    let outputTokens = 0
-    let cachedTokens = 0
-
-    let finalModel = req_model || agent.model || 'claude-sonnet-4-6'
-    // Ensure no older claude-3-* or date-suffixed IDs are used
-    if (finalModel.includes('sonnet') && finalModel !== 'claude-sonnet-4-6')
-      finalModel = 'claude-sonnet-4-6'
-    if (finalModel.includes('haiku') && finalModel !== 'claude-haiku-4-5')
-      finalModel = 'claude-haiku-4-5'
-    if (finalModel.includes('opus') && finalModel !== 'claude-opus-4-7')
-      finalModel = 'claude-opus-4-7'
-
-    const finalSystemPrompt = req_system_prompt || agent.system_prompt
-    const isHaiku = finalModel.includes('haiku')
-    const maxTokens = agent.max_tokens || 4096
-
-    if (anthropicKey) {
-      let userMessage = `Por favor, forneça sugestões objetivas de melhoria em formato de lista (bullet points) para a seguinte peça jurídica:\n\n${content}`
-      if (action === 'apply' && req_suggestions && req_suggestions.length > 0) {
-        userMessage = `Aqui está uma peça jurídica (em formato HTML):\n\n${content}\n\nPor favor, reescreva a peça jurídica aplicando as seguintes sugestões de melhoria. Mantenha a formatação HTML original, ajustando apenas o texto onde necessário:\n\n${req_suggestions.map((s: string) => `- ${s}`).join('\n')}\n\nRetorne APENAS o código HTML da peça revisada, sem nenhuma explicação ou texto adicional antes ou depois do HTML.`
-      }
-
-      const payload: any = {
-        model: finalModel,
-        max_tokens: maxTokens,
-        system: [
-          {
-            type: 'text',
-            text: finalSystemPrompt,
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-        messages: [
-          {
-            role: 'user',
-            content: userMessage,
-          },
-        ],
-      }
-
-      if (!isHaiku) {
-        const isSonnet = finalModel.includes('sonnet')
-        if (isSonnet && agent.thinking_mode === 'enabled') {
-          payload.thinking = {
-            type: 'enabled',
-            budget_tokens: Math.max(1024, Math.floor(maxTokens * 0.8)),
+    const stream = new ReadableStream({
+      async start(controller) {
+        const sendEvent = (data: any) => {
+          try {
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`))
+          } catch (e) {
+            // Stream closed or broken connection
           }
         }
-      }
 
-      const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': anthropicKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-beta': 'prompt-caching-2024-07-31',
-        },
-        body: JSON.stringify(payload),
-      })
+        const pingInterval = setInterval(() => {
+          sendEvent({ type: 'ping', timestamp: Date.now() })
+        }, 5000)
 
-      if (!anthropicRes.ok) {
-        const err = await anthropicRes.text()
-        console.error('Anthropic error response:', anthropicRes.status, err)
-        let parsedErr = err
         try {
-          const jsonErr = JSON.parse(err)
-          if (jsonErr.error && jsonErr.error.message) {
-            parsedErr = jsonErr.error.message
+          sendEvent({ status: 'Preparando contexto...' })
+
+          let additionalContext = ''
+          if (metadata) {
+            additionalContext += `\n\n--- Metadados da Minuta ---\n`
+            if (metadata.client) additionalContext += `Cliente: ${metadata.client}\n`
+            if (metadata.comarca) additionalContext += `Comarca: ${metadata.comarca}\n`
+            if (metadata.objeto) additionalContext += `Objeto: ${metadata.objeto}\n`
+            if (metadata.pedido) additionalContext += `Pedido: ${metadata.pedido}\n`
           }
-        } catch (e) {
-          // ignore parsing error
-        }
-        throw new Error(parsedErr)
-      }
 
-      const aiData = await anthropicRes.json()
-      inputTokens = aiData.usage?.input_tokens || 0
-      outputTokens = aiData.usage?.output_tokens || 0
-      cachedTokens =
-        aiData.usage?.cache_creation_input_tokens || aiData.usage?.cache_read_input_tokens || 0
+          if (finalAttachments && Array.isArray(finalAttachments) && finalAttachments.length > 0) {
+            sendEvent({ status: 'Lendo arquivos anexos e processando documentos...' })
+            const extPromises = finalAttachments.map(async (path: string) => {
+              const { data: extData, error: extError } = await supabase.functions.invoke(
+                'extract-document',
+                {
+                  body: { file_path: path },
+                },
+              )
+              if (!extError && extData?.text) {
+                return `\n\n--- Documento Anexo (${path}) ---\n${extData.text}\n`
+              }
+              return ''
+            })
+            const results = await Promise.all(extPromises)
+            additionalContext += results.join('')
+          }
 
-      const aiText = aiData.content?.[0]?.text || ''
+          sendEvent({ status: 'Obtendo agentes de IA...' })
+          const { data: agents, error: agentsError } = await supabase
+            .from('agentes')
+            .select('*')
+            .in('id', targetAgentIds)
 
-      if (action === 'apply') {
-        revised_content = aiText.trim()
-        if (revised_content.startsWith('```html')) {
-          revised_content = revised_content.replace(/^```html\n?/, '').replace(/\n?```$/, '')
-        } else if (revised_content.startsWith('```')) {
-          revised_content = revised_content.replace(/^```\n?/, '').replace(/\n?```$/, '')
-        }
-      } else {
-        suggestions = aiText
-          .split('\n')
-          .map((l: string) => l.trim())
-          .filter(
-            (l: string) =>
-              l.length > 0 && (l.startsWith('-') || l.startsWith('*') || l.match(/^\d+\./)),
+          if (agentsError || !agents || agents.length === 0) {
+            throw new Error('Agentes não encontrados ou indisponíveis.')
+          }
+
+          const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')?.trim()
+          const documentType = minute_type ? `Tipo de Minuta: ${minute_type}\n\n` : ''
+          const processInfo = process_context ? `Contexto do Processo:\n${process_context}\n\n` : ''
+          const fullContext = `${documentType}${processInfo}Conteúdo Principal (Editor):\n${finalContent}${additionalContext}`
+
+          // Register the invocation immediately
+          const firstAgent = agents[0]
+          const initialInvocationPayload: any = {
+            id: activeInvocationId,
+            user_id: user.id,
+            agent_id: firstAgent.id,
+            input_tokens: 0,
+            output_tokens: 0,
+          }
+          if (process_id) initialInvocationPayload.process_id = process_id
+          await supabase
+            .from('invocacoes')
+            .upsert(initialInvocationPayload, { onConflict: 'id', ignoreDuplicates: true })
+
+          // --- ACTION: APPLY ---
+          if (action === 'apply') {
+            const agent = firstAgent
+
+            // Standardize the model ID strictly without date suffixes
+            let finalModel = req_model || agent.model || 'claude-sonnet-4-6'
+            if (finalModel.includes('sonnet')) finalModel = 'claude-sonnet-4-6'
+            else if (finalModel.includes('opus')) finalModel = 'claude-opus-4-7'
+            else if (finalModel.includes('haiku')) finalModel = 'claude-haiku-4-5'
+
+            const finalSystemPrompt = req_system_prompt || agent.system_prompt
+            const maxTokens = Math.min(agent.max_tokens || 8192, 4096)
+
+            let activeMinuteId = minute_id
+
+            // Ensure minute exists before processing
+            if (!activeMinuteId) {
+              const title = minute_type
+                ? `${minute_type} - ${new Date().toLocaleDateString()}`
+                : `Nova Minuta - ${new Date().toLocaleDateString()}`
+              const { data: newMin } = await supabase
+                .from('minutes')
+                .insert({
+                  title,
+                  content: content_so_far || finalContent || '',
+                  status: 'Draft',
+                  process_id: process_id || null,
+                  client_name: metadata?.client || null,
+                  comarca: metadata?.comarca || null,
+                  objeto: metadata?.objeto || null,
+                  pedido: metadata?.pedido || null,
+                  updated_at: new Date().toISOString(),
+                  invocation_id: activeInvocationId,
+                })
+                .select('id')
+                .single()
+
+              if (newMin) {
+                activeMinuteId = newMin.id
+                sendEvent({ type: 'minute_created', minute_id: activeMinuteId })
+              }
+            } else {
+              await supabase
+                .from('minutes')
+                .update({ invocation_id: activeInvocationId })
+                .eq('id', activeMinuteId)
+            }
+
+            const userMessage = `Aqui está o contexto e o documento atual (em formato HTML):\n\n${fullContext}\n\nPor favor, reescreva o Conteúdo Principal (Editor) aplicando as seguintes sugestões de melhoria. Mantenha a formatação HTML original, ajustando apenas o texto onde necessário:\n\n${(req_suggestions || []).map((s: string) => `- ${s}`).join('\n')}\n\nCRÍTICO: Retorne o documento COMPLETO, até a sua conclusão natural. NÃO TRUNQUE o texto (ex: não pare no meio de um parágrafo ou seção). Se o texto for longo, certifique-se de terminar todo o conteúdo sem interrupções. Inclua no final do documento a tag <!-- END_OF_DOCUMENT --> para confirmar que você terminou de gerar todo o texto.\n\nRetorne APENAS o código HTML do Conteúdo Principal revisado, sem nenhuma explicação ou texto adicional antes ou depois do HTML.`
+
+            sendEvent({ status: 'Gerando texto (Streaming ativado)...' })
+
+            if (anthropicKey) {
+              const messages: any[] = [{ role: 'user', content: userMessage }]
+
+              if (content_so_far) {
+                messages.push({ role: 'assistant', content: content_so_far })
+              }
+
+              const payloadParams: any = {
+                model: finalModel,
+                max_tokens: maxTokens,
+                stream: true,
+                system: [
+                  { type: 'text', text: finalSystemPrompt, cache_control: { type: 'ephemeral' } },
+                ],
+                messages,
+              }
+
+              if (agent.thinking_mode === 'enabled') {
+                payloadParams.thinking = {
+                  type: 'enabled',
+                  budget_tokens: Math.max(1024, Math.floor(maxTokens * 0.8)),
+                }
+              }
+
+              const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': anthropicKey,
+                  'anthropic-version': '2023-06-01',
+                  'anthropic-beta': 'prompt-caching-2024-07-31',
+                },
+                body: JSON.stringify(payloadParams),
+              })
+
+              if (!anthropicRes.ok) {
+                const errText = await anthropicRes.text()
+                throw new Error(`Anthropic API Error: ${errText}`)
+              }
+
+              let inputTokens = 0
+              let outputTokens = 0
+              let cachedTokens = 0
+              let fullText = content_so_far || ''
+              let charCountSinceLastSave = 0
+              let stopReason = null
+              let receivedAnyContent = false
+
+              const reader = anthropicRes.body?.getReader()
+              const decoder = new TextDecoder()
+              let buffer = ''
+
+              while (reader) {
+                const { done, value } = await reader.read()
+                if (done) break
+                buffer += decoder.decode(value, { stream: true })
+
+                const lines = buffer.split('\n\n')
+                buffer = lines.pop() || ''
+
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const dataStr = line.slice(6).trim()
+                    if (dataStr === '[DONE]') continue
+                    try {
+                      const data = JSON.parse(dataStr)
+                      if (data.type === 'message_start') {
+                        inputTokens = data.message?.usage?.input_tokens || 0
+                        cachedTokens =
+                          data.message?.usage?.cache_creation_input_tokens ||
+                          data.message?.usage?.cache_read_input_tokens ||
+                          0
+                      } else if (
+                        data.type === 'content_block_delta' &&
+                        data.delta?.type === 'text_delta'
+                      ) {
+                        const text = data.delta?.text || ''
+                        if (text) {
+                          receivedAnyContent = true
+                        }
+                        fullText += text
+                        charCountSinceLastSave += text.length
+                        sendEvent({ text })
+
+                        if (activeMinuteId && charCountSinceLastSave > 500) {
+                          charCountSinceLastSave = 0
+                          supabase
+                            .from('minutes')
+                            .update({
+                              content: fullText,
+                              updated_at: new Date().toISOString(),
+                            })
+                            .eq('id', activeMinuteId)
+                            .then()
+                        }
+                      } else if (data.type === 'message_delta') {
+                        outputTokens = data.usage?.output_tokens || 0
+                        stopReason = data.delta?.stop_reason || null
+                      }
+                    } catch (e) {}
+                  }
+                }
+              }
+
+              if (activeMinuteId && charCountSinceLastSave > 0) {
+                await supabase
+                  .from('minutes')
+                  .update({
+                    content: fullText,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', activeMinuteId)
+              }
+
+              // Final safety save directly in Edge Function to ensure database persistence
+              if (activeMinuteId && (charCountSinceLastSave > 0 || receivedAnyContent)) {
+                await supabase
+                  .from('minutes')
+                  .update({
+                    content: fullText,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', activeMinuteId)
+              }
+
+              if (!receivedAnyContent && (!content_so_far || content_so_far.length === 0)) {
+                throw new Error(
+                  JSON.stringify({
+                    error: 'Erro: A resposta da IA estava vazia ou malformada.',
+                    code: 'EMPTY_RESPONSE',
+                    invocation_id: activeInvocationId,
+                  }),
+                )
+              }
+
+              if (
+                stopReason === 'max_tokens' ||
+                (!fullText.includes('<!-- END_OF_DOCUMENT -->') && stopReason !== 'end_turn')
+              ) {
+                sendEvent({ type: 'continue_required' })
+              }
+
+              const costInput = (inputTokens / 1000000) * 3.0
+              const costOutput = (outputTokens / 1000000) * 15.0
+              const estimatedCost = costInput + costOutput
+
+              await supabase
+                .from('invocacoes')
+                .update({ input_tokens: inputTokens, output_tokens: outputTokens })
+                .eq('id', activeInvocationId)
+
+              await supabase.from('custos').upsert(
+                {
+                  invocation_id: activeInvocationId,
+                  estimated_cost: estimatedCost,
+                  currency: 'USD',
+                  cached_tokens: cachedTokens,
+                },
+                { onConflict: 'invocation_id', ignoreDuplicates: true },
+              )
+            } else {
+              // Fallback Mock
+              const mockText =
+                finalContent +
+                `<br/><br/><div style="color: blue; padding: 10px; border: 1px dashed blue;"><em>[Simulação: Modificações aplicadas]</em></div><!-- END_OF_DOCUMENT -->`
+              if (activeMinuteId) {
+                await supabase
+                  .from('minutes')
+                  .update({ content: mockText })
+                  .eq('id', activeMinuteId)
+              }
+              const chunks = mockText.match(/.{1,50}/g) || []
+              for (const chunk of chunks) {
+                sendEvent({ text: chunk })
+                await new Promise((r) => setTimeout(r, 20))
+              }
+            }
+          }
+          // --- ACTION: ANALYZE / BRAINSTORM / EXTRACT ---
+          else {
+            sendEvent({ status: 'Analisando documento e gerando insights...' })
+            let finalSuggestions: string[] = []
+            const agentsToProcess =
+              action === 'brainstorm' || action === 'extract_report_fields' ? [agents[0]] : agents
+
+            for (const agent of agentsToProcess) {
+              let agentSuggestions: string[] = []
+
+              let finalModel = req_model || agent.model || 'claude-sonnet-4-6'
+              if (finalModel.includes('sonnet')) finalModel = 'claude-sonnet-4-6'
+              else if (finalModel.includes('opus')) finalModel = 'claude-opus-4-7'
+              else if (finalModel.includes('haiku')) finalModel = 'claude-haiku-4-5'
+
+              if (action === 'extract_report_fields') {
+                finalModel = 'claude-haiku-4-5'
+              }
+
+              const finalSystemPrompt = req_system_prompt || agent.system_prompt
+              const maxTokens = agent.max_tokens || 4096
+
+              let inputTokens = 0
+              let outputTokens = 0
+              let cachedTokens = 0
+
+              if (anthropicKey) {
+                let userMessage = `Por favor, forneça sugestões objetivas de melhoria em formato de lista (bullet points) para o seguinte contexto jurídico:\n\n${fullContext}`
+
+                if (action === 'brainstorm') {
+                  userMessage = `Analise o contexto a seguir e retorne um JSON estrito (sem crases ou marcação markdown) com duas chaves: "sugerir_secoes" (array de strings) e "perguntas_chave" (array de strings). NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON.\nContexto:\n${fullContext}\nRetorne APENAS o JSON válido.`
+                } else if (action === 'extract_report_fields') {
+                  userMessage = `Analise o contexto a seguir e extraia as informações para um Relatório de Caso. Retorne um JSON estrito (sem crases ou marcação markdown) com as chaves: "situacao", "problemas", "solucoes", "proximos_passos". O conteúdo de cada chave deve ser um texto resumido e profissional focado em relatório jurídico. NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON.\nContexto:\n${fullContext}\nRetorne APENAS o JSON válido.`
+                }
+
+                const payloadParams: any = {
+                  model: finalModel,
+                  max_tokens: maxTokens,
+                  system: [
+                    { type: 'text', text: finalSystemPrompt, cache_control: { type: 'ephemeral' } },
+                  ],
+                  messages: [{ role: 'user', content: userMessage }],
+                }
+
+                if (agent.thinking_mode === 'enabled') {
+                  payloadParams.thinking = {
+                    type: 'enabled',
+                    budget_tokens: Math.max(1024, Math.floor(maxTokens * 0.8)),
+                  }
+                }
+
+                const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': anthropicKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-beta': 'prompt-caching-2024-07-31',
+                  },
+                  body: JSON.stringify(payloadParams),
+                })
+
+                if (!anthropicRes.ok) {
+                  const errText = await anthropicRes.text()
+                  throw new Error(`Anthropic API Error: ${errText}`)
+                }
+
+                const aiData = await anthropicRes.json()
+
+                if (!aiData.content || aiData.content.length === 0 || !aiData.content[0].text) {
+                  throw new Error(
+                    JSON.stringify({
+                      error: 'Erro: A resposta da IA estava vazia ou malformada.',
+                      code: 'EMPTY_RESPONSE',
+                    }),
+                  )
+                }
+
+                inputTokens = aiData.usage?.input_tokens || 0
+                outputTokens = aiData.usage?.output_tokens || 0
+                cachedTokens =
+                  aiData.usage?.cache_creation_input_tokens ||
+                  aiData.usage?.cache_read_input_tokens ||
+                  0
+
+                const aiText = aiData.content[0].text
+
+                if (action === 'brainstorm' || action === 'extract_report_fields') {
+                  let jsonStr = aiText.trim()
+                  if (jsonStr.startsWith('```json'))
+                    jsonStr = jsonStr.replace(/^```json\n?/, '').replace(/\n?```$/, '')
+                  else if (jsonStr.startsWith('```'))
+                    jsonStr = jsonStr.replace(/^```\n?/, '').replace(/\n?```$/, '')
+                  try {
+                    finalSuggestions = JSON.parse(jsonStr)
+                  } catch (e) {
+                    console.error('JSON parsing failed, falling back to raw text:', jsonStr)
+                    // Fallback: If structured parsing fails, return the raw text to prevent blocking the UI
+                    if (action === 'extract_report_fields') {
+                      finalSuggestions = {
+                        situacao: 'Conteúdo não estruturado retornado pela IA:',
+                        problemas: jsonStr.substring(0, 500) + (jsonStr.length > 500 ? '...' : ''),
+                        solucoes: 'Consulte o texto bruto.',
+                        proximos_passos: 'Tente novamente.',
+                      } as any
+                    } else {
+                      finalSuggestions = {
+                        sugerir_secoes: ['Conteúdo não estruturado retornado pela IA:'],
+                        perguntas_chave: [
+                          jsonStr.substring(0, 500) + (jsonStr.length > 500 ? '...' : ''),
+                        ],
+                      } as any
+                    }
+                  }
+                } else {
+                  agentSuggestions = aiText
+                    .split('\n')
+                    .map((l: string) => l.trim())
+                    .filter(
+                      (l: string) =>
+                        l.length > 0 &&
+                        (l.startsWith('-') || l.startsWith('*') || l.match(/^\d+\./)),
+                    )
+                    .map((l: string) =>
+                      l
+                        .replace(/^[-*]\s*/, '')
+                        .replace(/^\d+\.\s*/, '')
+                        .trim(),
+                    )
+
+                  if (agentSuggestions.length === 0 && aiText) agentSuggestions = [aiText]
+                  if (agentsToProcess.length > 1)
+                    agentSuggestions = agentSuggestions.map((s: string) => `[${agent.name}] ${s}`)
+                  finalSuggestions = finalSuggestions.concat(agentSuggestions)
+                }
+              } else {
+                await new Promise((r) => setTimeout(r, 1500))
+                if (action === 'brainstorm') {
+                  finalSuggestions = {
+                    sugerir_secoes: ['1. Dos Fatos'],
+                    perguntas_chave: ['Quais os danos?'],
+                  } as any
+                } else if (action === 'extract_report_fields') {
+                  finalSuggestions = {
+                    situacao: 'O cliente...',
+                    problemas: 'Riscos...',
+                    solucoes: 'Ações...',
+                    proximos_passos: 'Protocolar...',
+                  } as any
+                } else {
+                  finalSuggestions.push(`[${agent.name}] Adicione fundamentação.`)
+                }
+              }
+
+              const costInput = (inputTokens / 1000000) * 3.0
+              const costOutput = (outputTokens / 1000000) * 15.0
+              const estimatedCost = costInput + costOutput
+
+              await supabase
+                .from('invocacoes')
+                .update({ input_tokens: inputTokens, output_tokens: outputTokens })
+                .eq('id', activeInvocationId)
+              await supabase
+                .from('custos')
+                .upsert(
+                  {
+                    invocation_id: activeInvocationId,
+                    estimated_cost: estimatedCost,
+                    currency: 'USD',
+                    cached_tokens: cachedTokens,
+                  },
+                  { onConflict: 'invocation_id', ignoreDuplicates: true },
+                )
+            }
+
+            if (action === 'brainstorm' || action === 'extract_report_fields') {
+              sendEvent({ type: 'suggestions', data: finalSuggestions })
+            } else {
+              sendEvent({ type: 'suggestions', data: { suggestions: finalSuggestions } })
+            }
+          }
+
+          sendEvent({ done: true })
+        } catch (err: any) {
+          console.error(
+            `Stream processing error (Invocation ID: ${activeInvocationId}):`,
+            err.message,
           )
-          .map((l: string) =>
-            l
-              .replace(/^[-*]\s*/, '')
-              .replace(/^\d+\.\s*/, '')
-              .trim(),
-          )
+          if (activeInvocationId && authHeader) {
+            const safeClient = createClient(supabaseUrl, supabaseKey, {
+              global: { headers: { Authorization: authHeader } },
+            })
+            await safeClient
+              .from('invocacoes')
+              .update({ diagnostic_log: err.message })
+              .eq('id', activeInvocationId)
+          }
 
-        if (suggestions.length === 0 && aiText) {
-          suggestions = [aiText]
+          let errorMessage = err.message
+          try {
+            const parsed = JSON.parse(errorMessage)
+            if (!parsed.invocation_id) parsed.invocation_id = activeInvocationId
+            errorMessage = JSON.stringify(parsed)
+          } catch (e) {
+            errorMessage = JSON.stringify({
+              message: errorMessage,
+              invocation_id: activeInvocationId,
+            })
+          }
+
+          sendEvent({ error: errorMessage })
+        } finally {
+          clearInterval(pingInterval)
+          try {
+            controller.close()
+          } catch (e) {}
         }
-      }
-    } else {
-      // Simulate Anthropic API if key is not provided (Fallback mode)
-      await new Promise((r) => setTimeout(r, 1500))
-      if (action === 'apply') {
-        revised_content =
-          content +
-          `<br/><br/><div style="color: blue; padding: 10px; border: 1px dashed blue;"><em>[Simulação: Modificações baseadas em IA aplicadas à peça]</em></div>`
-        inputTokens = Math.floor(content.length / 4)
-        outputTokens = 200
-        cachedTokens = 0
-      } else {
-        suggestions = [
-          `Considere adicionar fundamentação baseada no Princípio da Proporcionalidade (Sugestão gerada pelo agente: ${agent.titulo || agent.name}).`,
-          `Modelo utilizado: ${finalModel}`,
-          'A jurisprudência recente do STJ tem pacificado entendimento favorável a este pleito quando ausente violência ou grave ameaça.',
-          'Sugerimos revisar a estruturação dos fatos para destacar mais a ausência de indícios de autoria.',
-        ]
-        inputTokens = Math.floor(content.length / 4)
-        outputTokens = 150
-        cachedTokens = 0
-      }
-    }
+      },
+    })
 
-    // Cost Calculation for standardization aliases
-    let costInput = 0
-    let costOutput = 0
-    if (finalModel === 'claude-opus-4-7') {
-      costInput = (inputTokens / 1000000) * 15.0
-      costOutput = (outputTokens / 1000000) * 75.0
-    } else if (finalModel === 'claude-haiku-4-5') {
-      costInput = (inputTokens / 1000000) * 0.25
-      costOutput = (outputTokens / 1000000) * 1.25
-    } else {
-      // claude-sonnet-4-6 and defaults
-      costInput = (inputTokens / 1000000) * 3.0
-      costOutput = (outputTokens / 1000000) * 15.0
-    }
-    const estimatedCost = costInput + costOutput
-
-    const { data: invocation, error: invError } = await supabase
-      .from('invocacoes')
-      .insert({
-        user_id: user.id,
-        agent_id: agent.id,
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-      })
-      .select('id')
-      .single()
-
-    if (invError) {
-      console.error('Error logging invocation:', invError)
-    } else if (invocation) {
-      const { error: costError } = await supabase.from('custos').insert({
-        invocation_id: invocation.id,
-        estimated_cost: estimatedCost,
-        currency: 'USD',
-        cached_tokens: cachedTokens,
-      })
-      if (costError) {
-        console.error('Error logging costs:', costError)
-      }
-    }
-
-    if (action === 'apply') {
-      return new Response(JSON.stringify({ revised_content }), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      })
-    }
-
-    return new Response(JSON.stringify({ suggestions }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        ...corsHeaders,
+      },
     })
   } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 400,
+    if (activeInvocationId && authHeader) {
+      const safeClient = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: { Authorization: authHeader } },
+      })
+      await safeClient
+        .from('invocacoes')
+        .update({ diagnostic_log: error.message })
+        .eq('id', activeInvocationId)
+    }
+
+    let status = 400
+    let errorBody = { error: error.message }
+
+    try {
+      const parsed = JSON.parse(error.message)
+      if (parsed.code === 'EMPTY_RESPONSE') {
+        status = 500
+        errorBody = parsed
+      }
+    } catch (e) {}
+
+    return new Response(JSON.stringify(errorBody), {
+      status,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     })
   }
