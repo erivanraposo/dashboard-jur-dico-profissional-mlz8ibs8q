@@ -18,9 +18,11 @@ import { cn } from '@/lib/utils'
 export function RichTextEditor({
   value,
   onChange,
+  readOnly = false,
 }: {
   value: string
   onChange: (val: string) => void
+  readOnly?: boolean
 }) {
   const editorRef = useRef<HTMLDivElement>(null)
   const isUpdatingRef = useRef(false)
@@ -51,7 +53,12 @@ export function RichTextEditor({
 
   return (
     <div className="border rounded-md flex flex-col w-full h-full bg-background shadow-sm overflow-hidden">
-      <div className="flex flex-wrap items-center gap-1 p-1.5 border-b bg-slate-50/50">
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-1 p-1.5 border-b bg-slate-50/50 transition-opacity',
+          readOnly && 'opacity-50 pointer-events-none',
+        )}
+      >
         <Toggle size="sm" onClick={() => execCommand('bold')} title="Negrito">
           <Bold className="h-4 w-4" />
         </Toggle>
@@ -88,7 +95,7 @@ export function RichTextEditor({
       </div>
       <div
         ref={editorRef}
-        contentEditable
+        contentEditable={!readOnly}
         onInput={handleChange}
         onBlur={handleChange}
         className={cn(

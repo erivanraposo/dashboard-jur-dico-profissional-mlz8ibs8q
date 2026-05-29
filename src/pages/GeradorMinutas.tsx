@@ -638,7 +638,7 @@ export default function GeradorMinutas() {
           .eq('id', currentMinuteId)
       }
 
-      const isSaved = await handleSave(revised_content, true)
+      const isSaved = await handleSave(revised_content, true, currentMinuteId)
       if (isSaved) {
         toast({
           title: 'Geração Concluída',
@@ -859,7 +859,11 @@ export default function GeradorMinutas() {
     }
   }
 
-  const handleSave = async (contentToSave = content, silent = false) => {
+  const handleSave = async (
+    contentToSave = content,
+    silent = false,
+    explicitMinuteId?: string | null,
+  ) => {
     if (!contentToSave || contentToSave.length < 20) {
       if (!silent) {
         toast({
@@ -900,11 +904,12 @@ export default function GeradorMinutas() {
       }
 
       let res
-      if (minuteId) {
+      const targetMinuteId = explicitMinuteId || minuteId
+      if (targetMinuteId) {
         res = await supabase
           .from('minutes')
           .update(payload)
-          .eq('id', minuteId)
+          .eq('id', targetMinuteId)
           .select('id')
           .single()
       } else {
@@ -1182,12 +1187,18 @@ export default function GeradorMinutas() {
 
         <div
           className={cn(
-            'flex-1 overflow-hidden rounded-lg border shadow-sm transition-all no-print',
+            'flex-1 overflow-hidden rounded-lg border shadow-sm transition-all no-print relative',
             applying
               ? 'border-green-300 ring-2 ring-green-500/20'
               : 'border-border/50 bg-background',
           )}
         >
+          {applying && (
+            <div className="absolute top-2 right-4 z-10 flex items-center gap-2 bg-green-100 text-green-800 px-3 py-1.5 rounded-full shadow-sm animate-pulse border border-green-200">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="text-xs font-semibold">Aplicando sugestões e reescrevendo...</span>
+            </div>
+          )}
           <RichTextEditor value={content} onChange={handleContentChange} readOnly={applying} />
         </div>
 
