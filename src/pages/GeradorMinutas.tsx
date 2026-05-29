@@ -425,7 +425,7 @@ export default function GeradorMinutas() {
     if (!retryContent && !isResume) setOriginalContentForRetry(originalContent)
 
     let accumulatedContent = contentSoFarStr
-    setContent(accumulatedContent) // Prepare editor for streaming text
+    let hasStartedStreaming = false
 
     let currentMinuteId = minuteId
     const invocation_id = crypto.randomUUID()
@@ -527,6 +527,13 @@ export default function GeradorMinutas() {
                 needsContinue = true
               }
               if (data.text) {
+                if (!hasStartedStreaming) {
+                  hasStartedStreaming = true
+                  if (!isResume && contentSoFarStr === '') {
+                    accumulatedContent = ''
+                  }
+                  setContent('')
+                }
                 accumulatedContent += data.text
                 setContent(accumulatedContent)
                 localStorage.setItem('lexcontrol_gerador_draft', accumulatedContent)
@@ -559,6 +566,16 @@ export default function GeradorMinutas() {
           true,
           accumulatedContent,
           0,
+        )
+      }
+
+      if (!accumulatedContent || accumulatedContent.trim() === '') {
+        throw new Error(
+          JSON.stringify({
+            message:
+              'A IA não gerou texto novo. Tente novamente, simplifique as sugestões selecionadas, ou reduza o tamanho dos anexos.',
+            invocation_id,
+          }),
         )
       }
 
@@ -725,9 +742,11 @@ export default function GeradorMinutas() {
         errorMsg.includes('EMPTY_RESPONSE') ||
         err.message?.includes('EMPTY_RESPONSE') ||
         errorMsg.includes('vazia ou malformada') ||
-        errorMsg.includes('A IA não retornou conteúdo')
+        errorMsg.includes('A IA não retornou conteúdo') ||
+        errorMsg.includes('A IA não gerou texto novo')
       ) {
-        errorMsg = 'A IA não retornou conteúdo'
+        errorMsg =
+          'A IA não gerou texto novo. Tente novamente, simplifique as sugestões selecionadas, ou reduza o tamanho dos anexos.'
       }
 
       // Do not auto-retry if it's a known API structural error (like model not found or empty response)
@@ -737,7 +756,8 @@ export default function GeradorMinutas() {
         !isApiError &&
         !err.message?.includes('EMPTY_RESPONSE') &&
         !errorMsg.includes('vazia ou malformada') &&
-        !errorMsg.includes('A IA não retornou conteúdo')
+        !errorMsg.includes('A IA não retornou conteúdo') &&
+        !errorMsg.includes('A IA não gerou texto novo')
       ) {
         setProgressStatus(
           `Conexão instável. Tentando reconectar (Tentativa ${retryCount + 1}/3)...`,
