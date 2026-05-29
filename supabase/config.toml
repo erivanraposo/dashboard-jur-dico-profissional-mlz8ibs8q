@@ -1,0 +1,9 @@
+project_id = "fxyegswhzorotyklrgru"
+
+[functions.analyze-legal-text]
+verify_jwt = true
+timeout = 900
+
+[functions.extract-document]
+verify_jwt = true
+timeout = 300

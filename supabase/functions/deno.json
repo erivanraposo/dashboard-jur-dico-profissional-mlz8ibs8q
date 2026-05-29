@@ -1,5 +1,6 @@
 {
   "_versions": {
-    "analyze-legal-text": 11
+    "analyze-legal-text": 35,
+    "extract-document": 6
   }
 }
