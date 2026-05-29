@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/RichTextEditor'
@@ -392,6 +392,15 @@ export default function GeradorMinutas() {
   }
 
   const [originalContentForRetry, setOriginalContentForRetry] = useState('')
+  const suggestionsRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (suggestions.length > 0 && suggestionsRef.current) {
+      setTimeout(() => {
+        suggestionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }, 150)
+    }
+  }, [suggestions])
 
   const handleApplySuggestions = async (
     retryContent?: string,
@@ -1236,6 +1245,26 @@ export default function GeradorMinutas() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col gap-5 p-5 overflow-hidden">
+            {suggestions.length > 0 && (
+              <div className="flex flex-col gap-3 pb-4 border-b border-border animate-in fade-in slide-in-from-top-2 shrink-0">
+                <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
+                  <Sparkles className="w-5 h-5" />
+                  <span>{suggestions.length} sugestões da IA prontas</span>
+                </div>
+                <Button
+                  onClick={() => handleApplySuggestions()}
+                  disabled={applying || saving}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white shadow-sm hover:shadow-md transition-all"
+                >
+                  {applying ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 mr-2" />
+                  )}
+                  {applying ? 'Reescrevendo...' : 'Reescrever e Aplicar Todas'}
+                </Button>
+              </div>
+            )}
             <ScrollArea className="flex-1 -mx-5 px-5">
               <div className="flex flex-col gap-5 pb-2 pr-4">
                 <div className="space-y-3">
@@ -1516,7 +1545,10 @@ export default function GeradorMinutas() {
                 </div>
 
                 {suggestions.length > 0 && (
-                  <div className="flex flex-col gap-4 mt-2 pt-4 border-t border-border">
+                  <div
+                    ref={suggestionsRef}
+                    className="flex flex-col gap-4 mt-2 pt-4 border-t border-border scroll-mt-4"
+                  >
                     <h3 className="font-semibold text-sm flex items-center gap-2">
                       <Check className="w-4 h-4 text-green-600" /> Sugestões Identificadas:
                     </h3>
@@ -1530,18 +1562,6 @@ export default function GeradorMinutas() {
                         </div>
                       ))}
                     </div>
-                    <Button
-                      onClick={() => handleApplySuggestions()}
-                      disabled={applying || saving}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white shadow-sm hover:shadow-md transition-all"
-                    >
-                      {applying ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4 mr-2" />
-                      )}
-                      {applying ? 'Reescrevendo...' : 'Reescrever e Aplicar Todas'}
-                    </Button>
                   </div>
                 )}
 
