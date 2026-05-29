@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -8,133 +8,143 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts'
-import { Briefcase, CalendarClock, FileEdit, Gavel, ArrowRight, Activity } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts'
+import { Briefcase, Bot, DollarSign, Activity, FileEdit, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase/client'
 import { Link } from 'react-router-dom'
+import { Skeleton } from '@/components/ui/skeleton'
+import { format, subDays, parseISO } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
 export default function Index() {
-  const [stats, setStats] = useState({ active: 0, drafts: 0, civil: 0, penal: 0, deadlines: 0 })
+  const [stats, setStats] = useState({
+    processes: 0,
+    agents: 0,
+    invocations: 0,
+    cost: 0,
+  })
+  const [dailyData, setDailyData] = useState<any[]>([])
   const [recentActivity, setRecentActivity] = useState<any[]>([])
+  const [agentsRanking, setAgentsRanking] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const loadData = async () => {
       try {
+        const endDate = new Date().toISOString()
+        const startDate = subDays(new Date(), 30).toISOString()
+
         const [
-          { count: activeCount },
-          { count: draftCount },
-          { data: procs },
-          { data: deadlines },
-          { data: minutesData },
+          { count: processesCount },
+          { count: agentsCount },
+          { count: invocationsCount },
+          { data: custosData },
+          { data: dailyConsumption },
+          { data: recentInvocations },
+          { data: agentRanking },
         ] = await Promise.all([
+          supabase.from('processes').select('*', { count: 'exact', head: true }),
           supabase
-            .from('processes')
+            .from('agentes')
             .select('*', { count: 'exact', head: true })
-            .eq('status', 'Ativo'),
+            .eq('is_active', true),
+          supabase.from('invocacoes').select('*', { count: 'exact', head: true }),
+          supabase.from('custos').select('estimated_cost'),
+          supabase.rpc('get_daily_consumption', { start_date: startDate, end_date: endDate }),
           supabase
-            .from('minutes')
-            .select('*', { count: 'exact', head: true })
-            .eq('status', 'Draft'),
-          supabase.from('processes').select('area'),
-          supabase.from('processes').select('*', { count: 'exact' }).eq('status', 'Prazo Fatal'),
-          supabase
-            .from('minutes')
-            .select('id, title, status, created_at, process_id')
+            .from('vw_recent_invocations')
+            .select('*')
             .order('created_at', { ascending: false })
-            .limit(5),
+            .limit(6),
+          supabase.rpc('get_agent_ranking', { start_date: startDate, end_date: endDate }),
         ])
 
-        const penal = procs?.filter((p) => p.area === 'Penal').length || 0
-        const civil = procs?.filter((p) => p.area === 'Cível').length || 0
+        const totalCost =
+          custosData?.reduce((acc, curr) => acc + (curr.estimated_cost || 0), 0) || 0
 
         setStats({
-          active: activeCount || 0,
-          drafts: draftCount || 0,
-          civil,
-          penal,
-          deadlines: deadlines?.length || 0,
+          processes: processesCount || 0,
+          agents: agentsCount || 0,
+          invocations: invocationsCount || 0,
+          cost: totalCost,
         })
 
-        if (minutesData) {
-          setRecentActivity(
-            minutesData.map((m) => ({
-              id: m.id,
-              action: `Minuta criada: ${m.title}`,
-              process: m.process_id ? 'Vinculada' : 'Avulsa',
-              type: 'Geral',
-              date: new Date(m.created_at).toLocaleString('pt-BR', {
-                dateStyle: 'short',
-                timeStyle: 'short',
-              }),
-            })),
-          )
+        if (dailyConsumption) {
+          const formattedDaily = dailyConsumption.map((d) => ({
+            ...d,
+            displayDate: format(parseISO(d.date), 'dd/MM', { locale: ptBR }),
+          }))
+          setDailyData(formattedDaily)
+        }
+
+        if (recentInvocations) {
+          setRecentActivity(recentInvocations)
+        }
+
+        if (agentRanking) {
+          setAgentsRanking(agentRanking.slice(0, 5))
         }
       } catch (err) {
-        console.error(err)
+        console.error('Error loading dashboard data:', err)
       } finally {
         setLoading(false)
       }
     }
+
     loadData()
   }, [])
 
-  const kpiData = [
-    {
-      title: 'Processos Ativos',
-      value: stats.active.toString(),
-      icon: Briefcase,
-      trend: 'Sincronizado',
-    },
-    {
-      title: 'Prazos Fatais',
-      value: stats.deadlines.toString(),
-      icon: CalendarClock,
-      trend: stats.deadlines > 0 ? 'Atenção necessária' : 'Tudo em dia',
-      urgent: stats.deadlines > 0,
-    },
-    {
-      title: 'Minutas em Rascunho',
-      value: stats.drafts.toString(),
-      icon: FileEdit,
-      trend: 'Aguardando revisão',
-    },
-    { title: 'Jurisprudências Salvas', value: '3', icon: Gavel, trend: 'Base de conhecimento' },
-  ]
-
-  const chartData = [
-    { name: 'Direito Penal', value: stats.penal || 1, color: 'var(--color-penal)' },
-    { name: 'Direito Cível', value: stats.civil || 1, color: 'var(--color-civel)' },
-  ]
-
   const chartConfig = {
-    penal: { label: 'Penal', color: 'hsl(var(--chart-2))' },
-    civel: { label: 'Cível', color: 'hsl(var(--chart-3))' },
+    invocations: {
+      label: 'Invocações',
+      color: 'hsl(var(--primary))',
+    },
   }
 
-  if (loading)
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Activity className="animate-spin text-primary mr-2" /> Carregando dashboard...
+      <div className="space-y-8 max-w-7xl mx-auto p-4 md:p-8">
+        <div className="flex justify-between items-center">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-[250px]" />
+            <Skeleton className="h-4 w-[350px]" />
+          </div>
+          <div className="flex gap-3">
+            <Skeleton className="h-10 w-[140px]" />
+            <Skeleton className="h-10 w-[140px]" />
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-[120px] w-full rounded-xl" />
+          ))}
+        </div>
+        <div className="grid gap-6 md:grid-cols-7">
+          <Skeleton className="md:col-span-4 h-[400px] rounded-xl" />
+          <Skeleton className="md:col-span-3 h-[400px] rounded-xl" />
+        </div>
       </div>
     )
+  }
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-start lg:items-center justify-between gap-4">
+    <div className="space-y-8 max-w-7xl mx-auto p-4 md:p-8 animate-fade-in-up">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary uppercase">
-            LexControl Dashboard
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Resumo em tempo real dos seus processos e atividades.
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard Geral</h1>
+          <p className="text-muted-foreground mt-1">
+            Visão completa das suas atividades, processos e consumo de IA.
           </p>
         </div>
-        <div className="flex flex-col md:items-end gap-3">
-          <Button className="hidden md:flex gap-2 w-fit" asChild>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" asChild className="hidden sm:flex gap-2">
+            <Link to="/processos">
+              <Briefcase className="h-4 w-4" /> Ver Processos
+            </Link>
+          </Button>
+          <Button asChild className="flex gap-2 shadow-sm">
             <Link to="/gerador">
               <FileEdit className="h-4 w-4" /> Nova Minuta
             </Link>
@@ -142,94 +152,212 @@ export default function Index() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {kpiData.map((kpi, i) => (
-          <Card key={i} className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {kpi.title}
-              </CardTitle>
-              <kpi.icon className={`h-4 w-4 ${kpi.urgent ? 'text-red-600' : 'text-primary/60'}`} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{kpi.value}</div>
-              <p
-                className={`text-xs mt-1 ${kpi.urgent ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}
-              >
-                {kpi.trend}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Processos Cadastrados
+            </CardTitle>
+            <Briefcase className="h-4 w-4 text-primary/70" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.processes}</div>
+            <p className="text-xs text-muted-foreground mt-1">Total na base de dados</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Agentes Ativos
+            </CardTitle>
+            <Bot className="h-4 w-4 text-primary/70" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.agents}</div>
+            <p className="text-xs text-muted-foreground mt-1">Modelos de IA disponíveis</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Invocações (Total)
+            </CardTitle>
+            <Activity className="h-4 w-4 text-primary/70" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.invocations}</div>
+            <p className="text-xs text-muted-foreground mt-1">Requisições à IA geradas</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Custo Estimado (Total)
+            </CardTitle>
+            <DollarSign className="h-4 w-4 text-primary/70" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+                stats.cost,
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Gasto total acumulado</p>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-6 md:grid-cols-7">
-        <Card className="md:col-span-4 border-border/50 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Atividade Recente (Minutas)</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                Últimos documentos criados ou editados.
-              </p>
-            </div>
+        <Card className="md:col-span-4 border-border/50 shadow-sm flex flex-col">
+          <CardHeader>
+            <CardTitle>Consumo Diário (Últimos 30 Dias)</CardTitle>
+            <CardDescription>
+              Quantidade de invocações feitas aos agentes de IA por dia.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            {recentActivity.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">Nenhuma atividade recente.</p>
+          <CardContent className="flex-1 pb-4">
+            {dailyData.length > 0 ? (
+              <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke="hsl(var(--border))"
+                    />
+                    <XAxis
+                      dataKey="displayDate"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={10}
+                      fontSize={12}
+                      stroke="hsl(var(--muted-foreground))"
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={10}
+                      fontSize={12}
+                      stroke="hsl(var(--muted-foreground))"
+                    />
+                    <ChartTooltip
+                      content={<ChartTooltipContent />}
+                      cursor={{ fill: 'hsl(var(--muted))' }}
+                    />
+                    <Bar
+                      dataKey="invocations"
+                      fill="var(--color-invocations)"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={40}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Ação</TableHead>
-                    <TableHead>Processo</TableHead>
-                    <TableHead className="text-right">Data</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentActivity.map((item) => (
-                    <TableRow key={item.id} className="hover:bg-muted/50">
-                      <TableCell className="font-medium text-sm">{item.action}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground font-mono">
-                        {item.process}
-                      </TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">
-                        {item.date}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="h-[300px] flex flex-col items-center justify-center text-center text-muted-foreground space-y-3">
+                <Activity className="h-10 w-10 opacity-20" />
+                <p>Nenhuma atividade registrada nos últimos 30 dias.</p>
+                <Button variant="outline" asChild size="sm">
+                  <Link to="/gerador">Criar primeira minuta</Link>
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>
 
         <Card className="md:col-span-3 border-border/50 shadow-sm flex flex-col">
           <CardHeader>
-            <CardTitle>Distribuição de Processos</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">Ativos por ramo do direito.</p>
+            <CardTitle>Top Agentes (30 Dias)</CardTitle>
+            <CardDescription>Os modelos de IA mais utilizados e seus custos.</CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 flex flex-col justify-center pb-8">
-            <ChartContainer config={chartConfig} className="h-[250px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={chartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                </PieChart>
-              </ResponsiveContainer>
-            </ChartContainer>
+          <CardContent className="flex-1">
+            {agentsRanking.length > 0 ? (
+              <div className="space-y-5">
+                {agentsRanking.map((agent, i) => (
+                  <div key={agent.agent_id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-sm">
+                        #{i + 1}
+                      </div>
+                      <div className="truncate">
+                        <p className="text-sm font-medium leading-none truncate">
+                          {agent.agent_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1 truncate">
+                          {agent.invocations_count} invocações
+                        </p>
+                      </div>
+                    </div>
+                    <div className="font-medium text-sm text-right shrink-0">
+                      {new Intl.NumberFormat('en-US', {
+                        style: 'currency',
+                        currency: 'USD',
+                      }).format(agent.total_cost || 0)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="h-full min-h-[200px] flex flex-col items-center justify-center text-center text-muted-foreground space-y-3">
+                <Bot className="h-10 w-10 opacity-20" />
+                <p className="text-sm">Nenhum agente utilizado ainda.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-7 border-border/50 shadow-sm">
+          <CardHeader>
+            <CardTitle>Atividades Recentes</CardTitle>
+            <CardDescription>Últimas interações da sua equipe com as IAs.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recentActivity.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Usuário</TableHead>
+                    <TableHead>Agente Utilizado</TableHead>
+                    <TableHead>Data e Hora</TableHead>
+                    <TableHead className="text-right">Custo</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentActivity.map((act) => (
+                    <TableRow key={act.id}>
+                      <TableCell className="font-medium">
+                        {act.user_name || 'Desconhecido'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Bot className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-sm">{act.agent_name || 'Agente Genérico'}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {act.created_at
+                          ? format(new Date(act.created_at), 'dd/MM/yyyy HH:mm')
+                          : '-'}
+                      </TableCell>
+                      <TableCell className="text-right text-sm">
+                        {new Intl.NumberFormat('en-US', {
+                          style: 'currency',
+                          currency: 'USD',
+                        }).format(act.estimated_cost || 0)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="py-12 flex flex-col items-center justify-center text-center text-muted-foreground space-y-3 border-t border-dashed mt-2">
+                <AlertCircle className="h-8 w-8 opacity-20" />
+                <p>Nenhuma atividade encontrada no sistema.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
