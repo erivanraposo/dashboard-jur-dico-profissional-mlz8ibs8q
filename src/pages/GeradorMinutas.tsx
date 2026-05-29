@@ -299,9 +299,13 @@ export default function GeradorMinutas() {
                 throw new Error(data.error)
               }
               if (data.type === 'suggestions') {
-                const suggs = data.data.suggestions || []
-                setSuggestions(suggs)
-                if (suggs.length > 0) receivedSuggestions = true
+                const suggs = data.data.suggestions || data.data.sugerir_secoes || []
+                if (suggs && suggs.length > 0) {
+                  setSuggestions(suggs)
+                  receivedSuggestions = true
+                } else {
+                  throw new Error('A IA não retornou conteúdo')
+                }
               }
             } catch (e: any) {
               if (e.message && e.message !== 'Unexpected end of JSON input') throw e
@@ -313,7 +317,7 @@ export default function GeradorMinutas() {
       if (!receivedSuggestions) {
         throw new Error(
           JSON.stringify({
-            message: 'A resposta da IA estava vazia ou malformada.',
+            message: 'A IA não retornou conteúdo',
             invocation_id,
           }),
         )
@@ -353,9 +357,10 @@ export default function GeradorMinutas() {
       if (
         errorMsg.includes('EMPTY_RESPONSE') ||
         err.message?.includes('EMPTY_RESPONSE') ||
-        errorMsg.includes('vazia ou malformada')
+        errorMsg.includes('vazia ou malformada') ||
+        errorMsg.includes('A IA não retornou conteúdo')
       ) {
-        errorMsg = 'Erro: A resposta da IA estava vazia ou malformada.'
+        errorMsg = 'A IA não retornou conteúdo'
       }
 
       toast({
@@ -564,10 +569,10 @@ export default function GeradorMinutas() {
         }
       }
 
-      if (!finalContentStr || finalContentStr.trim() === '') {
+      if (!finalContentStr || finalContentStr.trim() === '' || finalContentStr.length === 0) {
         throw new Error(
           JSON.stringify({
-            message: 'A resposta da IA estava vazia ou malformada.',
+            message: 'A IA não retornou conteúdo',
             invocation_id,
           }),
         )
@@ -702,9 +707,10 @@ export default function GeradorMinutas() {
       if (
         errorMsg.includes('EMPTY_RESPONSE') ||
         err.message?.includes('EMPTY_RESPONSE') ||
-        errorMsg.includes('vazia ou malformada')
+        errorMsg.includes('vazia ou malformada') ||
+        errorMsg.includes('A IA não retornou conteúdo')
       ) {
-        errorMsg = 'Erro: A resposta da IA estava vazia ou malformada.'
+        errorMsg = 'A IA não retornou conteúdo'
       }
 
       // Do not auto-retry if it's a known API structural error (like model not found or empty response)
@@ -713,7 +719,8 @@ export default function GeradorMinutas() {
         !err.message?.includes('401') &&
         !isApiError &&
         !err.message?.includes('EMPTY_RESPONSE') &&
-        !errorMsg.includes('vazia ou malformada')
+        !errorMsg.includes('vazia ou malformada') &&
+        !errorMsg.includes('A IA não retornou conteúdo')
       ) {
         setProgressStatus(
           `Conexão instável. Tentando reconectar (Tentativa ${retryCount + 1}/3)...`,
