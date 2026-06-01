@@ -410,7 +410,7 @@ Deno.serve(async (req: Request) => {
           // --- ACTION: ANALYZE / BRAINSTORM / EXTRACT ---
           else {
             sendEvent({ status: 'Analisando documento e gerando insights...' })
-            let finalSuggestions: string[] = []
+            let finalSuggestions: any = []
             const agentsToProcess =
               action === 'brainstorm' || action === 'extract_report_fields' ? [agents[0]] : agents
 
@@ -420,18 +420,13 @@ Deno.serve(async (req: Request) => {
             let totalEstimatedCost = 0
             let successCount = 0
 
-            for (const agent of agentsToProcess) {
+            const agentPromises = agentsToProcess.map(async (agent) => {
               try {
                 let agentSuggestions: string[] = []
+                let structuredResult: any = null
 
-                let finalModel = req_model || agent.model || 'claude-sonnet-4-6'
-                if (finalModel.includes('sonnet')) finalModel = 'claude-sonnet-4-6'
-                else if (finalModel.includes('opus')) finalModel = 'claude-opus-4-7'
-                else if (finalModel.includes('haiku')) finalModel = 'claude-haiku-4-5'
-
-                if (action === 'extract_report_fields') {
-                  finalModel = 'claude-haiku-4-5'
-                }
+                // For analysis actions, force claude-haiku-4-5 to reduce latency
+                let finalModel = 'claude-haiku-4-5'
 
                 const finalSystemPrompt = req_system_prompt || agent.system_prompt
                 const maxTokens = agent.max_tokens || 8192
@@ -439,6 +434,8 @@ Deno.serve(async (req: Request) => {
                 let inputTokens = 0
                 let outputTokens = 0
                 let cachedTokens = 0
+                let costInputPerM = 1.0
+                let costOutputPerM = 5.0
 
                 if (anthropicKey) {
                   let userMessage = `Por favor, forneça sugestões objetivas de melhoria em formato de lista (bullet points) para o seguinte contexto jurídico:\n\n${fullContext}`
@@ -481,7 +478,6 @@ Deno.serve(async (req: Request) => {
 
                   const aiData = await anthropicRes.json()
 
-                  // Server-side logging of raw AI content blocks for diagnostics
                   console.log('Raw AI Content Array:', JSON.stringify(aiData.content))
 
                   if (
@@ -540,6 +536,7 @@ Deno.serve(async (req: Request) => {
                       }),
                     )
                   }
+
                   if (action === 'brainstorm' || action === 'extract_report_fields') {
                     let jsonStr = aiText.trim()
                     if (jsonStr.startsWith('```json'))
@@ -547,25 +544,24 @@ Deno.serve(async (req: Request) => {
                     else if (jsonStr.startsWith('```'))
                       jsonStr = jsonStr.replace(/^```\n?/, '').replace(/\n?```$/, '')
                     try {
-                      finalSuggestions = JSON.parse(jsonStr)
+                      structuredResult = JSON.parse(jsonStr)
                     } catch (e) {
                       console.error('JSON parsing failed, falling back to raw text:', jsonStr)
-                      // Fallback: If structured parsing fails, return the raw text to prevent blocking the UI
                       if (action === 'extract_report_fields') {
-                        finalSuggestions = {
+                        structuredResult = {
                           situacao: 'Conteúdo não estruturado retornado pela IA:',
                           problemas:
                             jsonStr.substring(0, 500) + (jsonStr.length > 500 ? '...' : ''),
                           solucoes: 'Consulte o texto bruto.',
                           proximos_passos: 'Tente novamente.',
-                        } as any
+                        }
                       } else {
-                        finalSuggestions = {
+                        structuredResult = {
                           sugerir_secoes: ['Conteúdo não estruturado retornado pela IA:'],
                           perguntas_chave: [
                             jsonStr.substring(0, 500) + (jsonStr.length > 500 ? '...' : ''),
                           ],
-                        } as any
+                        }
                       }
                     }
                   } else {
@@ -587,53 +583,82 @@ Deno.serve(async (req: Request) => {
                     if (agentSuggestions.length === 0 && aiText) agentSuggestions = [aiText]
                     if (agentsToProcess.length > 1)
                       agentSuggestions = agentSuggestions.map((s: string) => `[${agent.name}] ${s}`)
-                    finalSuggestions = finalSuggestions.concat(agentSuggestions)
                   }
                 } else {
                   await new Promise((r) => setTimeout(r, 1500))
                   if (action === 'brainstorm') {
-                    finalSuggestions = {
+                    structuredResult = {
                       sugerir_secoes: ['1. Dos Fatos'],
                       perguntas_chave: ['Quais os danos?'],
-                    } as any
+                    }
                   } else if (action === 'extract_report_fields') {
-                    finalSuggestions = {
+                    structuredResult = {
                       situacao: 'O cliente...',
                       problemas: 'Riscos...',
                       solucoes: 'Ações...',
                       proximos_passos: 'Protocolar...',
-                    } as any
+                    }
                   } else {
-                    finalSuggestions.push(`[${agent.name}] Adicione fundamentação.`)
+                    agentSuggestions.push(`[${agent.name}] Adicione fundamentação.`)
                   }
                 }
 
-                let costInputPerM = 3.0
-                let costOutputPerM = 15.0
-                if (finalModel === 'claude-opus-4-7') {
-                  costInputPerM = 5.0
-                  costOutputPerM = 25.0
-                } else if (finalModel === 'claude-haiku-4-5') {
-                  costInputPerM = 1.0
-                  costOutputPerM = 5.0
-                }
-                const costInput = (inputTokens / 1000000) * costInputPerM
-                const costOutput = (outputTokens / 1000000) * costOutputPerM
-                const estimatedCost = costInput + costOutput
+                const estimatedCost =
+                  (inputTokens / 1000000) * costInputPerM +
+                  (outputTokens / 1000000) * costOutputPerM
 
-                totalInputTokens += inputTokens
-                totalOutputTokens += outputTokens
-                totalCachedTokens += cachedTokens
-                totalEstimatedCost += estimatedCost
-                successCount++
+                return {
+                  success: true,
+                  agentName: agent.name,
+                  structuredResult,
+                  agentSuggestions,
+                  inputTokens,
+                  outputTokens,
+                  cachedTokens,
+                  estimatedCost,
+                }
               } catch (agentErr: any) {
                 console.error(`Error processing agent ${agent.name}:`, agentErr.message)
-                const errorDetail = agentErr.message || 'Erro desconhecido'
                 if (action === 'brainstorm' || action === 'extract_report_fields') {
-                  // Se for apenas um agente e falhar, o throw propaga pra cima
                   throw agentErr
                 } else {
-                  finalSuggestions.push(`[${agent.name}] Falha na análise: ${errorDetail}`)
+                  return {
+                    success: false,
+                    agentName: agent.name,
+                    errorDetail: agentErr.message || 'Erro desconhecido',
+                  }
+                }
+              }
+            })
+
+            // Execute all agents in parallel
+            const results = await Promise.allSettled(agentPromises)
+
+            for (const result of results) {
+              if (result.status === 'fulfilled') {
+                const data = result.value
+                if (data.success) {
+                  totalInputTokens += data.inputTokens!
+                  totalOutputTokens += data.outputTokens!
+                  totalCachedTokens += data.cachedTokens!
+                  totalEstimatedCost += data.estimatedCost!
+                  successCount++
+
+                  if (action === 'brainstorm' || action === 'extract_report_fields') {
+                    finalSuggestions = data.structuredResult
+                  } else {
+                    finalSuggestions = finalSuggestions.concat(data.agentSuggestions)
+                  }
+                } else {
+                  finalSuggestions.push(`[${data.agentName}] Falha na análise: ${data.errorDetail}`)
+                }
+              } else {
+                if (action === 'brainstorm' || action === 'extract_report_fields') {
+                  throw result.reason
+                } else {
+                  finalSuggestions.push(
+                    `Falha na análise: ${result.reason?.message || 'Erro desconhecido'}`,
+                  )
                 }
               }
             }
@@ -646,7 +671,7 @@ Deno.serve(async (req: Request) => {
             ) {
               throw new Error(
                 JSON.stringify({
-                  error: 'Todos os agentes falharam na análise.',
+                  error: 'Todos os agentes falharam na geração de conteúdo.',
                   code: 'ALL_AGENTS_FAILED',
                   invocation_id: activeInvocationId,
                 }),
