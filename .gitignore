@@ -49,3 +49,5 @@ core.[0-9]*
 
 # Generated output, caches, and crash artifacts (Skip-managed)
 *.tmp
+
+!.env
