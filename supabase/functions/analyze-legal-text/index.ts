@@ -165,7 +165,8 @@ Deno.serve(async (req: Request) => {
             else if (finalModel.includes('haiku')) finalModel = 'claude-haiku-4-5'
 
             const finalSystemPrompt = req_system_prompt || agent.system_prompt
-            const maxTokens = agent.max_tokens && agent.max_tokens > 8192 ? agent.max_tokens : 16384
+            const maxTokens =
+              agent.max_tokens && agent.max_tokens > 16384 ? agent.max_tokens : 32000
 
             let activeMinuteId = minute_id
 
@@ -202,16 +203,16 @@ Deno.serve(async (req: Request) => {
                 .eq('id', activeMinuteId)
             }
 
-            const userMessage = `Aqui está o contexto e o documento atual (em formato HTML):\n\n${fullContext}\n\nPor favor, reescreva o Conteúdo Principal (Editor) aplicando as seguintes sugestões de melhoria. Mantenha a formatação HTML original, ajustando apenas o texto onde necessário:\n\n${(req_suggestions || []).map((s: string) => `- ${s}`).join('\n')}\n\nCRÍTICO: Retorne o documento COMPLETO, até a sua conclusão natural. NÃO TRUNQUE o texto (ex: não pare no meio de um parágrafo ou seção). Se o texto for longo, certifique-se de terminar todo o conteúdo sem interrupções. Inclua no final do documento a tag <!-- END_OF_DOCUMENT --> para confirmar que você terminou de gerar todo o texto.\n\nRetorne APENAS o código HTML do Conteúdo Principal revisado, sem nenhuma explicação ou texto adicional antes ou depois do HTML.`
+            let userMessage = `Aqui está o contexto e o documento atual (em formato HTML):\n\n${fullContext}\n\nPor favor, reescreva o Conteúdo Principal (Editor) aplicando as seguintes sugestões de melhoria. Mantenha a formatação HTML original, ajustando apenas o texto onde necessário:\n\n${(req_suggestions || []).map((s: string) => `- ${s}`).join('\n')}\n\nCRÍTICO: Retorne o documento COMPLETO, até a sua conclusão natural. NÃO TRUNQUE o texto (ex: não pare no meio de um parágrafo ou seção). Se o texto for longo, certifique-se de terminar todo o conteúdo sem interrupções. Inclua no final do documento a tag <!-- END_OF_DOCUMENT --> para confirmar que você terminou de gerar todo o texto.\n\nRetorne APENAS o código HTML do Conteúdo Principal revisado, sem nenhuma explicação ou texto adicional antes ou depois do HTML.`
+
+            if (content_so_far) {
+              userMessage = `${userMessage}\n\n---\n\nVOCÊ JÁ INICIOU A REESCRITA EM UMA SOLICITAÇÃO ANTERIOR. Aqui está exatamente o que foi gerado até agora:\n\n${content_so_far}\n\nCONTINUE de onde parou, SEM REPETIR o conteúdo acima. Retorne APENAS a continuação do HTML, mantendo coesão de formatação e estrutura. Termine o documento e inclua a tag <!-- END_OF_DOCUMENT --> ao final.`
+            }
 
             sendEvent({ status: 'Gerando texto (Streaming ativado)...' })
 
             if (anthropicKey) {
               const messages: any[] = [{ role: 'user', content: userMessage }]
-
-              if (content_so_far) {
-                messages.push({ role: 'assistant', content: content_so_far })
-              }
 
               const payloadParams: any = {
                 model: finalModel,
@@ -743,11 +744,13 @@ Deno.serve(async (req: Request) => {
           try {
             const parsed = JSON.parse(errorMessage)
             if (!parsed.invocation_id) parsed.invocation_id = activeInvocationId
+            parsed.diagnostic_id = activeInvocationId
             errorMessage = JSON.stringify(parsed)
           } catch (e) {
             errorMessage = JSON.stringify({
-              message: errorMessage,
+              message: `Falha na Geração: ${errorMessage}`,
               invocation_id: activeInvocationId,
+              diagnostic_id: activeInvocationId,
             })
           }
 
@@ -799,6 +802,10 @@ Deno.serve(async (req: Request) => {
 
     errorBody.invocation_id = activeInvocationId
     errorBody.diagnostic_log = error.message
+    errorBody.diagnostic_id = activeInvocationId
+    if (!errorBody.message) {
+      errorBody.message = `Falha na Geração: ${error.message}`
+    }
 
     return new Response(JSON.stringify(errorBody), {
       status,
