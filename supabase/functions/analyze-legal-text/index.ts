@@ -257,7 +257,9 @@ Deno.serve(async (req: Request) => {
                   'anthropic-beta': 'prompt-caching-2024-07-31',
                 },
                 body: JSON.stringify(payloadParams),
-                signal: AbortSignal.timeout(120000),
+                // 10 minutos: Sonnet 4.6 gerando doc longo (20K+ tokens) pode levar
+                // varios minutos. O timeout=900s do config.toml da margem.
+                signal: AbortSignal.timeout(600000),
               })
 
               if (!anthropicRes.ok) {
@@ -467,7 +469,13 @@ Deno.serve(async (req: Request) => {
                 let costOutputPerM = 5.0
 
                 if (anthropicKey) {
-                  let userMessage = `Você é um revisor jurídico sênior. Analise o contexto jurídico abaixo e produza ENTRE 25 E 35 sugestões objetivas de melhoria, priorizadas (as mais críticas primeiro). Cada sugestão deve ser específica, acionável e referenciar precisamente o ponto do documento. Formate cada sugestão como bullet point em uma linha começando com '- '. NÃO adicione texto introdutório, conclusão ou comentários — apenas a lista.\n\nContexto jurídico:\n\n${fullContext}`
+                  // Numero de sugestoes por agente eh dinamico: o total fica em ~30-50
+                  // independente de quantos agentes foram selecionados, evitando explosao
+                  // de sugestoes (ex: 5 agentes * 30 = 150).
+                  const targetPerAgent = Math.max(5, Math.ceil(40 / agentsToProcess.length))
+                  const minSug = Math.max(3, targetPerAgent - 2)
+                  const maxSug = targetPerAgent + 3
+                  let userMessage = `Você é um revisor jurídico sênior. Analise o contexto jurídico abaixo e produza ENTRE ${minSug} E ${maxSug} sugestões objetivas de melhoria, priorizadas (as mais críticas primeiro). Cada sugestão deve ser específica, acionável e referenciar precisamente o ponto do documento. Formate cada sugestão como bullet point em uma linha começando com '- '. NÃO adicione texto introdutório, conclusão ou comentários — apenas a lista.\n\nContexto jurídico:\n\n${fullContext}`
 
                   if (action === 'brainstorm') {
                     userMessage = `Analise o contexto a seguir e retorne um JSON estrito (sem crases ou marcação markdown) com duas chaves: "sugerir_secoes" (array de strings) e "perguntas_chave" (array de strings). NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON.\nContexto:\n${fullContext}\nRetorne APENAS o JSON válido.`
@@ -722,15 +730,17 @@ Deno.serve(async (req: Request) => {
               )
             else console.log(`DB Save Successful for invocacoes (ID: ${activeInvocationId})`)
 
-            const { error: costErr } = await supabase.from('custos').upsert(
-              {
-                invocation_id: activeInvocationId,
-                estimated_cost: totalEstimatedCost,
-                currency: 'USD',
-                cached_tokens: totalCachedTokens,
-              },
-              { onConflict: 'invocation_id', ignoreDuplicates: false },
-            )
+            const { error: costErr } = await supabase
+              .from('custos')
+              .upsert(
+                {
+                  invocation_id: activeInvocationId,
+                  estimated_cost: totalEstimatedCost,
+                  currency: 'USD',
+                  cached_tokens: totalCachedTokens,
+                },
+                { onConflict: 'invocation_id', ignoreDuplicates: false },
+              )
             if (costErr)
               console.error(
                 `DB Save Failed for custos (ID: ${activeInvocationId}):`,
