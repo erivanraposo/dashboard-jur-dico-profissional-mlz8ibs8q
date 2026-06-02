@@ -722,17 +722,15 @@ Deno.serve(async (req: Request) => {
               )
             else console.log(`DB Save Successful for invocacoes (ID: ${activeInvocationId})`)
 
-            const { error: costErr } = await supabase
-              .from('custos')
-              .upsert(
-                {
-                  invocation_id: activeInvocationId,
-                  estimated_cost: totalEstimatedCost,
-                  currency: 'USD',
-                  cached_tokens: totalCachedTokens,
-                },
-                { onConflict: 'invocation_id', ignoreDuplicates: false },
-              )
+            const { error: costErr } = await supabase.from('custos').upsert(
+              {
+                invocation_id: activeInvocationId,
+                estimated_cost: totalEstimatedCost,
+                currency: 'USD',
+                cached_tokens: totalCachedTokens,
+              },
+              { onConflict: 'invocation_id', ignoreDuplicates: false },
+            )
             if (costErr)
               console.error(
                 `DB Save Failed for custos (ID: ${activeInvocationId}):`,

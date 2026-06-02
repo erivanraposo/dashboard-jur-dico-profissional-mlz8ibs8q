@@ -956,10 +956,9 @@ export default function GeradorMinutas() {
     }
   }
 
-  const handlePrint = async () => {
+  const handleExportPDF = async () => {
     let targetId = minuteId
     if (content !== defaultContent) {
-      // Force a silent save to ensure the latest content is printed from DB
       const savedId = await handleSave(content, true)
       if (savedId && typeof savedId === 'string') {
         targetId = savedId
@@ -967,12 +966,11 @@ export default function GeradorMinutas() {
     }
 
     if (!targetId) {
-      toast({
+      return toast({
         title: 'Aviso',
-        description: 'Salve a minuta primeiro antes de baixar o PDF.',
+        description: 'Salve a minuta primeiro antes de exportar.',
         variant: 'destructive',
       })
-      return
     }
 
     try {
@@ -984,63 +982,144 @@ export default function GeradorMinutas() {
 
       if (error || !min) throw new Error('Minuta não encontrada.')
 
-      const printWindow = window.open('', '', 'width=800,height=600')
-      if (!printWindow) {
-        toast({
-          title: 'Aviso',
-          description: 'Permita pop-ups para gerar o PDF.',
-          variant: 'destructive',
+      const proc = min.processes as any
+
+      const htmlContent = `
+        <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 20mm; color: black;">
+          <div style="text-align: center; margin-bottom: 2em;">
+            <h1 style="text-transform: uppercase; font-size: 14pt; font-weight: bold;">${min.title || 'Documento Jurídico'}</h1>
+            ${proc?.case_number ? `<h2 style="font-size: 12pt; font-weight: bold;">Processo Nº ${proc.case_number}</h2>` : ''}
+          </div>
+          ${
+            min.client_name || min.comarca || min.objeto || min.pedido
+              ? `
+          <div style="margin-bottom: 2em; border-bottom: 2px solid black; padding-bottom: 1em; font-size: 10pt;">
+            ${min.client_name ? `<p style="margin:0; text-indent:0;"><strong>Cliente:</strong> ${min.client_name}</p>` : ''}
+            ${min.comarca ? `<p style="margin:0; text-indent:0;"><strong>Comarca:</strong> ${min.comarca}</p>` : ''}
+            ${min.objeto ? `<p style="margin:0; text-indent:0;"><strong>Objeto:</strong> ${min.objeto}</p>` : ''}
+            ${min.pedido ? `<p style="margin:0; text-indent:0;"><strong>Pedido/Valor:</strong> ${min.pedido}</p>` : ''}
+          </div>
+          `
+              : ''
+          }
+          <div style="text-align: justify; text-indent: 2em;">
+            ${min.content}
+          </div>
+        </div>
+      `
+
+      if (!(window as any).html2pdf) {
+        toast({ title: 'Aguarde', description: 'Carregando biblioteca de exportação...' })
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement('script')
+          script.src =
+            'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
+          script.onload = () => resolve()
+          script.onerror = () => reject(new Error('Falha ao carregar a biblioteca de PDF.'))
+          document.head.appendChild(script)
         })
-        return
       }
+
+      const element = document.createElement('div')
+      element.innerHTML = htmlContent
+
+      const opt = {
+        margin: [15, 15, 15, 15],
+        filename: `${min.title || 'documento'}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      }
+
+      toast({ title: 'Processando', description: 'Gerando o arquivo PDF...' })
+      await (window as any).html2pdf().set(opt).from(element).save()
+      toast({ title: 'Sucesso', description: 'Download do PDF concluído.' })
+    } catch (err: any) {
+      toast({ title: 'Erro ao gerar PDF', description: err.message, variant: 'destructive' })
+    }
+  }
+
+  const handleExportDOCX = async () => {
+    let targetId = minuteId
+    if (content !== defaultContent) {
+      const savedId = await handleSave(content, true)
+      if (savedId && typeof savedId === 'string') {
+        targetId = savedId
+      }
+    }
+
+    if (!targetId) {
+      return toast({
+        title: 'Aviso',
+        description: 'Salve a minuta primeiro antes de exportar.',
+        variant: 'destructive',
+      })
+    }
+
+    try {
+      const { data: min, error } = await supabase
+        .from('minutes')
+        .select('*, processes(*)')
+        .eq('id', targetId)
+        .single()
+
+      if (error || !min) throw new Error('Minuta não encontrada.')
 
       const proc = min.processes as any
 
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>${min.title}</title>
-            <style>
-              body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 20mm; color: black; }
-              h1, h2, h3 { font-weight: bold; margin-top: 1.5em; margin-bottom: 0.5em; }
-              p { text-indent: 2em; margin-bottom: 1em; text-align: justify; }
-              @media print {
-                @page { margin: 25mm; }
-                body { padding: 0; }
-              }
-            </style>
-          </head>
-          <body>
-            <div style="text-align: center; margin-bottom: 2em;">
-              <h1 style="text-transform: uppercase; font-size: 14pt;">${min.title || 'Documento Jurídico'}</h1>
-              ${proc?.case_number ? `<h2 style="font-size: 12pt;">Processo Nº ${proc.case_number}</h2>` : ''}
-            </div>
-            ${
-              min.client_name || min.comarca || min.objeto || min.pedido
-                ? `
-            <div style="margin-bottom: 2em; border-bottom: 2px solid black; padding-bottom: 1em; font-size: 10pt;">
-              ${min.client_name ? `<p style="margin:0; text-indent:0;"><strong>Cliente:</strong> ${min.client_name}</p>` : ''}
-              ${min.comarca ? `<p style="margin:0; text-indent:0;"><strong>Comarca:</strong> ${min.comarca}</p>` : ''}
-              ${min.objeto ? `<p style="margin:0; text-indent:0;"><strong>Objeto:</strong> ${min.objeto}</p>` : ''}
-              ${min.pedido ? `<p style="margin:0; text-indent:0;"><strong>Pedido/Valor:</strong> ${min.pedido}</p>` : ''}
-            </div>
-            `
-                : ''
-            }
-            ${min.content}
-          </body>
-        </html>
-      `)
+      const header = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <meta charset='utf-8'>
+          <title>${min.title || 'Documento Jurídico'}</title>
+          <style>
+            body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; color: black; }
+            h1 { font-size: 14pt; font-weight: bold; text-align: center; text-transform: uppercase; margin-bottom: 1em; }
+            h2 { font-size: 12pt; font-weight: bold; text-align: center; margin-bottom: 1em; }
+            p { text-indent: 2em; text-align: justify; margin-bottom: 1em; }
+          </style>
+        </head>
+        <body>
+      `
+      const footer = '</body></html>'
 
-      printWindow.document.close()
-      printWindow.focus()
-      setTimeout(() => {
-        printWindow.print()
-        printWindow.close()
-      }, 500)
+      let docContent = `
+        <div style="text-align: center; margin-bottom: 2em;">
+          <h1>${min.title || 'Documento Jurídico'}</h1>
+          ${proc?.case_number ? `<h2>Processo Nº ${proc.case_number}</h2>` : ''}
+        </div>
+      `
+
+      if (min.client_name || min.comarca || min.objeto || min.pedido) {
+        docContent += `
+          <div style="margin-bottom: 2em; border-bottom: 2px solid black; padding-bottom: 1em; font-size: 10pt;">
+            ${min.client_name ? `<p style="margin:0; text-indent:0;"><strong>Cliente:</strong> ${min.client_name}</p>` : ''}
+            ${min.comarca ? `<p style="margin:0; text-indent:0;"><strong>Comarca:</strong> ${min.comarca}</p>` : ''}
+            ${min.objeto ? `<p style="margin:0; text-indent:0;"><strong>Objeto:</strong> ${min.objeto}</p>` : ''}
+            ${min.pedido ? `<p style="margin:0; text-indent:0;"><strong>Pedido/Valor:</strong> ${min.pedido}</p>` : ''}
+          </div>
+        `
+      }
+
+      docContent += min.content
+
+      const sourceHTML = header + docContent + footer
+
+      const blob = new Blob(['\ufeff', sourceHTML], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${min.title || 'documento'}.docx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast({ title: 'Sucesso', description: 'Download do DOCX concluído.' })
     } catch (err: any) {
-      toast({ title: 'Erro ao gerar PDF', description: err.message, variant: 'destructive' })
+      toast({ title: 'Erro ao gerar DOCX', description: err.message, variant: 'destructive' })
     }
   }
 
@@ -1102,7 +1181,7 @@ export default function GeradorMinutas() {
 
   return (
     <div className="flex h-[calc(100vh-6rem)] gap-6 animate-fade-in-up">
-      <div className="flex-1 flex flex-col min-w-0 no-print">
+      <div className="flex-1 flex flex-col min-w-0">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-primary">Gerador de Minutas</h1>
@@ -1122,14 +1201,26 @@ export default function GeradorMinutas() {
           </div>
           <div className="flex items-center gap-2">
             {content !== defaultContent && content.trim() !== '' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handlePrint}
-                className="text-blue-600 border-blue-200 hover:bg-blue-50"
-              >
-                <Download className="w-4 h-4 mr-2" /> Baixar Peça (PDF)
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportPDF}
+                  disabled={saving || applying || loading}
+                  className="text-red-600 border-red-200 hover:bg-red-50"
+                >
+                  <Download className="w-4 h-4 mr-2" /> Exportar PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportDOCX}
+                  disabled={saving || applying || loading}
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                >
+                  <Download className="w-4 h-4 mr-2" /> Exportar DOCX
+                </Button>
+              </>
             )}
             <Button
               size="sm"
@@ -1210,7 +1301,7 @@ export default function GeradorMinutas() {
 
         <div
           className={cn(
-            'flex-1 overflow-hidden rounded-lg border shadow-sm transition-all no-print relative',
+            'flex-1 overflow-hidden rounded-lg border shadow-sm transition-all relative',
             applying
               ? 'border-green-300 ring-2 ring-green-500/20'
               : 'border-border/50 bg-background',
@@ -1224,50 +1315,9 @@ export default function GeradorMinutas() {
           )}
           <RichTextEditor value={content} onChange={handleContentChange} readOnly={applying} />
         </div>
-
-        {/* Hidden printable area */}
-        <div className="print-only hidden print:block text-black print-legal-doc">
-          <div className="text-center mb-8">
-            <h1 className="text-xl font-bold uppercase">{minuteType || 'Documento Jurídico'}</h1>
-            {selectedProcess !== 'none' &&
-              processes.find((p) => p.id === selectedProcess)?.case_number && (
-                <h2 className="text-lg mt-2">
-                  Processo Nº {processes.find((p) => p.id === selectedProcess)?.case_number}
-                </h2>
-              )}
-          </div>
-          {(clientName || comarca || objeto || pedido) && (
-            <div className="mb-8 border-b-2 border-black pb-4 text-sm">
-              {clientName && (
-                <p className="mb-1">
-                  <strong>Cliente:</strong> {clientName}
-                </p>
-              )}
-              {comarca && (
-                <p className="mb-1">
-                  <strong>Comarca:</strong> {comarca}
-                </p>
-              )}
-              {objeto && (
-                <p className="mb-1">
-                  <strong>Objeto:</strong> {objeto}
-                </p>
-              )}
-              {pedido && (
-                <p className="mb-1">
-                  <strong>Pedido/Valor:</strong> {pedido}
-                </p>
-              )}
-            </div>
-          )}
-          <div
-            className="prose max-w-none text-justify leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: content }}
-          />
-        </div>
       </div>
 
-      <div className="w-[380px] flex flex-col gap-4 no-print">
+      <div className="w-[380px] flex flex-col gap-4">
         <Card className="flex flex-col h-full border-border/50 shadow-sm">
           <CardHeader className="bg-muted/30 pb-4 border-b">
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -1287,7 +1337,9 @@ export default function GeradorMinutas() {
                 </div>
                 <Button
                   onClick={() => handleApplySuggestions()}
-                  disabled={applying || saving}
+                  disabled={
+                    applying || saving || selectedAgents.length === 0 || selectedAgents.length > 8
+                  }
                   className="w-full bg-green-600 hover:bg-green-700 text-white shadow-sm hover:shadow-md transition-all"
                 >
                   {applying ? (
@@ -1461,14 +1513,27 @@ export default function GeradorMinutas() {
                 )}
 
                 <div className="space-y-3">
-                  <label className="text-sm font-semibold text-foreground">Agentes de IA</label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-semibold text-foreground">Agentes de IA</label>
+                    <span
+                      className={cn(
+                        'text-xs font-medium',
+                        selectedAgents.length > 8 ? 'text-destructive' : 'text-muted-foreground',
+                      )}
+                    >
+                      {selectedAgents.length} de 8 agentes selecionados
+                    </span>
+                  </div>
                   <Popover open={agentOpen} onOpenChange={setAgentOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={agentOpen}
-                        className="w-full justify-between font-normal"
+                        className={cn(
+                          'w-full justify-between font-normal',
+                          selectedAgents.length > 8 && 'border-destructive ring-destructive',
+                        )}
                       >
                         <span className="truncate">
                           {selectedAgents.length > 0
@@ -1489,14 +1554,22 @@ export default function GeradorMinutas() {
                                 key={a.id}
                                 value={a.name}
                                 onSelect={() => toggleAgent(a.id)}
+                                className="flex flex-col items-start py-2"
                               >
-                                <Check
-                                  className={cn(
-                                    'mr-2 h-4 w-4',
-                                    selectedAgents.includes(a.id) ? 'opacity-100' : 'opacity-0',
-                                  )}
-                                />
-                                {a.name}
+                                <div className="flex items-center w-full">
+                                  <Check
+                                    className={cn(
+                                      'mr-2 h-4 w-4 shrink-0',
+                                      selectedAgents.includes(a.id) ? 'opacity-100' : 'opacity-0',
+                                    )}
+                                  />
+                                  <span className="font-medium truncate">{a.name}</span>
+                                </div>
+                                {(a.descricao || a.description) && (
+                                  <span className="text-xs text-muted-foreground ml-6 mt-0.5 line-clamp-2 leading-tight">
+                                    {a.descricao || a.description}
+                                  </span>
+                                )}
                               </CommandItem>
                             ))}
                           </CommandGroup>
@@ -1611,7 +1684,13 @@ export default function GeradorMinutas() {
 
             <Button
               onClick={handleAnalyze}
-              disabled={loading || applying || saving}
+              disabled={
+                loading ||
+                applying ||
+                saving ||
+                selectedAgents.length === 0 ||
+                selectedAgents.length > 8
+              }
               className="w-full shrink-0 shadow-sm hover:shadow-md transition-shadow"
             >
               {loading ? (
