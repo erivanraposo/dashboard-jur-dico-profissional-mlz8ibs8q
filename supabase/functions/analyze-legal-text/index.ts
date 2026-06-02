@@ -165,8 +165,7 @@ Deno.serve(async (req: Request) => {
             else if (finalModel.includes('haiku')) finalModel = 'claude-haiku-4-5'
 
             const finalSystemPrompt = req_system_prompt || agent.system_prompt
-            const maxTokens =
-              agent.max_tokens && agent.max_tokens > 16384 ? agent.max_tokens : 32000
+            const maxTokens = agent.max_tokens && agent.max_tokens > 8192 ? agent.max_tokens : 16384
 
             let activeMinuteId = minute_id
 
@@ -203,7 +202,18 @@ Deno.serve(async (req: Request) => {
                 .eq('id', activeMinuteId)
             }
 
-            let userMessage = `Aqui está o contexto e o documento atual (em formato HTML):\n\n${fullContext}\n\nPor favor, reescreva o Conteúdo Principal (Editor) aplicando as seguintes sugestões de melhoria. Mantenha a formatação HTML original, ajustando apenas o texto onde necessário:\n\n${(req_suggestions || []).map((s: string) => `- ${s}`).join('\n')}\n\nCRÍTICO: Retorne o documento COMPLETO, até a sua conclusão natural. NÃO TRUNQUE o texto (ex: não pare no meio de um parágrafo ou seção). Se o texto for longo, certifique-se de terminar todo o conteúdo sem interrupções. Inclua no final do documento a tag <!-- END_OF_DOCUMENT --> para confirmar que você terminou de gerar todo o texto.\n\nRetorne APENAS o código HTML do Conteúdo Principal revisado, sem nenhuma explicação ou texto adicional antes ou depois do HTML.`
+            let applyContextMetadata = ''
+            if (metadata) {
+              applyContextMetadata += `--- Metadados da Minuta ---\n`
+              if (metadata.client) applyContextMetadata += `Cliente: ${metadata.client}\n`
+              if (metadata.comarca) applyContextMetadata += `Comarca: ${metadata.comarca}\n`
+              if (metadata.objeto) applyContextMetadata += `Objeto: ${metadata.objeto}\n`
+              if (metadata.pedido) applyContextMetadata += `Pedido: ${metadata.pedido}\n`
+              applyContextMetadata += `\n`
+            }
+            const applyContext = `${documentType}${processInfo}${applyContextMetadata}Conteúdo Principal (Editor):\n${finalContent}`
+
+            let userMessage = `Aqui está o contexto e o documento atual (em formato HTML):\n\n${applyContext}\n\nPor favor, reescreva o Conteúdo Principal (Editor) aplicando as seguintes sugestões de melhoria. Mantenha a formatação HTML original, ajustando apenas o texto onde necessário:\n\n${(req_suggestions || []).map((s: string) => `- ${s}`).join('\n')}\n\nCRÍTICO: Retorne o documento COMPLETO, até a sua conclusão natural. NÃO TRUNQUE o texto (ex: não pare no meio de um parágrafo ou seção). Se o texto for longo, certifique-se de terminar todo o conteúdo sem interrupções. Inclua no final do documento a tag <!-- END_OF_DOCUMENT --> para confirmar que você terminou de gerar todo o texto.\n\nRetorne APENAS o código HTML do Conteúdo Principal revisado, sem nenhuma explicação ou texto adicional antes ou depois do HTML.`
 
             if (content_so_far) {
               userMessage = `${userMessage}\n\n---\n\nVOCÊ JÁ INICIOU A REESCRITA EM UMA SOLICITAÇÃO ANTERIOR. Aqui está exatamente o que foi gerado até agora:\n\n${content_so_far}\n\nCONTINUE de onde parou, SEM REPETIR o conteúdo acima. Retorne APENAS a continuação do HTML, mantendo coesão de formatação e estrutura. Termine o documento e inclua a tag <!-- END_OF_DOCUMENT --> ao final.`
@@ -235,6 +245,7 @@ Deno.serve(async (req: Request) => {
                   'anthropic-beta': 'prompt-caching-2024-07-31',
                 },
                 body: JSON.stringify(payloadParams),
+                signal: AbortSignal.timeout(120000),
               })
 
               if (!anthropicRes.ok) {
