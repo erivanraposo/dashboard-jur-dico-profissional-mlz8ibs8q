@@ -169,8 +169,8 @@ Deno.serve(async (req: Request) => {
             else if (finalModel.includes('opus')) finalModel = 'claude-opus-4-7'
             else if (finalModel.includes('haiku')) finalModel = 'claude-haiku-4-5'
 
-            // Force Haiku for apply: rewriting is mechanical, Haiku handles it 3-5x faster than Sonnet
-            finalModel = 'claude-haiku-4-5'
+            // Apply usa Sonnet (qualidade de reescrita melhor que Haiku); SSE parser foi
+            // consertado e timeout=900s no config.toml dá folga para a geração mais lenta.
             console.log(`[ACTION: APPLY] Using model: ${finalModel}`)
 
             const finalSystemPrompt =
@@ -239,6 +239,7 @@ Deno.serve(async (req: Request) => {
                 model: finalModel,
                 max_tokens: maxTokens,
                 stream: true,
+                temperature: 0.3, // reduz variabilidade da reescrita; Sonnet 4.6 aceita 0..1
                 system: [
                   { type: 'text', text: finalSystemPrompt, cache_control: { type: 'ephemeral' } },
                 ],
@@ -281,12 +282,17 @@ Deno.serve(async (req: Request) => {
                 if (done) break
                 buffer += decoder.decode(value, { stream: true })
 
-                const lines = buffer.split('\n\n')
-                buffer = lines.pop() || ''
+                // SSE chunks are separated by \n\n. Each chunk may contain
+                // "event: TYPE\ndata: JSON" — we must search for the data line
+                // within each chunk, not assume the chunk starts with "data: ".
+                const sseChunks = buffer.split('\n\n')
+                buffer = sseChunks.pop() || ''
 
-                for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                    const dataStr = line.slice(6).trim()
+                for (const chunk of sseChunks) {
+                  // find the line that starts with "data: " (ignore "event:" / comment lines)
+                  const dataLine = chunk.split('\n').find((l) => l.startsWith('data: '))
+                  if (dataLine) {
+                    const dataStr = dataLine.slice(6).trim()
                     if (dataStr === '[DONE]') continue
                     try {
                       const data = JSON.parse(dataStr)
@@ -461,7 +467,7 @@ Deno.serve(async (req: Request) => {
                 let costOutputPerM = 5.0
 
                 if (anthropicKey) {
-                  let userMessage = `Por favor, forneça sugestões objetivas de melhoria em formato de lista (bullet points) para o seguinte contexto jurídico:\n\n${fullContext}`
+                  let userMessage = `Você é um revisor jurídico sênior. Analise o contexto jurídico abaixo e produza ENTRE 25 E 35 sugestões objetivas de melhoria, priorizadas (as mais críticas primeiro). Cada sugestão deve ser específica, acionável e referenciar precisamente o ponto do documento. Formate cada sugestão como bullet point em uma linha começando com '- '. NÃO adicione texto introdutório, conclusão ou comentários — apenas a lista.\n\nContexto jurídico:\n\n${fullContext}`
 
                   if (action === 'brainstorm') {
                     userMessage = `Analise o contexto a seguir e retorne um JSON estrito (sem crases ou marcação markdown) com duas chaves: "sugerir_secoes" (array de strings) e "perguntas_chave" (array de strings). NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON.\nContexto:\n${fullContext}\nRetorne APENAS o JSON válido.`
@@ -472,6 +478,7 @@ Deno.serve(async (req: Request) => {
                   const payloadParams: any = {
                     model: finalModel,
                     max_tokens: maxTokens,
+                    temperature: 0.3, // reduz variabilidade no numero/conteudo das sugestoes
                     system: [
                       {
                         type: 'text',
