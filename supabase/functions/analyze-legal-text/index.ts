@@ -169,6 +169,9 @@ Deno.serve(async (req: Request) => {
             else if (finalModel.includes('opus')) finalModel = 'claude-opus-4-7'
             else if (finalModel.includes('haiku')) finalModel = 'claude-haiku-4-5'
 
+            // Force claude-haiku-4-5 for the apply action to ensure fast execution and avoid timeouts
+            finalModel = 'claude-haiku-4-5'
+
             const finalSystemPrompt = req_system_prompt || agent.system_prompt
             const maxTokens = agent.max_tokens && agent.max_tokens > 8192 ? agent.max_tokens : 16384
 
