@@ -44,6 +44,7 @@ import {
   AccordionContent,
 } from '@/components/ui/accordion'
 import { Input } from '@/components/ui/input'
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx'
 
 const MINUTE_TYPES = [
   'Petição Inicial',
@@ -1067,47 +1068,175 @@ export default function GeradorMinutas() {
 
       const proc = min.processes as any
 
-      const header = `
-        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-        <head>
-          <meta charset='utf-8'>
-          <title>${min.title || 'Documento Jurídico'}</title>
-          <style>
-            body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; color: black; }
-            h1 { font-size: 14pt; font-weight: bold; text-align: center; text-transform: uppercase; margin-bottom: 1em; }
-            h2 { font-size: 12pt; font-weight: bold; text-align: center; margin-bottom: 1em; }
-            p { text-indent: 2em; text-align: justify; margin-bottom: 1em; }
-          </style>
-        </head>
-        <body>
-      `
-      const footer = '</body></html>'
+      const docChildren: any[] = []
 
-      let docContent = `
-        <div style="text-align: center; margin-bottom: 2em;">
-          <h1>${min.title || 'Documento Jurídico'}</h1>
-          ${proc?.case_number ? `<h2>Processo Nº ${proc.case_number}</h2>` : ''}
-        </div>
-      `
+      docChildren.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: min.title || 'Documento Jurídico', bold: true, size: 28 }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+        }),
+      )
 
-      if (min.client_name || min.comarca || min.objeto || min.pedido) {
-        docContent += `
-          <div style="margin-bottom: 2em; border-bottom: 2px solid black; padding-bottom: 1em; font-size: 10pt;">
-            ${min.client_name ? `<p style="margin:0; text-indent:0;"><strong>Cliente:</strong> ${min.client_name}</p>` : ''}
-            ${min.comarca ? `<p style="margin:0; text-indent:0;"><strong>Comarca:</strong> ${min.comarca}</p>` : ''}
-            ${min.objeto ? `<p style="margin:0; text-indent:0;"><strong>Objeto:</strong> ${min.objeto}</p>` : ''}
-            ${min.pedido ? `<p style="margin:0; text-indent:0;"><strong>Pedido/Valor:</strong> ${min.pedido}</p>` : ''}
-          </div>
-        `
+      if (proc?.case_number) {
+        docChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `Processo Nº ${proc.case_number}`, bold: true, size: 24 }),
+            ],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 400 },
+          }),
+        )
       }
 
-      docContent += min.content
+      if (min.client_name || min.comarca || min.objeto || min.pedido) {
+        if (min.client_name) {
+          docChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: 'Cliente: ', bold: true }),
+                new TextRun(min.client_name),
+              ],
+            }),
+          )
+        }
+        if (min.comarca) {
+          docChildren.push(
+            new Paragraph({
+              children: [new TextRun({ text: 'Comarca: ', bold: true }), new TextRun(min.comarca)],
+            }),
+          )
+        }
+        if (min.objeto) {
+          docChildren.push(
+            new Paragraph({
+              children: [new TextRun({ text: 'Objeto: ', bold: true }), new TextRun(min.objeto)],
+            }),
+          )
+        }
+        if (min.pedido) {
+          docChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: 'Pedido/Valor: ', bold: true }),
+                new TextRun(min.pedido),
+              ],
+            }),
+          )
+        }
+        docChildren.push(
+          new Paragraph({
+            text: '__________________________________________________',
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 400, before: 200 },
+          }),
+        )
+      }
 
-      const sourceHTML = header + docContent + footer
+      const parser = new DOMParser()
+      const htmlDoc = parser.parseFromString(min.content, 'text/html')
 
-      const blob = new Blob(['\ufeff', sourceHTML], {
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      const processNode = (node: Node, textRunOptions: any = {}): any[] => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          let text = node.textContent || ''
+          if (!text.trim() && text.includes('\n')) return []
+          text = text.replace(/\s+/g, ' ')
+          if (text === '') return []
+          return [new TextRun({ text, ...textRunOptions })]
+        }
+
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const el = node as HTMLElement
+          const tag = el.tagName.toLowerCase()
+
+          if (tag === 'br') {
+            return [new TextRun({ break: 1 })]
+          }
+
+          const newOptions = { ...textRunOptions }
+          if (tag === 'strong' || tag === 'b') newOptions.bold = true
+          if (tag === 'em' || tag === 'i') newOptions.italic = true
+          if (tag === 'u') newOptions.underline = {}
+          if (tag === 'span' && el.style.fontWeight === 'bold') newOptions.bold = true
+
+          const childRuns: any[] = []
+          el.childNodes.forEach((child) => {
+            childRuns.push(...processNode(child, newOptions))
+          })
+
+          return childRuns
+        }
+        return []
+      }
+
+      const traverseNodes = (node: Node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const el = node as HTMLElement
+          const tag = el.tagName.toLowerCase()
+
+          if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'].includes(tag)) {
+            let align = AlignmentType.JUSTIFIED
+            if (el.style.textAlign === 'center') align = AlignmentType.CENTER
+            else if (el.style.textAlign === 'right') align = AlignmentType.RIGHT
+            else if (el.style.textAlign === 'justify') align = AlignmentType.JUSTIFIED
+
+            let headingLevel = undefined
+            if (tag === 'h1') {
+              headingLevel = HeadingLevel.HEADING_1
+              align = AlignmentType.CENTER
+            }
+            if (tag === 'h2') headingLevel = HeadingLevel.HEADING_2
+            if (tag === 'h3') headingLevel = HeadingLevel.HEADING_3
+            if (tag === 'h4') headingLevel = HeadingLevel.HEADING_4
+
+            const runs = processNode(el)
+
+            if (runs.length > 0 || tag === 'p') {
+              const paraOpts: any = { children: runs, alignment: align, spacing: { after: 200 } }
+              if (headingLevel) {
+                paraOpts.heading = headingLevel
+              }
+              if (tag === 'li') {
+                paraOpts.bullet = { level: 0 }
+                paraOpts.spacing = { after: 100 }
+              }
+
+              if (tag === 'p' && align === AlignmentType.JUSTIFIED) {
+                paraOpts.indent = { firstLine: 720 }
+              }
+
+              docChildren.push(new Paragraph(paraOpts))
+            }
+          } else {
+            el.childNodes.forEach((child) => traverseNodes(child))
+          }
+        } else if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent?.trim()
+          if (text) {
+            docChildren.push(
+              new Paragraph({ children: [new TextRun(text)], spacing: { after: 200 } }),
+            )
+          }
+        }
+      }
+
+      htmlDoc.body.childNodes.forEach((child) => traverseNodes(child))
+
+      const doc = new Document({
+        sections: [
+          {
+            properties: {},
+            children: docChildren,
+          },
+        ],
       })
+
+      toast({ title: 'Processando', description: 'Gerando o arquivo DOCX...' })
+
+      const blob = await Packer.toBlob(doc)
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
