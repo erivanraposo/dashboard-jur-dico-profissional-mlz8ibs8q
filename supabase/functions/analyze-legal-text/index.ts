@@ -1,609 +1,837 @@
-import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
+import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
-};
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders })
   }
 
-  let activeInvocationId: string | null = null;
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-  let authHeader = req.headers.get('Authorization');
+  let activeInvocationId: string | null = null
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+  const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+  let authHeader = req.headers.get('Authorization')
 
   try {
-    const payload = await req.json();
-    const { 
-      invocation_id, minute_id, content_so_far, editor_text, content, agent_ids, agent_id, 
-      process_context, process_id, system_prompt: req_system_prompt, 
-      action, suggestions: req_suggestions, 
-      minute_type, attachments, attachment_paths, metadata, model: req_model
-    } = payload;
+    const payload = await req.json()
+    const {
+      invocation_id,
+      minute_id,
+      content_so_far,
+      editor_text,
+      content,
+      agent_ids,
+      agent_id,
+      process_context,
+      process_id,
+      system_prompt: req_system_prompt,
+      action,
+      suggestions: req_suggestions,
+      minute_type,
+      attachments,
+      attachment_paths,
+      metadata,
+      model: req_model,
+    } = payload
 
-    activeInvocationId = invocation_id || crypto.randomUUID();
-    const finalContent = editor_text || content;
-    const finalAttachments = attachments || attachment_paths;
+    activeInvocationId = invocation_id || crypto.randomUUID()
+    const finalContent = editor_text || content
+    const finalAttachments = attachments || attachment_paths
 
-    const targetAgentIds = (agent_ids && Array.isArray(agent_ids) && agent_ids.length > 0) 
-      ? agent_ids 
-      : (agent_id ? [agent_id] : []);
+    const targetAgentIds =
+      agent_ids && Array.isArray(agent_ids) && agent_ids.length > 0
+        ? agent_ids
+        : agent_id
+          ? [agent_id]
+          : []
 
     if (!finalContent || targetAgentIds.length === 0) {
-      throw new Error("Missing content or agent_ids");
+      throw new Error('Missing content or agent_ids')
     }
 
     if (!authHeader) {
-      throw new Error("Missing Authorization header");
+      throw new Error('Missing Authorization header')
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey, {
-      global: { headers: { Authorization: authHeader } }
-    });
+      global: { headers: { Authorization: authHeader } },
+    })
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
     if (authError || !user) {
-      throw new Error("Unauthorized");
+      throw new Error('Unauthorized')
     }
 
     const stream = new ReadableStream({
       async start(controller) {
         const sendEvent = (data: any) => {
           try {
-            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`));
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`))
           } catch (e) {
             // Stream closed or broken connection
           }
-        };
+        }
 
         const pingInterval = setInterval(() => {
-          sendEvent({ type: 'ping', timestamp: Date.now() });
-        }, 5000);
+          sendEvent({ type: 'ping', timestamp: Date.now() })
+        }, 5000)
 
         try {
-          sendEvent({ status: 'Preparando contexto...' });
+          sendEvent({ status: 'Preparando contexto...' })
 
-          let additionalContext = "";
+          let additionalContext = ''
           if (metadata) {
-            additionalContext += `\n\n--- Metadados da Minuta ---\n`;
-            if (metadata.client) additionalContext += `Cliente: ${metadata.client}\n`;
-            if (metadata.comarca) additionalContext += `Comarca: ${metadata.comarca}\n`;
-            if (metadata.objeto) additionalContext += `Objeto: ${metadata.objeto}\n`;
-            if (metadata.pedido) additionalContext += `Pedido: ${metadata.pedido}\n`;
+            additionalContext += `\n\n--- Metadados da Minuta ---\n`
+            if (metadata.client) additionalContext += `Cliente: ${metadata.client}\n`
+            if (metadata.comarca) additionalContext += `Comarca: ${metadata.comarca}\n`
+            if (metadata.objeto) additionalContext += `Objeto: ${metadata.objeto}\n`
+            if (metadata.pedido) additionalContext += `Pedido: ${metadata.pedido}\n`
           }
 
-          if (action !== 'apply' && finalAttachments && Array.isArray(finalAttachments) && finalAttachments.length > 0) {
-            sendEvent({ status: 'Lendo arquivos anexos e processando documentos...' });
+          if (
+            action !== 'apply' &&
+            finalAttachments &&
+            Array.isArray(finalAttachments) &&
+            finalAttachments.length > 0
+          ) {
+            sendEvent({ status: 'Lendo arquivos anexos e processando documentos...' })
             const extPromises = finalAttachments.map(async (path: string) => {
-              const { data: extData, error: extError } = await supabase.functions.invoke('extract-document', {
-                body: { file_path: path }
-              });
+              const { data: extData, error: extError } = await supabase.functions.invoke(
+                'extract-document',
+                {
+                  body: { file_path: path },
+                },
+              )
               if (!extError && extData?.text) {
-                return `\n\n--- Documento Anexo (${path}) ---\n${extData.text}\n`;
+                return `\n\n--- Documento Anexo (${path}) ---\n${extData.text}\n`
               }
-              return '';
-            });
-            const results = await Promise.all(extPromises);
-            additionalContext += results.join('');
+              return ''
+            })
+            const results = await Promise.all(extPromises)
+            additionalContext += results.join('')
           }
 
-          sendEvent({ status: 'Obtendo agentes de IA...' });
+          sendEvent({ status: 'Obtendo agentes de IA...' })
           const { data: agents, error: agentsError } = await supabase
             .from('agentes')
             .select('*')
-            .in('id', targetAgentIds);
+            .in('id', targetAgentIds)
 
           if (agentsError || !agents || agents.length === 0) {
-            throw new Error("Agentes não encontrados ou indisponíveis.");
+            throw new Error('Agentes não encontrados ou indisponíveis.')
           }
 
-          const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')?.trim();
-          const documentType = minute_type ? `Tipo de Minuta: ${minute_type}\n\n` : '';
-          const processInfo = process_context ? `Contexto do Processo:\n${process_context}\n\n` : '';
-          const fullContext = `${documentType}${processInfo}Conteúdo Principal (Editor):\n${finalContent}${additionalContext}`;
+          const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')?.trim()
+          const documentType = minute_type ? `Tipo de Minuta: ${minute_type}\n\n` : ''
+          const processInfo = process_context ? `Contexto do Processo:\n${process_context}\n\n` : ''
+          const fullContext = `${documentType}${processInfo}Conteúdo Principal (Editor):\n${finalContent}${additionalContext}`
 
           // Register the invocation immediately
-          const firstAgent = agents[0];
+          const firstAgent = agents[0]
           const initialInvocationPayload: any = {
-            id: activeInvocationId, user_id: user.id, agent_id: firstAgent.id, input_tokens: 0, output_tokens: 0,
-          };
-          if (process_id) initialInvocationPayload.process_id = process_id;
-          
-          console.log(`Attempting initial DB Save for Invocation ID: ${activeInvocationId}`);
-          const { error: initDbErr } = await supabase.from('invocacoes').upsert(initialInvocationPayload, { onConflict: 'id', ignoreDuplicates: true });
+            id: activeInvocationId,
+            user_id: user.id,
+            agent_id: firstAgent.id,
+            input_tokens: 0,
+            output_tokens: 0,
+          }
+          if (process_id) initialInvocationPayload.process_id = process_id
+
+          console.log(`Attempting initial DB Save for Invocation ID: ${activeInvocationId}`)
+          const { error: initDbErr } = await supabase
+            .from('invocacoes')
+            .upsert(initialInvocationPayload, { onConflict: 'id', ignoreDuplicates: true })
           if (initDbErr) {
-            console.error(`Initial DB Save Failed for Invocation ID: ${activeInvocationId} - ${initDbErr.message}`, initDbErr.details);
+            console.error(
+              `Initial DB Save Failed for Invocation ID: ${activeInvocationId} - ${initDbErr.message}`,
+              initDbErr.details,
+            )
           } else {
-            console.log(`Initial DB Save Successful for Invocation ID: ${activeInvocationId}`);
+            console.log(`Initial DB Save Successful for Invocation ID: ${activeInvocationId}`)
           }
 
           // --- ACTION: APPLY ---
           if (action === 'apply') {
-              const agent = firstAgent;
-              
-              // Standardize the model ID strictly without date suffixes
-              let finalModel = req_model || agent.model || 'claude-sonnet-4-6';
-              if (finalModel.includes('sonnet')) finalModel = 'claude-sonnet-4-6';
-              else if (finalModel.includes('opus')) finalModel = 'claude-opus-4-7';
-              else if (finalModel.includes('haiku')) finalModel = 'claude-haiku-4-5';
+            const agent = firstAgent
 
-              // Force Haiku for apply: rewriting is mechanical, Haiku handles it 3-5x faster than Sonnet
-              finalModel = 'claude-haiku-4-5';
-              console.log(`[ACTION: APPLY] Using model: ${finalModel}`);
+            // Standardize the model ID strictly without date suffixes
+            let finalModel = req_model || agent.model || 'claude-sonnet-4-6'
+            if (finalModel.includes('sonnet')) finalModel = 'claude-sonnet-4-6'
+            else if (finalModel.includes('opus')) finalModel = 'claude-opus-4-7'
+            else if (finalModel.includes('haiku')) finalModel = 'claude-haiku-4-5'
 
-              const finalSystemPrompt = req_system_prompt || agent.system_prompt;
-              const maxTokens = agent.max_tokens && agent.max_tokens > 8192 ? agent.max_tokens : 16384;
+            // Force Haiku for apply: rewriting is mechanical, Haiku handles it 3-5x faster than Sonnet
+            finalModel = 'claude-haiku-4-5'
+            console.log(`[ACTION: APPLY] Using model: ${finalModel}`)
 
-              let activeMinuteId = minute_id;
-              
-              // Ensure minute exists before processing
-              if (!activeMinuteId) {
-                  const title = minute_type ? `${minute_type} - ${new Date().toLocaleDateString()}` : `Nova Minuta - ${new Date().toLocaleDateString()}`;
-                  const { data: newMin } = await supabase.from('minutes').insert({
-                      title,
-                      content: content_so_far || finalContent || '',
-                      status: 'Draft',
-                      process_id: process_id || null,
-                      client_name: metadata?.client || null,
-                      comarca: metadata?.comarca || null,
-                      objeto: metadata?.objeto || null,
-                      pedido: metadata?.pedido || null,
-                      updated_at: new Date().toISOString(),
-                      invocation_id: activeInvocationId
-                  }).select('id').single();
-                  
-                  if (newMin) {
-                      activeMinuteId = newMin.id;
-                      sendEvent({ type: 'minute_created', minute_id: activeMinuteId });
-                  }
-              } else {
-                  await supabase.from('minutes').update({ invocation_id: activeInvocationId }).eq('id', activeMinuteId);
+            const finalSystemPrompt =
+              'Você é um editor jurídico especializado em reescrita de documentos HTML. Sua única tarefa é reescrever o documento HTML fornecido aplicando estritamente as sugestões de melhoria que receber, mantendo a formatação HTML original e a estrutura do documento. Retorne EXCLUSIVAMENTE o código HTML revisado e completo, sem comentários explicativos, sem prefácios, sem texto adicional antes ou depois do HTML. Termine sempre com a tag <!-- END_OF_DOCUMENT --> para sinalizar conclusão.'
+            const maxTokens = agent.max_tokens && agent.max_tokens > 8192 ? agent.max_tokens : 16384
+
+            let activeMinuteId = minute_id
+
+            // Ensure minute exists before processing
+            if (!activeMinuteId) {
+              const title = minute_type
+                ? `${minute_type} - ${new Date().toLocaleDateString()}`
+                : `Nova Minuta - ${new Date().toLocaleDateString()}`
+              const { data: newMin } = await supabase
+                .from('minutes')
+                .insert({
+                  title,
+                  content: content_so_far || finalContent || '',
+                  status: 'Draft',
+                  process_id: process_id || null,
+                  client_name: metadata?.client || null,
+                  comarca: metadata?.comarca || null,
+                  objeto: metadata?.objeto || null,
+                  pedido: metadata?.pedido || null,
+                  updated_at: new Date().toISOString(),
+                  invocation_id: activeInvocationId,
+                })
+                .select('id')
+                .single()
+
+              if (newMin) {
+                activeMinuteId = newMin.id
+                sendEvent({ type: 'minute_created', minute_id: activeMinuteId })
+              }
+            } else {
+              await supabase
+                .from('minutes')
+                .update({ invocation_id: activeInvocationId })
+                .eq('id', activeMinuteId)
+            }
+
+            let applyContextMetadata = ''
+            if (metadata) {
+              applyContextMetadata += `--- Metadados da Minuta ---\n`
+              if (metadata.client) applyContextMetadata += `Cliente: ${metadata.client}\n`
+              if (metadata.comarca) applyContextMetadata += `Comarca: ${metadata.comarca}\n`
+              if (metadata.objeto) applyContextMetadata += `Objeto: ${metadata.objeto}\n`
+              if (metadata.pedido) applyContextMetadata += `Pedido: ${metadata.pedido}\n`
+              applyContextMetadata += `\n`
+            }
+            // Context for apply ignores raw attachments (additionalContext) to save tokens
+            const applyContext = `${documentType}${processInfo}${applyContextMetadata}Conteúdo Principal (Editor):\n${finalContent}`
+
+            let userMessage = `Aqui está o contexto e o documento atual (em formato HTML):\n\n${applyContext}\n\nPor favor, reescreva o Conteúdo Principal (Editor) aplicando as seguintes sugestões de melhoria. Mantenha a formatação HTML original, ajustando apenas o texto onde necessário:\n\n${(req_suggestions || []).map((s: string) => `- ${s}`).join('\n')}\n\nCRÍTICO: Retorne o documento COMPLETO, até a sua conclusão natural. NÃO TRUNQUE o texto (ex: não pare no meio de um parágrafo ou seção). Se o texto for longo, certifique-se de terminar todo o conteúdo sem interrupções. Inclua no final do documento a tag <!-- END_OF_DOCUMENT --> para confirmar que você terminou de gerar todo o texto.\n\nRetorne APENAS o código HTML do Conteúdo Principal revisado, sem nenhuma explicação ou texto adicional antes ou depois do HTML.`
+
+            if (content_so_far) {
+              userMessage = `${userMessage}\n\n---\n\nVOCÊ JÁ INICIOU A REESCRITA EM UMA SOLICITAÇÃO ANTERIOR. Aqui está exatamente o que foi gerado até agora:\n\n${content_so_far}\n\nCONTINUE de onde parou, SEM REPETIR o conteúdo acima. Retorne APENAS a continuação do HTML, mantendo coesão de formatação e estrutura. Termine o documento e inclua a tag <!-- END_OF_DOCUMENT --> ao final.`
+            }
+
+            sendEvent({ status: 'Gerando texto (Streaming ativado)...' })
+
+            if (anthropicKey) {
+              const messages: any[] = [{ role: 'user', content: userMessage }]
+
+              const payloadParams: any = {
+                model: finalModel,
+                max_tokens: maxTokens,
+                stream: true,
+                system: [
+                  { type: 'text', text: finalSystemPrompt, cache_control: { type: 'ephemeral' } },
+                ],
+                messages,
+              }
+              // Ensure thinking mode is strictly disabled for rewriting and applying
+              delete payloadParams.thinking
+
+              const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': anthropicKey,
+                  'anthropic-version': '2023-06-01',
+                  'anthropic-beta': 'prompt-caching-2024-07-31',
+                },
+                body: JSON.stringify(payloadParams),
+                signal: AbortSignal.timeout(120000),
+              })
+
+              if (!anthropicRes.ok) {
+                const errText = await anthropicRes.text()
+                throw new Error(`Anthropic API Error: ${errText}`)
               }
 
-              let applyContextMetadata = "";
-              if (metadata) {
-                  applyContextMetadata += `--- Metadados da Minuta ---\n`;
-                  if (metadata.client) applyContextMetadata += `Cliente: ${metadata.client}\n`;
-                  if (metadata.comarca) applyContextMetadata += `Comarca: ${metadata.comarca}\n`;
-                  if (metadata.objeto) applyContextMetadata += `Objeto: ${metadata.objeto}\n`;
-                  if (metadata.pedido) applyContextMetadata += `Pedido: ${metadata.pedido}\n`;
-                  applyContextMetadata += `\n`;
-              }
-              // Context for apply ignores raw attachments (additionalContext) to save tokens
-              const applyContext = `${documentType}${processInfo}${applyContextMetadata}Conteúdo Principal (Editor):\n${finalContent}`;
+              let inputTokens = 0
+              let outputTokens = 0
+              let cachedTokens = 0
+              let fullText = content_so_far || ''
+              let charCountSinceLastSave = 0
+              let stopReason = null
+              let receivedAnyContent = false
 
-              let userMessage = `Aqui está o contexto e o documento atual (em formato HTML):\n\n${applyContext}\n\nPor favor, reescreva o Conteúdo Principal (Editor) aplicando as seguintes sugestões de melhoria. Mantenha a formatação HTML original, ajustando apenas o texto onde necessário:\n\n${(req_suggestions || []).map((s: string) => `- ${s}`).join('\n')}\n\nCRÍTICO: Retorne o documento COMPLETO, até a sua conclusão natural. NÃO TRUNQUE o texto (ex: não pare no meio de um parágrafo ou seção). Se o texto for longo, certifique-se de terminar todo o conteúdo sem interrupções. Inclua no final do documento a tag <!-- END_OF_DOCUMENT --> para confirmar que você terminou de gerar todo o texto.\n\nRetorne APENAS o código HTML do Conteúdo Principal revisado, sem nenhuma explicação ou texto adicional antes ou depois do HTML.`;
+              const reader = anthropicRes.body?.getReader()
+              const decoder = new TextDecoder()
+              let buffer = ''
 
-              if (content_so_far) {
-                  userMessage = `${userMessage}\n\n---\n\nVOCÊ JÁ INICIOU A REESCRITA EM UMA SOLICITAÇÃO ANTERIOR. Aqui está exatamente o que foi gerado até agora:\n\n${content_so_far}\n\nCONTINUE de onde parou, SEM REPETIR o conteúdo acima. Retorne APENAS a continuação do HTML, mantendo coesão de formatação e estrutura. Termine o documento e inclua a tag <!-- END_OF_DOCUMENT --> ao final.`;
-              }
+              while (reader) {
+                const { done, value } = await reader.read()
+                if (done) break
+                buffer += decoder.decode(value, { stream: true })
 
-              sendEvent({ status: 'Gerando texto (Streaming ativado)...' });
+                const lines = buffer.split('\n\n')
+                buffer = lines.pop() || ''
 
-              if (anthropicKey) {
-                  const messages: any[] = [ { role: "user", content: userMessage } ];
-
-                  const payloadParams: any = {
-                      model: finalModel,
-                      max_tokens: maxTokens,
-                      stream: true,
-                      system: [ { type: "text", text: finalSystemPrompt, cache_control: { type: "ephemeral" } } ],
-                      messages
-                  };
-                  // Ensure thinking mode is strictly disabled for rewriting and applying
-                  delete payloadParams.thinking;
-
-                  const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-                      method: 'POST',
-                      headers: {
-                          'Content-Type': 'application/json',
-                          'x-api-key': anthropicKey,
-                          'anthropic-version': '2023-06-01',
-                          'anthropic-beta': 'prompt-caching-2024-07-31'
-                      },
-                      body: JSON.stringify(payloadParams),
-                      signal: AbortSignal.timeout(120000)
-                  });
-
-                  if (!anthropicRes.ok) {
-                      const errText = await anthropicRes.text();
-                      throw new Error(`Anthropic API Error: ${errText}`);
-                  }
-
-                  let inputTokens = 0;
-                  let outputTokens = 0;
-                  let cachedTokens = 0;
-                  let fullText = content_so_far || '';
-                  let charCountSinceLastSave = 0;
-                  let stopReason = null;
-                  let receivedAnyContent = false;
-
-                  const reader = anthropicRes.body?.getReader();
-                  const decoder = new TextDecoder();
-                  let buffer = '';
-
-                  while (reader) {
-                      const { done, value } = await reader.read();
-                      if (done) break;
-                      buffer += decoder.decode(value, { stream: true });
-                      
-                      const lines = buffer.split('\n\n');
-                      buffer = lines.pop() || '';
-                      
-                      for (const line of lines) {
-                          if (line.startsWith('data: ')) {
-                              const dataStr = line.slice(6).trim();
-                              if (dataStr === '[DONE]') continue;
-                              try {
-                                  const data = JSON.parse(dataStr);
-                                  if (data.type === 'message_start') {
-                                      inputTokens = data.message?.usage?.input_tokens || 0;
-                                      cachedTokens = data.message?.usage?.cache_creation_input_tokens || data.message?.usage?.cache_read_input_tokens || 0;
-                                  } else if (data.type === 'content_block_delta') {
-                                      if (data.delta?.type === 'text_delta') {
-                                          const text = data.delta?.text || '';
-                                          if (text) {
-                                              receivedAnyContent = true;
-                                          }
-                                          fullText += text;
-                                          charCountSinceLastSave += text.length;
-                                          sendEvent({ text });
-                                    
-                                          if (activeMinuteId && charCountSinceLastSave > 500) {
-                                              charCountSinceLastSave = 0;
-                                              supabase.from('minutes').update({ 
-                                                  content: fullText, 
-                                                  updated_at: new Date().toISOString() 
-                                              }).eq('id', activeMinuteId).then();
-                                          }
-                                      } else if (data.delta?.type === 'thinking_delta' || data.delta?.type === 'signature_delta') {
-                                          // explicitly ignore thinking and reasoning deltas
-                                      }
-                                  } else if (data.type === 'message_delta') {                                      
-                                      outputTokens = data.usage?.output_tokens || 0;
-                                      stopReason = data.delta?.stop_reason || null;
-                                  }
-                              } catch(e) {}
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const dataStr = line.slice(6).trim()
+                    if (dataStr === '[DONE]') continue
+                    try {
+                      const data = JSON.parse(dataStr)
+                      if (data.type === 'message_start') {
+                        inputTokens = data.message?.usage?.input_tokens || 0
+                        cachedTokens =
+                          data.message?.usage?.cache_creation_input_tokens ||
+                          data.message?.usage?.cache_read_input_tokens ||
+                          0
+                      } else if (data.type === 'content_block_delta') {
+                        if (data.delta?.type === 'text_delta') {
+                          const text = data.delta?.text || ''
+                          if (text) {
+                            receivedAnyContent = true
                           }
+                          fullText += text
+                          charCountSinceLastSave += text.length
+                          sendEvent({ text })
+
+                          if (activeMinuteId && charCountSinceLastSave > 500) {
+                            charCountSinceLastSave = 0
+                            supabase
+                              .from('minutes')
+                              .update({
+                                content: fullText,
+                                updated_at: new Date().toISOString(),
+                              })
+                              .eq('id', activeMinuteId)
+                              .then()
+                          }
+                        } else if (
+                          data.delta?.type === 'thinking_delta' ||
+                          data.delta?.type === 'signature_delta'
+                        ) {
+                          // explicitly ignore thinking and reasoning deltas
+                        }
+                      } else if (data.type === 'message_delta') {
+                        outputTokens = data.usage?.output_tokens || 0
+                        stopReason = data.delta?.stop_reason || null
                       }
+                    } catch (e) {}
                   }
-                  
-                  if (activeMinuteId && charCountSinceLastSave > 0) {
-                      await supabase.from('minutes').update({ 
-                          content: fullText, 
-                          updated_at: new Date().toISOString() 
-                      }).eq('id', activeMinuteId);
-                  }
-                  
-                  // Final safety save directly in Edge Function to ensure database persistence
-                  if (activeMinuteId && (charCountSinceLastSave > 0 || receivedAnyContent)) {
-                      await supabase.from('minutes').update({ 
-                          content: fullText, 
-                          updated_at: new Date().toISOString() 
-                      }).eq('id', activeMinuteId);
-                  }
-
-                  if (!receivedAnyContent && (!content_so_far || content_so_far.length === 0)) {
-                      throw new Error(JSON.stringify({ error: "Erro: A resposta da IA estava vazia ou malformada.", code: "EMPTY_RESPONSE", invocation_id: activeInvocationId }));
-                  }
-
-                  if (stopReason === 'max_tokens' || (!fullText.includes('<!-- END_OF_DOCUMENT -->') && stopReason !== 'end_turn')) {
-                      sendEvent({ type: 'continue_required' });
-                  }
-
-                  let costInputPerM = 3.0;
-                  let costOutputPerM = 15.0;
-                  if (finalModel === 'claude-opus-4-7') { costInputPerM = 5.0; costOutputPerM = 25.0; }
-                  else if (finalModel === 'claude-haiku-4-5') { costInputPerM = 1.0; costOutputPerM = 5.0; }
-                  const costInput = (inputTokens / 1000000) * costInputPerM;
-                  const costOutput = (outputTokens / 1000000) * costOutputPerM;
-                  const estimatedCost = costInput + costOutput;
-
-                  console.log(`Attempting DB Save for Invocation ID: ${activeInvocationId} (Token/Cost Update)`);
-                  const { error: invErr } = await supabase.from('invocacoes').update({ input_tokens: inputTokens, output_tokens: outputTokens }).eq('id', activeInvocationId);
-                  if (invErr) console.error(`DB Save Failed for invocacoes (ID: ${activeInvocationId}):`, invErr.message);
-                  else console.log(`DB Save Successful for invocacoes (ID: ${activeInvocationId})`);
-                  
-                  const { error: costErr } = await supabase.from('custos').upsert({ 
-                    invocation_id: activeInvocationId, 
-                    estimated_cost: estimatedCost, 
-                    currency: 'USD', 
-                    cached_tokens: cachedTokens 
-                  }, { onConflict: 'invocation_id', ignoreDuplicates: false });
-                  if (costErr) console.error(`DB Save Failed for custos (ID: ${activeInvocationId}):`, costErr.message);
-                  else console.log(`DB Save Successful for custos (ID: ${activeInvocationId})`);
-
-              } else {
-                  // Fallback Mock
-                  const mockText = finalContent + `<br/><br/><div style="color: blue; padding: 10px; border: 1px dashed blue;"><em>[Simulação: Modificações aplicadas]</em></div><!-- END_OF_DOCUMENT -->`;
-                  if (activeMinuteId) {
-                      await supabase.from('minutes').update({ content: mockText }).eq('id', activeMinuteId);
-                  }
-                  const chunks = mockText.match(/.{1,50}/g) || [];
-                  for (const chunk of chunks) {
-                      sendEvent({ text: chunk });
-                      await new Promise(r => setTimeout(r, 20));
-                  }
+                }
               }
-          } 
+
+              if (activeMinuteId && charCountSinceLastSave > 0) {
+                await supabase
+                  .from('minutes')
+                  .update({
+                    content: fullText,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', activeMinuteId)
+              }
+
+              // Final safety save directly in Edge Function to ensure database persistence
+              if (activeMinuteId && (charCountSinceLastSave > 0 || receivedAnyContent)) {
+                await supabase
+                  .from('minutes')
+                  .update({
+                    content: fullText,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', activeMinuteId)
+              }
+
+              if (!receivedAnyContent && (!content_so_far || content_so_far.length === 0)) {
+                throw new Error(
+                  JSON.stringify({
+                    error: 'Erro: A resposta da IA estava vazia ou malformada.',
+                    code: 'EMPTY_RESPONSE',
+                    invocation_id: activeInvocationId,
+                  }),
+                )
+              }
+
+              if (
+                stopReason === 'max_tokens' ||
+                (!fullText.includes('<!-- END_OF_DOCUMENT -->') && stopReason !== 'end_turn')
+              ) {
+                sendEvent({ type: 'continue_required' })
+              }
+
+              let costInputPerM = 3.0
+              let costOutputPerM = 15.0
+              if (finalModel === 'claude-opus-4-7') {
+                costInputPerM = 5.0
+                costOutputPerM = 25.0
+              } else if (finalModel === 'claude-haiku-4-5') {
+                costInputPerM = 1.0
+                costOutputPerM = 5.0
+              }
+              const costInput = (inputTokens / 1000000) * costInputPerM
+              const costOutput = (outputTokens / 1000000) * costOutputPerM
+              const estimatedCost = costInput + costOutput
+
+              console.log(
+                `Attempting DB Save for Invocation ID: ${activeInvocationId} (Token/Cost Update)`,
+              )
+              const { error: invErr } = await supabase
+                .from('invocacoes')
+                .update({ input_tokens: inputTokens, output_tokens: outputTokens })
+                .eq('id', activeInvocationId)
+              if (invErr)
+                console.error(
+                  `DB Save Failed for invocacoes (ID: ${activeInvocationId}):`,
+                  invErr.message,
+                )
+              else console.log(`DB Save Successful for invocacoes (ID: ${activeInvocationId})`)
+
+              const { error: costErr } = await supabase.from('custos').upsert(
+                {
+                  invocation_id: activeInvocationId,
+                  estimated_cost: estimatedCost,
+                  currency: 'USD',
+                  cached_tokens: cachedTokens,
+                },
+                { onConflict: 'invocation_id', ignoreDuplicates: false },
+              )
+              if (costErr)
+                console.error(
+                  `DB Save Failed for custos (ID: ${activeInvocationId}):`,
+                  costErr.message,
+                )
+              else console.log(`DB Save Successful for custos (ID: ${activeInvocationId})`)
+            } else {
+              // Fallback Mock
+              const mockText =
+                finalContent +
+                `<br/><br/><div style="color: blue; padding: 10px; border: 1px dashed blue;"><em>[Simulação: Modificações aplicadas]</em></div><!-- END_OF_DOCUMENT -->`
+              if (activeMinuteId) {
+                await supabase
+                  .from('minutes')
+                  .update({ content: mockText })
+                  .eq('id', activeMinuteId)
+              }
+              const chunks = mockText.match(/.{1,50}/g) || []
+              for (const chunk of chunks) {
+                sendEvent({ text: chunk })
+                await new Promise((r) => setTimeout(r, 20))
+              }
+            }
+          }
           // --- ACTION: ANALYZE / BRAINSTORM / EXTRACT ---
           else {
-              sendEvent({ status: 'Analisando documento e gerando insights...' });
-              let finalSuggestions: any = [];
-              const agentsToProcess = (action === 'brainstorm' || action === 'extract_report_fields') ? [agents[0]] : agents;
+            sendEvent({ status: 'Analisando documento e gerando insights...' })
+            let finalSuggestions: any = []
+            const agentsToProcess =
+              action === 'brainstorm' || action === 'extract_report_fields' ? [agents[0]] : agents
 
-              let totalInputTokens = 0;
-              let totalOutputTokens = 0;
-              let totalCachedTokens = 0;
-              let totalEstimatedCost = 0;
-              let successCount = 0;
+            let totalInputTokens = 0
+            let totalOutputTokens = 0
+            let totalCachedTokens = 0
+            let totalEstimatedCost = 0
+            let successCount = 0
 
-              const agentPromises = agentsToProcess.map(async (agent) => {
-                  try {
-                      let agentSuggestions: string[] = [];
-                      let structuredResult: any = null;
-                      
-                      // For analysis actions, force claude-haiku-4-5 to reduce latency
-                      let finalModel = 'claude-haiku-4-5';
-                      
-                      const finalSystemPrompt = req_system_prompt || agent.system_prompt;
-                      const maxTokens = agent.max_tokens || 8192;
+            const agentPromises = agentsToProcess.map(async (agent) => {
+              try {
+                let agentSuggestions: string[] = []
+                let structuredResult: any = null
 
-                      let inputTokens = 0;
-                      let outputTokens = 0;
-                      let cachedTokens = 0;
-                      let costInputPerM = 1.0;
-                      let costOutputPerM = 5.0;
+                // For analysis actions, force claude-haiku-4-5 to reduce latency
+                let finalModel = 'claude-haiku-4-5'
 
-                      if (anthropicKey) {
-                          let userMessage = `Por favor, forneça sugestões objetivas de melhoria em formato de lista (bullet points) para o seguinte contexto jurídico:\n\n${fullContext}`;
-                          
-                          if (action === 'brainstorm') {
-                            userMessage = `Analise o contexto a seguir e retorne um JSON estrito (sem crases ou marcação markdown) com duas chaves: "sugerir_secoes" (array de strings) e "perguntas_chave" (array de strings). NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON.\nContexto:\n${fullContext}\nRetorne APENAS o JSON válido.`;
-                          } else if (action === 'extract_report_fields') {
-                            userMessage = `Analise o contexto a seguir e extraia as informações para um Relatório de Caso. Retorne um JSON estrito (sem crases ou marcação markdown) com as chaves: "situacao", "problemas", "solucoes", "proximos_passos". O conteúdo de cada chave deve ser um texto resumido e profissional focado em relatório jurídico. NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON.\nContexto:\n${fullContext}\nRetorne APENAS o JSON válido.`;
-                          }
+                const finalSystemPrompt = req_system_prompt || agent.system_prompt
+                const maxTokens = agent.max_tokens || 8192
 
-                          const payloadParams: any = {
-                            model: finalModel,
-                            max_tokens: maxTokens,
-                            system: [ { type: "text", text: finalSystemPrompt, cache_control: { type: "ephemeral" } } ],
-                            messages: [ { role: "user", content: userMessage } ]
-                          };
+                let inputTokens = 0
+                let outputTokens = 0
+                let cachedTokens = 0
+                let costInputPerM = 1.0
+                let costOutputPerM = 5.0
 
-                          const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                              'x-api-key': anthropicKey,
-                              'anthropic-version': '2023-06-01',
-                              'anthropic-beta': 'prompt-caching-2024-07-31'
-                            },
-                            body: JSON.stringify(payloadParams),
-                            signal: AbortSignal.timeout(90000)
-                          });
+                if (anthropicKey) {
+                  let userMessage = `Por favor, forneça sugestões objetivas de melhoria em formato de lista (bullet points) para o seguinte contexto jurídico:\n\n${fullContext}`
 
-                          if (!anthropicRes.ok) {
-                              const errText = await anthropicRes.text();
-                              throw new Error(`Anthropic API Error: ${errText}`);
-                          }
-
-                          const aiData = await anthropicRes.json();
-                          
-                          console.log("Raw AI Content Array:", JSON.stringify(aiData.content));
-                    
-                          if (!aiData.content || !Array.isArray(aiData.content) || aiData.content.length === 0) {
-                            throw new Error(JSON.stringify({ error: "Erro: A resposta da IA estava vazia ou malformada.", code: "EMPTY_RESPONSE", agent_name: agent.name }));
-                          }
-                    
-                          const textBlocks = aiData.content.filter((c: any) => c.type === 'text' && typeof c.text === 'string');
-                          if (textBlocks.length === 0) {
-                            console.log("Raw AI Content Array (Empty Text Blocks):", JSON.stringify(aiData.content));
-                            throw new Error(JSON.stringify({ error: "Erro: A resposta da IA não continha blocos de texto (apenas thinking).", code: "EMPTY_RESPONSE", agent_name: agent.name }));
-                          }
-                    
-                          inputTokens = aiData.usage?.input_tokens || 0;
-                          outputTokens = aiData.usage?.output_tokens || 0;
-                          cachedTokens = aiData.usage?.cache_creation_input_tokens || aiData.usage?.cache_read_input_tokens || 0;
-                    
-                          const aiText = textBlocks.map((c: any) => c.text).join('\n').trim();
-                          if (!aiText || aiText.length === 0) {
-                            console.log("Raw AI Content Array (Empty after join):", JSON.stringify(aiData.content));
-                            throw new Error(JSON.stringify({ error: "Erro: A resposta da IA estava vazia após extração.", code: "EMPTY_RESPONSE", agent_name: agent.name }));
-                          }                      
-                          
-                          if (action === 'brainstorm' || action === 'extract_report_fields') {
-                            let jsonStr = aiText.trim();
-                            if (jsonStr.startsWith('```json')) jsonStr = jsonStr.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-                            else if (jsonStr.startsWith('```')) jsonStr = jsonStr.replace(/^```\n?/, '').replace(/\n?```$/, '');
-                            try {
-                              structuredResult = JSON.parse(jsonStr);
-                            } catch(e) {
-                              console.error("JSON parsing failed, falling back to raw text:", jsonStr);
-                              if (action === 'extract_report_fields') {
-                                structuredResult = {
-                                  situacao: "Conteúdo não estruturado retornado pela IA:",
-                                  problemas: jsonStr.substring(0, 500) + (jsonStr.length > 500 ? "..." : ""),
-                                  solucoes: "Consulte o texto bruto.",
-                                  proximos_passos: "Tente novamente."
-                                };
-                              } else {
-                                structuredResult = {
-                                  sugerir_secoes: ["Conteúdo não estruturado retornado pela IA:"],
-                                  perguntas_chave: [jsonStr.substring(0, 500) + (jsonStr.length > 500 ? "..." : "")]
-                                };
-                              }
-                            }
-                          } else {
-                            agentSuggestions = aiText
-                              .split('\n')
-                              .map((l: string) => l.trim())
-                              .filter((l: string) => l.length > 0 && (l.startsWith('-') || l.startsWith('*') || l.match(/^\d+\./)))
-                              .map((l: string) => l.replace(/^[-*]\s*/, '').replace(/^\d+\.\s*/, '').trim());
-                            
-                            if (agentSuggestions.length === 0 && aiText) agentSuggestions = [aiText];
-                            if (agentsToProcess.length > 1) agentSuggestions = agentSuggestions.map((s: string) => `[${agent.name}] ${s}`);
-                          }
-                      } else {
-                          await new Promise(r => setTimeout(r, 1500));
-                          if (action === 'brainstorm') {
-                            structuredResult = { sugerir_secoes: ["1. Dos Fatos"], perguntas_chave: ["Quais os danos?"] };
-                          } else if (action === 'extract_report_fields') {
-                            structuredResult = { situacao: "O cliente...", problemas: "Riscos...", solucoes: "Ações...", proximos_passos: "Protocolar..." };
-                          } else {
-                            agentSuggestions.push(`[${agent.name}] Adicione fundamentação.`);
-                          }
-                      }
-
-                      const estimatedCost = (inputTokens / 1000000) * costInputPerM + (outputTokens / 1000000) * costOutputPerM;
-                      
-                      return {
-                        success: true,
-                        agentName: agent.name,
-                        structuredResult,
-                        agentSuggestions,
-                        inputTokens,
-                        outputTokens,
-                        cachedTokens,
-                        estimatedCost
-                      };
-                  } catch (agentErr: any) {
-                      console.error(`Error processing agent ${agent.name}:`, agentErr.message);
-                      if (action === 'brainstorm' || action === 'extract_report_fields') {
-                          throw agentErr;
-                      } else {
-                          return {
-                              success: false,
-                              agentName: agent.name,
-                              errorDetail: agentErr.message || "Erro desconhecido"
-                          };
-                      }
+                  if (action === 'brainstorm') {
+                    userMessage = `Analise o contexto a seguir e retorne um JSON estrito (sem crases ou marcação markdown) com duas chaves: "sugerir_secoes" (array de strings) e "perguntas_chave" (array de strings). NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON.\nContexto:\n${fullContext}\nRetorne APENAS o JSON válido.`
+                  } else if (action === 'extract_report_fields') {
+                    userMessage = `Analise o contexto a seguir e extraia as informações para um Relatório de Caso. Retorne um JSON estrito (sem crases ou marcação markdown) com as chaves: "situacao", "problemas", "solucoes", "proximos_passos". O conteúdo de cada chave deve ser um texto resumido e profissional focado em relatório jurídico. NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON.\nContexto:\n${fullContext}\nRetorne APENAS o JSON válido.`
                   }
-              });
 
-              // Execute all agents in parallel
-              const results = await Promise.allSettled(agentPromises);
+                  const payloadParams: any = {
+                    model: finalModel,
+                    max_tokens: maxTokens,
+                    system: [
+                      {
+                        type: 'text',
+                        text: finalSystemPrompt,
+                        cache_control: { type: 'ephemeral' },
+                      },
+                    ],
+                    messages: [{ role: 'user', content: userMessage }],
+                  }
 
-              for (const result of results) {
-                  if (result.status === 'fulfilled') {
-                      const data = result.value;
-                      if (data.success) {
-                          totalInputTokens += data.inputTokens!;
-                          totalOutputTokens += data.outputTokens!;
-                          totalCachedTokens += data.cachedTokens!;
-                          totalEstimatedCost += data.estimatedCost!;
-                          successCount++;
+                  const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'x-api-key': anthropicKey,
+                      'anthropic-version': '2023-06-01',
+                      'anthropic-beta': 'prompt-caching-2024-07-31',
+                    },
+                    body: JSON.stringify(payloadParams),
+                    signal: AbortSignal.timeout(90000),
+                  })
 
-                          if (action === 'brainstorm' || action === 'extract_report_fields') {
-                              finalSuggestions = data.structuredResult;
-                          } else {
-                              finalSuggestions = finalSuggestions.concat(data.agentSuggestions);
-                          }
+                  if (!anthropicRes.ok) {
+                    const errText = await anthropicRes.text()
+                    throw new Error(`Anthropic API Error: ${errText}`)
+                  }
+
+                  const aiData = await anthropicRes.json()
+
+                  console.log('Raw AI Content Array:', JSON.stringify(aiData.content))
+
+                  if (
+                    !aiData.content ||
+                    !Array.isArray(aiData.content) ||
+                    aiData.content.length === 0
+                  ) {
+                    throw new Error(
+                      JSON.stringify({
+                        error: 'Erro: A resposta da IA estava vazia ou malformada.',
+                        code: 'EMPTY_RESPONSE',
+                        agent_name: agent.name,
+                      }),
+                    )
+                  }
+
+                  const textBlocks = aiData.content.filter(
+                    (c: any) => c.type === 'text' && typeof c.text === 'string',
+                  )
+                  if (textBlocks.length === 0) {
+                    console.log(
+                      'Raw AI Content Array (Empty Text Blocks):',
+                      JSON.stringify(aiData.content),
+                    )
+                    throw new Error(
+                      JSON.stringify({
+                        error:
+                          'Erro: A resposta da IA não continha blocos de texto (apenas thinking).',
+                        code: 'EMPTY_RESPONSE',
+                        agent_name: agent.name,
+                      }),
+                    )
+                  }
+
+                  inputTokens = aiData.usage?.input_tokens || 0
+                  outputTokens = aiData.usage?.output_tokens || 0
+                  cachedTokens =
+                    aiData.usage?.cache_creation_input_tokens ||
+                    aiData.usage?.cache_read_input_tokens ||
+                    0
+
+                  const aiText = textBlocks
+                    .map((c: any) => c.text)
+                    .join('\n')
+                    .trim()
+                  if (!aiText || aiText.length === 0) {
+                    console.log(
+                      'Raw AI Content Array (Empty after join):',
+                      JSON.stringify(aiData.content),
+                    )
+                    throw new Error(
+                      JSON.stringify({
+                        error: 'Erro: A resposta da IA estava vazia após extração.',
+                        code: 'EMPTY_RESPONSE',
+                        agent_name: agent.name,
+                      }),
+                    )
+                  }
+
+                  if (action === 'brainstorm' || action === 'extract_report_fields') {
+                    let jsonStr = aiText.trim()
+                    if (jsonStr.startsWith('```json'))
+                      jsonStr = jsonStr.replace(/^```json\n?/, '').replace(/\n?```$/, '')
+                    else if (jsonStr.startsWith('```'))
+                      jsonStr = jsonStr.replace(/^```\n?/, '').replace(/\n?```$/, '')
+                    try {
+                      structuredResult = JSON.parse(jsonStr)
+                    } catch (e) {
+                      console.error('JSON parsing failed, falling back to raw text:', jsonStr)
+                      if (action === 'extract_report_fields') {
+                        structuredResult = {
+                          situacao: 'Conteúdo não estruturado retornado pela IA:',
+                          problemas:
+                            jsonStr.substring(0, 500) + (jsonStr.length > 500 ? '...' : ''),
+                          solucoes: 'Consulte o texto bruto.',
+                          proximos_passos: 'Tente novamente.',
+                        }
                       } else {
-                          finalSuggestions.push(`[${data.agentName}] Falha na análise: ${data.errorDetail}`);
+                        structuredResult = {
+                          sugerir_secoes: ['Conteúdo não estruturado retornado pela IA:'],
+                          perguntas_chave: [
+                            jsonStr.substring(0, 500) + (jsonStr.length > 500 ? '...' : ''),
+                          ],
+                        }
                       }
+                    }
                   } else {
-                      if (action === 'brainstorm' || action === 'extract_report_fields') {
-                          throw result.reason;
-                      } else {
-                          finalSuggestions.push(`Falha na análise: ${result.reason?.message || "Erro desconhecido"}`);
-                      }
+                    agentSuggestions = aiText
+                      .split('\n')
+                      .map((l: string) => l.trim())
+                      .filter(
+                        (l: string) =>
+                          l.length > 0 &&
+                          (l.startsWith('-') || l.startsWith('*') || l.match(/^\d+\./)),
+                      )
+                      .map((l: string) =>
+                        l
+                          .replace(/^[-*]\s*/, '')
+                          .replace(/^\d+\.\s*/, '')
+                          .trim(),
+                      )
+
+                    if (agentSuggestions.length === 0 && aiText) agentSuggestions = [aiText]
+                    if (agentsToProcess.length > 1)
+                      agentSuggestions = agentSuggestions.map((s: string) => `[${agent.name}] ${s}`)
                   }
+                } else {
+                  await new Promise((r) => setTimeout(r, 1500))
+                  if (action === 'brainstorm') {
+                    structuredResult = {
+                      sugerir_secoes: ['1. Dos Fatos'],
+                      perguntas_chave: ['Quais os danos?'],
+                    }
+                  } else if (action === 'extract_report_fields') {
+                    structuredResult = {
+                      situacao: 'O cliente...',
+                      problemas: 'Riscos...',
+                      solucoes: 'Ações...',
+                      proximos_passos: 'Protocolar...',
+                    }
+                  } else {
+                    agentSuggestions.push(`[${agent.name}] Adicione fundamentação.`)
+                  }
+                }
+
+                const estimatedCost =
+                  (inputTokens / 1000000) * costInputPerM +
+                  (outputTokens / 1000000) * costOutputPerM
+
+                return {
+                  success: true,
+                  agentName: agent.name,
+                  structuredResult,
+                  agentSuggestions,
+                  inputTokens,
+                  outputTokens,
+                  cachedTokens,
+                  estimatedCost,
+                }
+              } catch (agentErr: any) {
+                console.error(`Error processing agent ${agent.name}:`, agentErr.message)
+                if (action === 'brainstorm' || action === 'extract_report_fields') {
+                  throw agentErr
+                } else {
+                  return {
+                    success: false,
+                    agentName: agent.name,
+                    errorDetail: agentErr.message || 'Erro desconhecido',
+                  }
+                }
               }
+            })
 
-              if (action !== 'brainstorm' && action !== 'extract_report_fields' && successCount === 0 && agentsToProcess.length > 0) {
-                 throw new Error(JSON.stringify({ error: "Todos os agentes falharam na geração de conteúdo.", code: "ALL_AGENTS_FAILED", invocation_id: activeInvocationId }));
-              }
+            // Execute all agents in parallel
+            const results = await Promise.allSettled(agentPromises)
 
-              console.log(`Attempting DB Save for Invocation ID: ${activeInvocationId} (Token/Cost Update)`);
-              const { error: invErr } = await supabase.from('invocacoes').update({ input_tokens: totalInputTokens, output_tokens: totalOutputTokens }).eq('id', activeInvocationId);
-              if (invErr) console.error(`DB Save Failed for invocacoes (ID: ${activeInvocationId}):`, invErr.message);
-              else console.log(`DB Save Successful for invocacoes (ID: ${activeInvocationId})`);
-              
-              const { error: costErr } = await supabase.from('custos').upsert({ invocation_id: activeInvocationId, estimated_cost: totalEstimatedCost, currency: 'USD', cached_tokens: totalCachedTokens }, { onConflict: 'invocation_id', ignoreDuplicates: false });
-              if (costErr) console.error(`DB Save Failed for custos (ID: ${activeInvocationId}):`, costErr.message);
-              else console.log(`DB Save Successful for custos (ID: ${activeInvocationId})`);
+            for (const result of results) {
+              if (result.status === 'fulfilled') {
+                const data = result.value
+                if (data.success) {
+                  totalInputTokens += data.inputTokens!
+                  totalOutputTokens += data.outputTokens!
+                  totalCachedTokens += data.cachedTokens!
+                  totalEstimatedCost += data.estimatedCost!
+                  successCount++
 
-              if (action === 'brainstorm' || action === 'extract_report_fields') {
-                  sendEvent({ type: 'suggestions', data: finalSuggestions });
+                  if (action === 'brainstorm' || action === 'extract_report_fields') {
+                    finalSuggestions = data.structuredResult
+                  } else {
+                    finalSuggestions = finalSuggestions.concat(data.agentSuggestions)
+                  }
+                } else {
+                  finalSuggestions.push(`[${data.agentName}] Falha na análise: ${data.errorDetail}`)
+                }
               } else {
-                  sendEvent({ type: 'suggestions', data: { suggestions: finalSuggestions } });
+                if (action === 'brainstorm' || action === 'extract_report_fields') {
+                  throw result.reason
+                } else {
+                  finalSuggestions.push(
+                    `Falha na análise: ${result.reason?.message || 'Erro desconhecido'}`,
+                  )
+                }
               }
+            }
+
+            if (
+              action !== 'brainstorm' &&
+              action !== 'extract_report_fields' &&
+              successCount === 0 &&
+              agentsToProcess.length > 0
+            ) {
+              throw new Error(
+                JSON.stringify({
+                  error: 'Todos os agentes falharam na geração de conteúdo.',
+                  code: 'ALL_AGENTS_FAILED',
+                  invocation_id: activeInvocationId,
+                }),
+              )
+            }
+
+            console.log(
+              `Attempting DB Save for Invocation ID: ${activeInvocationId} (Token/Cost Update)`,
+            )
+            const { error: invErr } = await supabase
+              .from('invocacoes')
+              .update({ input_tokens: totalInputTokens, output_tokens: totalOutputTokens })
+              .eq('id', activeInvocationId)
+            if (invErr)
+              console.error(
+                `DB Save Failed for invocacoes (ID: ${activeInvocationId}):`,
+                invErr.message,
+              )
+            else console.log(`DB Save Successful for invocacoes (ID: ${activeInvocationId})`)
+
+            const { error: costErr } = await supabase
+              .from('custos')
+              .upsert(
+                {
+                  invocation_id: activeInvocationId,
+                  estimated_cost: totalEstimatedCost,
+                  currency: 'USD',
+                  cached_tokens: totalCachedTokens,
+                },
+                { onConflict: 'invocation_id', ignoreDuplicates: false },
+              )
+            if (costErr)
+              console.error(
+                `DB Save Failed for custos (ID: ${activeInvocationId}):`,
+                costErr.message,
+              )
+            else console.log(`DB Save Successful for custos (ID: ${activeInvocationId})`)
+
+            if (action === 'brainstorm' || action === 'extract_report_fields') {
+              sendEvent({ type: 'suggestions', data: finalSuggestions })
+            } else {
+              sendEvent({ type: 'suggestions', data: { suggestions: finalSuggestions } })
+            }
           }
 
-          sendEvent({ done: true });
+          sendEvent({ done: true })
         } catch (err: any) {
-          console.error(`Stream processing error (Invocation ID: ${activeInvocationId}):`, err.message);
+          console.error(
+            `Stream processing error (Invocation ID: ${activeInvocationId}):`,
+            err.message,
+          )
           if (activeInvocationId && authHeader) {
-              const safeClient = createClient(supabaseUrl, supabaseKey, { global: { headers: { Authorization: authHeader } } });
-              const { error: diagErr } = await safeClient.from('invocacoes').update({ diagnostic_log: err.message }).eq('id', activeInvocationId);
-              if (diagErr) {
-                 console.error(`Failed to save diagnostic_log for Invocation ID ${activeInvocationId}:`, diagErr.message);
-              }
+            const safeClient = createClient(supabaseUrl, supabaseKey, {
+              global: { headers: { Authorization: authHeader } },
+            })
+            const { error: diagErr } = await safeClient
+              .from('invocacoes')
+              .update({ diagnostic_log: err.message })
+              .eq('id', activeInvocationId)
+            if (diagErr) {
+              console.error(
+                `Failed to save diagnostic_log for Invocation ID ${activeInvocationId}:`,
+                diagErr.message,
+              )
+            }
           }
-          
-          let errorMessage = err.message;
+
+          let errorMessage = err.message
           try {
-            const parsed = JSON.parse(errorMessage);
-            if (!parsed.invocation_id) parsed.invocation_id = activeInvocationId;
-            parsed.diagnostic_id = activeInvocationId;
-            errorMessage = JSON.stringify(parsed);
+            const parsed = JSON.parse(errorMessage)
+            if (!parsed.invocation_id) parsed.invocation_id = activeInvocationId
+            parsed.diagnostic_id = activeInvocationId
+            errorMessage = JSON.stringify(parsed)
           } catch (e) {
-            errorMessage = JSON.stringify({ message: `Falha na Geração: ${errorMessage}`, invocation_id: activeInvocationId, diagnostic_id: activeInvocationId });
+            errorMessage = JSON.stringify({
+              message: `Falha na Geração: ${errorMessage}`,
+              invocation_id: activeInvocationId,
+              diagnostic_id: activeInvocationId,
+            })
           }
 
-          sendEvent({ error: errorMessage });
+          sendEvent({ error: errorMessage })
         } finally {
-          clearInterval(pingInterval);
-          try { controller.close(); } catch(e) {}
+          clearInterval(pingInterval)
+          try {
+            controller.close()
+          } catch (e) {}
         }
-      }
-    });
+      },
+    })
 
-    return new Response(stream, { 
-      headers: { 
-        'Content-Type': 'text/event-stream', 
-        'Cache-Control': 'no-cache', 
-        'Connection': 'keep-alive', 
-        ...corsHeaders 
-      } 
-    });
-
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        ...corsHeaders,
+      },
+    })
   } catch (error: any) {
     if (activeInvocationId && authHeader) {
-        const safeClient = createClient(supabaseUrl, supabaseKey, { global: { headers: { Authorization: authHeader } } });
-        const { error: diagErr } = await safeClient.from('invocacoes').update({ diagnostic_log: error.message }).eq('id', activeInvocationId);
-        if (diagErr) {
-           console.error(`Failed to save diagnostic_log for Invocation ID ${activeInvocationId}:`, diagErr.message);
-        }
-    }
-    
-    let status = 400;
-    let errorBody: any = { error: error.message };
-    
-    try {
-      const parsed = JSON.parse(error.message);
-      if (parsed.code === 'EMPTY_RESPONSE' || parsed.code === 'ALL_AGENTS_FAILED') {
-        status = 500;
-        errorBody = parsed;
+      const safeClient = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: { Authorization: authHeader } },
+      })
+      const { error: diagErr } = await safeClient
+        .from('invocacoes')
+        .update({ diagnostic_log: error.message })
+        .eq('id', activeInvocationId)
+      if (diagErr) {
+        console.error(
+          `Failed to save diagnostic_log for Invocation ID ${activeInvocationId}:`,
+          diagErr.message,
+        )
       }
-    } catch(e) {}
-
-    errorBody.invocation_id = activeInvocationId;
-    errorBody.diagnostic_log = error.message;
-    errorBody.diagnostic_id = activeInvocationId;
-    if (!errorBody.message) {
-      errorBody.message = `Falha na Geração: ${error.message}`;
     }
 
-    return new Response(JSON.stringify(errorBody), { 
-      status, 
-      headers: { 'Content-Type': 'application/json', ...corsHeaders } 
-    });
+    let status = 400
+    let errorBody: any = { error: error.message }
+
+    try {
+      const parsed = JSON.parse(error.message)
+      if (parsed.code === 'EMPTY_RESPONSE' || parsed.code === 'ALL_AGENTS_FAILED') {
+        status = 500
+        errorBody = parsed
+      }
+    } catch (e) {}
+
+    errorBody.invocation_id = activeInvocationId
+    errorBody.diagnostic_log = error.message
+    errorBody.diagnostic_id = activeInvocationId
+    if (!errorBody.message) {
+      errorBody.message = `Falha na Geração: ${error.message}`
+    }
+
+    return new Response(JSON.stringify(errorBody), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    })
   }
-});
+})
