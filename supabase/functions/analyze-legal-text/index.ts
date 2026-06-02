@@ -97,7 +97,12 @@ Deno.serve(async (req: Request) => {
             if (metadata.pedido) additionalContext += `Pedido: ${metadata.pedido}\n`
           }
 
-          if (finalAttachments && Array.isArray(finalAttachments) && finalAttachments.length > 0) {
+          if (
+            action !== 'apply' &&
+            finalAttachments &&
+            Array.isArray(finalAttachments) &&
+            finalAttachments.length > 0
+          ) {
             sendEvent({ status: 'Lendo arquivos anexos e processando documentos...' })
             const extPromises = finalAttachments.map(async (path: string) => {
               const { data: extData, error: extError } = await supabase.functions.invoke(
@@ -211,6 +216,7 @@ Deno.serve(async (req: Request) => {
               if (metadata.pedido) applyContextMetadata += `Pedido: ${metadata.pedido}\n`
               applyContextMetadata += `\n`
             }
+            // Context for apply ignores raw attachments (additionalContext) to save tokens
             const applyContext = `${documentType}${processInfo}${applyContextMetadata}Conteúdo Principal (Editor):\n${finalContent}`
 
             let userMessage = `Aqui está o contexto e o documento atual (em formato HTML):\n\n${applyContext}\n\nPor favor, reescreva o Conteúdo Principal (Editor) aplicando as seguintes sugestões de melhoria. Mantenha a formatação HTML original, ajustando apenas o texto onde necessário:\n\n${(req_suggestions || []).map((s: string) => `- ${s}`).join('\n')}\n\nCRÍTICO: Retorne o documento COMPLETO, até a sua conclusão natural. NÃO TRUNQUE o texto (ex: não pare no meio de um parágrafo ou seção). Se o texto for longo, certifique-se de terminar todo o conteúdo sem interrupções. Inclua no final do documento a tag <!-- END_OF_DOCUMENT --> para confirmar que você terminou de gerar todo o texto.\n\nRetorne APENAS o código HTML do Conteúdo Principal revisado, sem nenhuma explicação ou texto adicional antes ou depois do HTML.`

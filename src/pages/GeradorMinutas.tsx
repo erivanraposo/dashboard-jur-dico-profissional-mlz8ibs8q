@@ -350,7 +350,8 @@ export default function GeradorMinutas() {
         if (err.message?.includes('not_found_error')) isNotFoundError = true
       }
 
-      if (err.name === 'AbortError') errorMsg = 'A requisição foi cancelada (Timeout).'
+      if (err.name === 'AbortError')
+        errorMsg = 'Tempo limite excedido (Timeout). A requisição demorou muito para responder.'
       else if (err.message?.includes('fetch')) errorMsg = 'Erro de rede. Verifique sua conexão.'
 
       if (isNotFoundError) {
@@ -728,7 +729,9 @@ export default function GeradorMinutas() {
         if (err.message?.includes('not_found_error')) isNotFoundError = true
       }
 
-      if (err.name === 'AbortError') errorMsg = 'A requisição foi cancelada por timeout da rede.'
+      if (err.name === 'AbortError')
+        errorMsg =
+          'Tempo limite excedido (120s). O documento é muito longo ou o servidor demorou a responder.'
       else if (err.message?.includes('fetch') || err.message?.includes('NetworkError'))
         errorMsg = 'Erro de rede ao conectar com o servidor.'
       else if (err.message?.includes('401') || err.message?.includes('Não autenticado'))
