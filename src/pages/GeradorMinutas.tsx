@@ -48,7 +48,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 // @ts-expect-error
 import HTMLtoDOCX from 'html-to-docx'
 import { Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from 'lucide-react'
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx'
 
 const MINUTE_TYPES = [
   'Petição Inicial',
@@ -994,10 +993,11 @@ export default function GeradorMinutas() {
       const proc = min.processes as any
 
       const htmlContent = `
-        <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 20mm; color: black;">
+        <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 10mm; color: black; max-width: 100%; overflow: hidden;">
           <style>
-            table { table-layout: auto; max-width: 100%; word-wrap: break-word; border-collapse: collapse; width: 100%; }
-            td, th { font-size: 9pt; padding: 4px; border: 1px solid black; }
+            table { table-layout: fixed; width: 100%; border-collapse: collapse; word-wrap: break-word; overflow-wrap: break-word; hyphens: auto; }
+            td, th { font-size: 9pt; padding: 4px; border: 1px solid black; word-break: break-word; }
+            img { max-width: 100%; height: auto; }
           </style>
           <div style="text-align: center; margin-bottom: 2em;">
             <h1 style="text-transform: uppercase; font-size: 14pt; font-weight: bold;">${min.title || 'Documento Jurídico'}</h1>
@@ -1087,7 +1087,14 @@ export default function GeradorMinutas() {
 
       const proc = min.processes as any
 
-      let htmlString = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${min.title || 'Documento Jurídico'}</title></head><body>`
+      let htmlString = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${min.title || 'Documento Jurídico'}</title>
+      <style>
+        table { border-collapse: collapse; width: 100%; margin-bottom: 1em; }
+        th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+        p { margin-bottom: 1em; line-height: 1.5; }
+        h1, h2, h3, h4 { color: #333; margin-bottom: 1em; }
+      </style>
+      </head><body>`
 
       htmlString += `<h1 style="text-align: center;">${min.title || 'Documento Jurídico'}</h1>`
       if (proc?.case_number) {

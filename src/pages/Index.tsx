@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Component, ErrorInfo, ReactNode } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { useAuth } from '@/hooks/use-auth'
 import {
@@ -10,7 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import {
   Briefcase,
   Bot,
@@ -27,7 +27,6 @@ import { Link } from 'react-router-dom'
 import { Skeleton } from '@/components/ui/skeleton'
 import { format, subDays, parseISO, isValid } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import React, { Component, ErrorInfo, ReactNode } from 'react'
 
 class DashboardErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -349,40 +348,38 @@ function DashboardContent() {
           <CardContent className="flex-1 pb-4">
             {dailyData.length > 0 ? (
               <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      vertical={false}
-                      stroke="hsl(var(--border))"
-                    />
-                    <XAxis
-                      dataKey="displayDate"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={10}
-                      fontSize={12}
-                      stroke="hsl(var(--muted-foreground))"
-                    />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={10}
-                      fontSize={12}
-                      stroke="hsl(var(--muted-foreground))"
-                    />
-                    <ChartTooltip
-                      content={<ChartTooltipContent />}
-                      cursor={{ fill: 'hsl(var(--muted))' }}
-                    />
-                    <Bar
-                      dataKey="invocations"
-                      fill="var(--color-invocations)"
-                      radius={[4, 4, 0, 0]}
-                      maxBarSize={40}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+                <BarChart data={dailyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="hsl(var(--border))"
+                  />
+                  <XAxis
+                    dataKey="displayDate"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={10}
+                    fontSize={12}
+                    stroke="hsl(var(--muted-foreground))"
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={10}
+                    fontSize={12}
+                    stroke="hsl(var(--muted-foreground))"
+                  />
+                  <ChartTooltip
+                    content={<ChartTooltipContent />}
+                    cursor={{ fill: 'hsl(var(--muted))' }}
+                  />
+                  <Bar
+                    dataKey="invocations"
+                    fill="var(--color-invocations)"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={40}
+                  />
+                </BarChart>
               </ChartContainer>
             ) : (
               <div className="h-[300px] flex flex-col items-center justify-center text-center text-muted-foreground space-y-3">
