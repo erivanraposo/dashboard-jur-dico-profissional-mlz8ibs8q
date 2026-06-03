@@ -24,6 +24,7 @@ import {
   Save,
   Download,
   LayoutTemplate,
+  Plus,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -105,6 +106,31 @@ export default function GeradorMinutas() {
 
   const { toast } = useToast()
 
+  const handleNovaMinuta = () => {
+    if (content && content !== defaultContent && content !== '') {
+      if (
+        !window.confirm(
+          'Você tem alterações não salvas. Deseja realmente iniciar uma nova minuta e descartar o conteúdo atual?',
+        )
+      ) {
+        return
+      }
+    }
+    setContent('')
+    setSelectedProcess('none')
+    setSelectedAgents([])
+    setAttachments([])
+    setSuggestions([])
+    setMinuteId(null)
+    setMinuteType('')
+    setClientName('')
+    setComarca('')
+    setObjeto('')
+    setPedido('')
+    localStorage.removeItem('lexcontrol_gerador_draft')
+    toast({ title: 'Nova minuta iniciada' })
+  }
+
   useEffect(() => {
     async function loadData() {
       const [{ data: agentsData }, { data: procsData }, { data: lawyersData }] = await Promise.all([
@@ -142,6 +168,16 @@ export default function GeradorMinutas() {
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
+
+        if (file.name.toLowerCase().endsWith('.pdf') && file.size > 50 * 1024 * 1024) {
+          toast({
+            title: 'Arquivo muito grande',
+            description: `O arquivo PDF "${file.name}" excede o limite de 50 MB. Por favor, divida o documento em partes menores antes de anexar.`,
+            variant: 'destructive',
+          })
+          continue
+        }
+
         const filePath = `${user.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
 
         const { error: uploadError } = await supabase.storage
@@ -1141,7 +1177,7 @@ export default function GeradorMinutas() {
         toast({
           title: 'Erro ao exportar DOCX',
           description:
-            'A biblioteca de conversão não rodou no navegador. Por favor, tente novamente; se persistir, exporte como PDF.',
+            'A biblioteca de conversão não rodou no navegador. Verifique o console (F12) para detalhes.',
           variant: 'destructive',
         })
       }
@@ -1237,6 +1273,15 @@ export default function GeradorMinutas() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleNovaMinuta}
+              disabled={saving || applying || loading}
+              className="bg-green-600 hover:bg-green-700 text-white border-none"
+            >
+              <Plus className="w-4 h-4 mr-2" /> Nova Minuta
+            </Button>
             {content !== defaultContent && content.trim() !== '' && (
               <>
                 <Button
@@ -1673,7 +1718,7 @@ export default function GeradorMinutas() {
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             onChange={handleFileUpload}
                             disabled={uploading}
-                            accept=".pdf,.txt,.doc,.docx"
+                            accept=".pdf,.xlsx,.xls,.docx,.txt,.md,.csv"
                           />
                           {uploading ? (
                             <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -1684,7 +1729,8 @@ export default function GeradorMinutas() {
                             <div className="flex flex-col items-center gap-2 text-muted-foreground">
                               <FileText className="w-6 h-6" />{' '}
                               <span className="text-sm text-balance">
-                                Clique ou arraste arquivos para contexto da IA
+                                Clique ou arraste arquivos (PDF, Excel, Word, Text) para contexto da
+                                IA
                               </span>
                             </div>
                           )}
