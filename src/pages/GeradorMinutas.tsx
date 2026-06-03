@@ -1083,7 +1083,7 @@ export default function GeradorMinutas() {
       const orientation = maxCols > 6 ? 'landscape' : 'portrait'
 
       const opt = {
-        margin: [25, 15, 25, 15],
+        margin: [35, 15, 35, 15],
         filename: `${min.title || 'documento'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
@@ -1261,7 +1261,7 @@ export default function GeradorMinutas() {
     ) {
       handleApplyTemplate()
     }
-  }, [minuteType, selectedProcess])
+  }, [minuteType, selectedProcess, clientName])
 
   return (
     <div
