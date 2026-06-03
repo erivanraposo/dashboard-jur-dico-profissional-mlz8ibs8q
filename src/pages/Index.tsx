@@ -11,7 +11,16 @@ import {
 } from '@/components/ui/table'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts'
-import { Briefcase, Bot, DollarSign, Activity, FileEdit, AlertCircle } from 'lucide-react'
+import {
+  Briefcase,
+  Bot,
+  DollarSign,
+  Activity,
+  FileEdit,
+  AlertCircle,
+  Search,
+  Scale,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase/client'
 import { Link } from 'react-router-dom'
@@ -41,16 +50,7 @@ export default function Index() {
         const endDate = new Date().toISOString()
         const startDate = subDays(new Date(), 30).toISOString()
 
-        const [
-          { count: processesCount },
-          { count: agentsCount },
-          { count: invocationsCount },
-          { data: custosData },
-          { data: dailyConsumption },
-          { data: recentInvocations },
-          { data: agentRanking },
-          { data: profileData },
-        ] = await Promise.all([
+        const results = await Promise.all([
           supabase.from('processes').select('*', { count: 'exact', head: true }),
           supabase
             .from('agentes')
@@ -70,33 +70,44 @@ export default function Index() {
             : Promise.resolve({ data: null }),
         ])
 
+        const processesCount = results[0].count || 0
+        const agentsCount = results[1].count || 0
+        const invocationsCount = results[2].count || 0
+        const custosData = results[3].data || []
+        const dailyConsumption = results[4].data || []
+        const recentInvocations = results[5].data || []
+        const agentRanking = results[6].data || []
+        const profileData = results[7].data || null
+
         if (profileData) {
           setProfile(profileData)
         }
 
-        const totalCost =
-          custosData?.reduce((acc, curr) => acc + (curr.estimated_cost || 0), 0) || 0
+        const totalCost = custosData.reduce(
+          (acc: number, curr: any) => acc + (curr.estimated_cost || 0),
+          0,
+        )
 
         setStats({
-          processes: processesCount || 0,
-          agents: agentsCount || 0,
-          invocations: invocationsCount || 0,
+          processes: processesCount,
+          agents: agentsCount,
+          invocations: invocationsCount,
           cost: totalCost,
         })
 
-        if (dailyConsumption) {
-          const formattedDaily = dailyConsumption.map((d) => ({
+        if (dailyConsumption && Array.isArray(dailyConsumption)) {
+          const formattedDaily = dailyConsumption.map((d: any) => ({
             ...d,
-            displayDate: format(parseISO(d.date), 'dd/MM', { locale: ptBR }),
+            displayDate: d.date ? format(parseISO(d.date), 'dd/MM', { locale: ptBR }) : '',
           }))
           setDailyData(formattedDaily)
         }
 
-        if (recentInvocations) {
+        if (recentInvocations && Array.isArray(recentInvocations)) {
           setRecentActivity(recentInvocations)
         }
 
-        if (agentRanking) {
+        if (agentRanking && Array.isArray(agentRanking)) {
           setAgentsRanking(agentRanking.slice(0, 5))
         }
       } catch (err) {
@@ -129,6 +140,11 @@ export default function Index() {
             <Skeleton className="h-10 w-[140px]" />
           </div>
         </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-[120px] w-full rounded-xl" />
+          ))}
+        </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-[120px] w-full rounded-xl" />
@@ -146,9 +162,11 @@ export default function Index() {
     <div className="space-y-8 max-w-7xl mx-auto p-4 md:p-8 animate-fade-in-up">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard Geral</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            Bem-vindo(a){profile?.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''}!
+          </h1>
           <p className="text-muted-foreground mt-1">
-            Visão completa das suas atividades, processos e consumo de IA.
+            Dashboard Geral - Visão completa das suas atividades e consumo de IA.
             {profile?.workspace_id && <span className="ml-1 opacity-50">(Workspace Ativo)</span>}
           </p>
         </div>
@@ -159,10 +177,50 @@ export default function Index() {
             </Link>
           </Button>
           <Button asChild className="flex gap-2 shadow-sm">
-            <Link to="/gerador">
+            <Link to="/gerador-minutas">
               <FileEdit className="h-4 w-4" /> Nova Minuta
             </Link>
           </Button>
+        </div>
+      </div>
+
+      {/* Navigation Hub */}
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight mb-4">Acesso Rápido</h2>
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+          <Link to="/gerador-minutas" className="block focus:outline-none">
+            <Card className="hover:border-primary cursor-pointer transition-colors h-full group">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 group-hover:text-primary transition-colors">
+                  <FileEdit className="h-5 w-5 text-primary" />
+                  Gerador de Minutas
+                </CardTitle>
+                <CardDescription>Crie, edite e analise documentos com IA</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+          <Link to="/processos" className="block focus:outline-none">
+            <Card className="hover:border-primary cursor-pointer transition-colors h-full group">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 group-hover:text-primary transition-colors">
+                  <Briefcase className="h-5 w-5 text-primary" />
+                  Processos
+                </CardTitle>
+                <CardDescription>Gerencie seus casos e acompanhe andamentos</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+          <Link to="/jurisprudencia" className="block focus:outline-none">
+            <Card className="hover:border-primary cursor-pointer transition-colors h-full group">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 group-hover:text-primary transition-colors">
+                  <Scale className="h-5 w-5 text-primary" />
+                  Jurisprudência
+                </CardTitle>
+                <CardDescription>Pesquise decisões e monte seu acervo</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
         </div>
       </div>
 
@@ -275,7 +333,7 @@ export default function Index() {
                 <Activity className="h-10 w-10 opacity-20" />
                 <p>Nenhuma atividade registrada nos últimos 30 dias.</p>
                 <Button variant="outline" asChild size="sm">
-                  <Link to="/gerador">Criar primeira minuta</Link>
+                  <Link to="/gerador-minutas">Criar primeira minuta</Link>
                 </Button>
               </div>
             )}
@@ -340,8 +398,8 @@ export default function Index() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {recentActivity.map((act) => (
-                    <TableRow key={act?.id || crypto.randomUUID()}>
+                  {recentActivity.map((act, i) => (
+                    <TableRow key={act?.id || i}>
                       <TableCell className="font-medium">
                         {act?.user_name || 'Desconhecido'}
                       </TableCell>

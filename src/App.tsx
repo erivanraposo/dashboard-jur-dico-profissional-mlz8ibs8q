@@ -46,7 +46,7 @@ const AppContent = () => (
     >
       <Route path="/" element={<Index />} />
       <Route path="/jurisprudencia" element={<Jurisprudencia />} />
-      <Route path="/gerador" element={<GeradorMinutas />} />
+      <Route path="/gerador-minutas" element={<GeradorMinutas />} />
       <Route path="/processos" element={<Processos />} />
       <Route path="/auditoria" element={<Auditoria />} />
       <Route path="/configuracoes" element={<Configuracoes />} />

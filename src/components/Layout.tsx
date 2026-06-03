@@ -31,7 +31,7 @@ const navigation = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
   { name: 'Processos', path: '/processos', icon: Briefcase },
   { name: 'Jurisprudência', path: '/jurisprudencia', icon: Search },
-  { name: 'Gerador de Minutas', path: '/gerador', icon: FileText },
+  { name: 'Gerador de Minutas', path: '/gerador-minutas', icon: FileText },
   { name: 'Auditoria', path: '/auditoria', icon: Activity },
   { name: 'Configurações', path: '/configuracoes', icon: Settings },
 ]
