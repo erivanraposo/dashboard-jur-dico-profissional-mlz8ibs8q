@@ -172,7 +172,8 @@ export default function GeradorMinutas() {
         if (file.name.toLowerCase().endsWith('.pdf') && file.size > 50 * 1024 * 1024) {
           toast({
             title: 'Arquivo muito grande',
-            description: `O arquivo PDF "${file.name}" excede o limite de 50 MB. Por favor, divida o documento em partes menores antes de anexar.`,
+            description:
+              'Arquivo muito grande. Por favor, divida o PDF em partes menores para análise.',
             variant: 'destructive',
           })
           continue
@@ -232,10 +233,14 @@ export default function GeradorMinutas() {
   }
 
   const handleAnalyze = async () => {
-    if (!content || content.length < 10) {
+    const hasAttachments = attachments.length > 0
+    const hasProcessContext = selectedProcess !== 'none'
+    const hasContent = content && content.length >= 10 && content !== defaultContent
+
+    if (!hasContent && !hasAttachments && !hasProcessContext) {
       return toast({
         title: 'Atenção',
-        description: 'Adicione mais conteúdo para análise.',
+        description: 'Adicione algum conteúdo, anexo ou selecione um processo para análise.',
         variant: 'destructive',
       })
     }
@@ -1150,8 +1155,8 @@ export default function GeradorMinutas() {
       toast({ title: 'Processando', description: 'Gerando o arquivo DOCX...' })
 
       try {
-        // @ts-expect-error - lazy load html-to-docx to prevent build/render issues in the browser
-        const { default: HTMLtoDOCX } = await import('html-to-docx')
+        const module = await import(/* @vite-ignore */ 'html-to-docx')
+        const HTMLtoDOCX = module.default || module
 
         const fileBuffer = await HTMLtoDOCX(htmlString, null, {
           table: { row: { cantSplit: true } },
@@ -1177,7 +1182,7 @@ export default function GeradorMinutas() {
         toast({
           title: 'Erro ao exportar DOCX',
           description:
-            'A biblioteca de conversão não rodou no navegador. Verifique o console (F12) para detalhes.',
+            'Erro ao exportar DOCX. A biblioteca de conversão não rodou no navegador. Verifique o console (F12) para detalhes.',
           variant: 'destructive',
         })
       }
@@ -1718,7 +1723,7 @@ export default function GeradorMinutas() {
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             onChange={handleFileUpload}
                             disabled={uploading}
-                            accept=".pdf,.xlsx,.xls,.docx,.txt,.md,.csv"
+                            accept=".pdf,application/pdf,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xls,application/vnd.ms-excel,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.txt,text/plain,.md,text/markdown,.csv,text/csv"
                           />
                           {uploading ? (
                             <div className="flex flex-col items-center gap-2 text-muted-foreground">
