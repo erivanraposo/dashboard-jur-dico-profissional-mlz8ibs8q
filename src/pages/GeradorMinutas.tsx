@@ -1083,11 +1083,12 @@ export default function GeradorMinutas() {
       const orientation = maxCols > 6 ? 'landscape' : 'portrait'
 
       const opt = {
-        margin: [15, 15, 15, 15],
+        margin: [25, 15, 25, 15],
         filename: `${min.title || 'documento'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: orientation },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
       }
 
       toast({ title: 'Processando', description: 'Gerando o arquivo PDF...' })
@@ -1155,18 +1156,34 @@ export default function GeradorMinutas() {
       toast({ title: 'Processando', description: 'Gerando o arquivo DOCX...' })
 
       try {
-        const module = await import(/* @vite-ignore */ 'html-to-docx')
-        const HTMLtoDOCX = module.default || module
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        if (!session) throw new Error('Sessão expirada. Faça login novamente.')
 
-        const fileBuffer = await HTMLtoDOCX(htmlString, null, {
-          table: { row: { cantSplit: true } },
-          footer: true,
-          pageNumber: true,
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+        const res = await fetch(`${supabaseUrl}/functions/v1/export-docx`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ html: htmlString, title: min.title || 'documento' }),
         })
 
-        const blob = new Blob([fileBuffer], {
-          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        })
+        if (!res.ok) {
+          let errorMsg = 'Falha na comunicação com o servidor de exportação.'
+          try {
+            const errData = await res.json()
+            if (errData.error) errorMsg = errData.error
+          } catch {
+            const errText = await res.text()
+            if (errText) errorMsg = errText
+          }
+          throw new Error(errorMsg)
+        }
+
+        const blob = await res.blob()
         const url = URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
@@ -1176,13 +1193,12 @@ export default function GeradorMinutas() {
         document.body.removeChild(link)
         URL.revokeObjectURL(url)
 
-        toast({ title: 'Sucesso', description: 'Download do documento concluído.' })
+        toast({ title: 'Sucesso', description: 'Download do DOCX concluído.' })
       } catch (err: any) {
         console.error('DOCX conversion failed:', err)
         toast({
           title: 'Erro ao exportar DOCX',
-          description:
-            'Erro ao exportar DOCX. A biblioteca de conversão não rodou no navegador. Verifique o console (F12) para detalhes.',
+          description: err.message || 'Erro desconhecido ao exportar DOCX.',
           variant: 'destructive',
         })
       }

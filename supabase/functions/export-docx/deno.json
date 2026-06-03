@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "html-to-docx": "npm:html-to-docx@1.8.0"
+  }
+}
