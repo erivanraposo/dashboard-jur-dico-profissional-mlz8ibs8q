@@ -171,11 +171,14 @@ Deno.serve(async (req: Request) => {
 
             // Apply usa Sonnet (qualidade de reescrita melhor que Haiku); SSE parser foi
             // consertado e timeout=900s no config.toml dá folga para a geração mais lenta.
-            console.log(`[ACTION: APPLY] Using model: ${finalModel}`)
+            console.warn(`>>>>> [APPLY START] model=${finalModel} invocation=${activeInvocationId}`)
 
             const finalSystemPrompt =
               'Você é um editor jurídico especializado em reescrita de documentos HTML. Sua única tarefa é reescrever o documento HTML fornecido aplicando estritamente as sugestões de melhoria que receber, mantendo a formatação HTML original e a estrutura do documento. Retorne EXCLUSIVAMENTE o código HTML revisado e completo, sem comentários explicativos, sem prefácios, sem texto adicional antes ou depois do HTML. Termine sempre com a tag <!-- END_OF_DOCUMENT --> para sinalizar conclusão.'
-            const maxTokens = agent.max_tokens && agent.max_tokens > 8192 ? agent.max_tokens : 16384
+            // Sonnet 4.6 streaming aceita ate 64K. 32K cobre documentos longos
+            // sem precisar de continue_required na maioria dos casos.
+            const maxTokens =
+              agent.max_tokens && agent.max_tokens > 16384 ? agent.max_tokens : 32000
 
             let activeMinuteId = minute_id
 
@@ -224,7 +227,7 @@ Deno.serve(async (req: Request) => {
             // Context for apply ignores raw attachments (additionalContext) to save tokens
             const applyContext = `${documentType}${processInfo}${applyContextMetadata}Conteúdo Principal (Editor):\n${finalContent}`
 
-            let userMessage = `Aqui está o contexto e o documento atual (em formato HTML):\n\n${applyContext}\n\nPor favor, reescreva o Conteúdo Principal (Editor) aplicando as seguintes sugestões de melhoria. Mantenha a formatação HTML original, ajustando apenas o texto onde necessário:\n\n${(req_suggestions || []).map((s: string) => `- ${s}`).join('\n')}\n\nCRÍTICO: Retorne o documento COMPLETO, até a sua conclusão natural. NÃO TRUNQUE o texto (ex: não pare no meio de um parágrafo ou seção). Se o texto for longo, certifique-se de terminar todo o conteúdo sem interrupções. Inclua no final do documento a tag <!-- END_OF_DOCUMENT --> para confirmar que você terminou de gerar todo o texto.\n\nRetorne APENAS o código HTML do Conteúdo Principal revisado, sem nenhuma explicação ou texto adicional antes ou depois do HTML.`
+            let userMessage = `Aqui está o contexto e o documento atual (em formato HTML):\n\n${applyContext}\n\nPor favor, reescreva o Conteúdo Principal (Editor) aplicando as seguintes sugestões de melhoria. Mantenha a formatação HTML original, ajustando apenas o texto onde necessário:\n\n${(req_suggestions || []).map((s: string) => `- ${s}`).join('\n')}\n\nCRÍTICO: Retorne o documento COMPLETO, até a sua conclusão natural. NÃO TRUNQUE o texto (ex: não pare no meio de um parágrafo ou seção). Se o texto for longo, certifique-se de terminar todo o conteúdo sem interrupções. Inclua no final do documento a tag <!-- END_OF_DOCUMENT --> para confirmar que você terminou de gerar todo o texto.\n\nRetorne APENAS o código HTML PURO do Conteúdo Principal revisado. NÃO envolva o HTML em marcação markdown (NÃO use \`\`\`html, NÃO use \`\`\`, NÃO use blocos de código). Comece DIRETAMENTE com a primeira tag HTML e termine na última tag HTML seguida da tag de conclusão. Nenhum texto, explicação ou marcação fora do HTML.`
 
             if (content_so_far) {
               userMessage = `${userMessage}\n\n---\n\nVOCÊ JÁ INICIOU A REESCRITA EM UMA SOLICITAÇÃO ANTERIOR. Aqui está exatamente o que foi gerado até agora:\n\n${content_so_far}\n\nCONTINUE de onde parou, SEM REPETIR o conteúdo acima. Retorne APENAS a continuação do HTML, mantendo coesão de formatação e estrutura. Termine o documento e inclua a tag <!-- END_OF_DOCUMENT --> ao final.`
@@ -340,6 +343,14 @@ Deno.serve(async (req: Request) => {
                 }
               }
 
+              // Strip de markdown code fence (```html ... ```) caso o modelo
+              // tenha envolvido a resposta apesar das instrucoes no prompt.
+              // Garante que o que vai pro DB e exports nao tenha lixo no inicio/fim.
+              fullText = fullText
+                .replace(/^\s*```(?:html|HTML)?\s*\r?\n?/, '')
+                .replace(/\r?\n?\s*```\s*$/, '')
+                .trim()
+
               if (activeMinuteId && charCountSinceLastSave > 0) {
                 await supabase
                   .from('minutes')
@@ -371,10 +382,14 @@ Deno.serve(async (req: Request) => {
                 )
               }
 
-              if (
-                stopReason === 'max_tokens' ||
-                (!fullText.includes('<!-- END_OF_DOCUMENT -->') && stopReason !== 'end_turn')
-              ) {
+              // Continuacao automatica APENAS quando o modelo bateu no max_tokens
+              // (unico caso onde retomar com content_so_far faz sentido).
+              // Outras causas (refusal, pause_turn, etc.) nao sao retomaveis e
+              // foram causando recursao indevida + "FALHA NA GERACAO" no front.
+              console.warn(
+                `>>>>> [APPLY END] stopReason=${stopReason} fullTextLen=${fullText.length} hasEndMarker=${fullText.includes('<!-- END_OF_DOCUMENT -->')} willContinue=${stopReason === 'max_tokens'} outputTokens=${outputTokens} invocation=${activeInvocationId}`,
+              )
+              if (stopReason === 'max_tokens') {
                 sendEvent({ type: 'continue_required' })
               }
 

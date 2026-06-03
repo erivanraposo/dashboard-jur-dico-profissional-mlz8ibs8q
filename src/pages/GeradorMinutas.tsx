@@ -44,6 +44,10 @@ import {
   AccordionContent,
 } from '@/components/ui/accordion'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+// @ts-expect-error
+import HTMLtoDOCX from 'html-to-docx'
+import { Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx'
 
 const MINUTE_TYPES = [
@@ -98,6 +102,9 @@ export default function GeradorMinutas() {
 
   const [processOpen, setProcessOpen] = useState(false)
   const [agentOpen, setAgentOpen] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isFullScreen, setIsFullScreen] = useState(false)
+  const [activeTab, setActiveTab] = useState('config')
 
   const { toast } = useToast()
 
@@ -397,7 +404,8 @@ export default function GeradorMinutas() {
   const suggestionsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (suggestions.length > 0 && suggestionsRef.current) {
+    if (suggestions.length > 0) {
+      setActiveTab('ai')
       setTimeout(() => {
         suggestionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
       }, 150)
@@ -987,6 +995,10 @@ export default function GeradorMinutas() {
 
       const htmlContent = `
         <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 20mm; color: black;">
+          <style>
+            table { table-layout: auto; max-width: 100%; word-wrap: break-word; border-collapse: collapse; width: 100%; }
+            td, th { font-size: 9pt; padding: 4px; border: 1px solid black; }
+          </style>
           <div style="text-align: center; margin-bottom: 2em;">
             <h1 style="text-transform: uppercase; font-size: 14pt; font-weight: bold;">${min.title || 'Documento Jurídico'}</h1>
             ${proc?.case_number ? `<h2 style="font-size: 12pt; font-weight: bold;">Processo Nº ${proc.case_number}</h2>` : ''}
@@ -1024,12 +1036,19 @@ export default function GeradorMinutas() {
       const element = document.createElement('div')
       element.innerHTML = htmlContent
 
+      let maxCols = 0
+      element.querySelectorAll('tr').forEach((tr) => {
+        const cols = tr.querySelectorAll('td, th').length
+        if (cols > maxCols) maxCols = cols
+      })
+      const orientation = maxCols > 6 ? 'landscape' : 'portrait'
+
       const opt = {
         margin: [15, 15, 15, 15],
         filename: `${min.title || 'documento'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: orientation },
       }
 
       toast({ title: 'Processando', description: 'Gerando o arquivo PDF...' })
@@ -1068,175 +1087,36 @@ export default function GeradorMinutas() {
 
       const proc = min.processes as any
 
-      const docChildren: any[] = []
+      let htmlString = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${min.title || 'Documento Jurídico'}</title></head><body>`
 
-      docChildren.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: min.title || 'Documento Jurídico', bold: true, size: 28 }),
-          ],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 200 },
-        }),
-      )
-
+      htmlString += `<h1 style="text-align: center;">${min.title || 'Documento Jurídico'}</h1>`
       if (proc?.case_number) {
-        docChildren.push(
-          new Paragraph({
-            children: [
-              new TextRun({ text: `Processo Nº ${proc.case_number}`, bold: true, size: 24 }),
-            ],
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 400 },
-          }),
-        )
+        htmlString += `<h2 style="text-align: center;">Processo Nº ${proc.case_number}</h2>`
       }
 
       if (min.client_name || min.comarca || min.objeto || min.pedido) {
-        if (min.client_name) {
-          docChildren.push(
-            new Paragraph({
-              children: [
-                new TextRun({ text: 'Cliente: ', bold: true }),
-                new TextRun(min.client_name),
-              ],
-            }),
-          )
-        }
-        if (min.comarca) {
-          docChildren.push(
-            new Paragraph({
-              children: [new TextRun({ text: 'Comarca: ', bold: true }), new TextRun(min.comarca)],
-            }),
-          )
-        }
-        if (min.objeto) {
-          docChildren.push(
-            new Paragraph({
-              children: [new TextRun({ text: 'Objeto: ', bold: true }), new TextRun(min.objeto)],
-            }),
-          )
-        }
-        if (min.pedido) {
-          docChildren.push(
-            new Paragraph({
-              children: [
-                new TextRun({ text: 'Pedido/Valor: ', bold: true }),
-                new TextRun(min.pedido),
-              ],
-            }),
-          )
-        }
-        docChildren.push(
-          new Paragraph({
-            text: '__________________________________________________',
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 400, before: 200 },
-          }),
-        )
+        htmlString += `<div>`
+        if (min.client_name) htmlString += `<p><strong>Cliente:</strong> ${min.client_name}</p>`
+        if (min.comarca) htmlString += `<p><strong>Comarca:</strong> ${min.comarca}</p>`
+        if (min.objeto) htmlString += `<p><strong>Objeto:</strong> ${min.objeto}</p>`
+        if (min.pedido) htmlString += `<p><strong>Pedido/Valor:</strong> ${min.pedido}</p>`
+        htmlString += `<hr/></div>`
       }
 
-      const parser = new DOMParser()
-      const htmlDoc = parser.parseFromString(min.content, 'text/html')
-
-      const processNode = (node: Node, textRunOptions: any = {}): any[] => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          let text = node.textContent || ''
-          if (!text.trim() && text.includes('\n')) return []
-          text = text.replace(/\s+/g, ' ')
-          if (text === '') return []
-          return [new TextRun({ text, ...textRunOptions })]
-        }
-
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          const el = node as HTMLElement
-          const tag = el.tagName.toLowerCase()
-
-          if (tag === 'br') {
-            return [new TextRun({ break: 1 })]
-          }
-
-          const newOptions = { ...textRunOptions }
-          if (tag === 'strong' || tag === 'b') newOptions.bold = true
-          if (tag === 'em' || tag === 'i') newOptions.italic = true
-          if (tag === 'u') newOptions.underline = {}
-          if (tag === 'span' && el.style.fontWeight === 'bold') newOptions.bold = true
-
-          const childRuns: any[] = []
-          el.childNodes.forEach((child) => {
-            childRuns.push(...processNode(child, newOptions))
-          })
-
-          return childRuns
-        }
-        return []
-      }
-
-      const traverseNodes = (node: Node) => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          const el = node as HTMLElement
-          const tag = el.tagName.toLowerCase()
-
-          if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'].includes(tag)) {
-            let align = AlignmentType.JUSTIFIED
-            if (el.style.textAlign === 'center') align = AlignmentType.CENTER
-            else if (el.style.textAlign === 'right') align = AlignmentType.RIGHT
-            else if (el.style.textAlign === 'justify') align = AlignmentType.JUSTIFIED
-
-            let headingLevel = undefined
-            if (tag === 'h1') {
-              headingLevel = HeadingLevel.HEADING_1
-              align = AlignmentType.CENTER
-            }
-            if (tag === 'h2') headingLevel = HeadingLevel.HEADING_2
-            if (tag === 'h3') headingLevel = HeadingLevel.HEADING_3
-            if (tag === 'h4') headingLevel = HeadingLevel.HEADING_4
-
-            const runs = processNode(el)
-
-            if (runs.length > 0 || tag === 'p') {
-              const paraOpts: any = { children: runs, alignment: align, spacing: { after: 200 } }
-              if (headingLevel) {
-                paraOpts.heading = headingLevel
-              }
-              if (tag === 'li') {
-                paraOpts.bullet = { level: 0 }
-                paraOpts.spacing = { after: 100 }
-              }
-
-              if (tag === 'p' && align === AlignmentType.JUSTIFIED) {
-                paraOpts.indent = { firstLine: 720 }
-              }
-
-              docChildren.push(new Paragraph(paraOpts))
-            }
-          } else {
-            el.childNodes.forEach((child) => traverseNodes(child))
-          }
-        } else if (node.nodeType === Node.TEXT_NODE) {
-          const text = node.textContent?.trim()
-          if (text) {
-            docChildren.push(
-              new Paragraph({ children: [new TextRun(text)], spacing: { after: 200 } }),
-            )
-          }
-        }
-      }
-
-      htmlDoc.body.childNodes.forEach((child) => traverseNodes(child))
-
-      const doc = new Document({
-        sections: [
-          {
-            properties: {},
-            children: docChildren,
-          },
-        ],
-      })
+      htmlString += min.content
+      htmlString += `</body></html>`
 
       toast({ title: 'Processando', description: 'Gerando o arquivo DOCX...' })
 
-      const blob = await Packer.toBlob(doc)
+      const fileBuffer = await HTMLtoDOCX(htmlString, null, {
+        table: { row: { cantSplit: true } },
+        footer: true,
+        pageNumber: true,
+      })
+
+      const blob = new Blob([fileBuffer], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -1309,8 +1189,18 @@ export default function GeradorMinutas() {
   }, [minuteType, selectedProcess])
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] gap-6 animate-fade-in-up">
-      <div className="flex-1 flex flex-col min-w-0">
+    <div
+      className={cn(
+        'flex gap-6 animate-fade-in-up transition-all duration-300',
+        isFullScreen ? 'fixed inset-0 z-50 bg-background p-6' : 'h-[calc(100vh-6rem)]',
+      )}
+    >
+      <div
+        className={cn(
+          'flex flex-col min-w-0 transition-all duration-300',
+          isSidebarOpen ? 'w-[65%] lg:w-[70%]' : 'w-full',
+        )}
+      >
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-primary">Gerador de Minutas</h1>
@@ -1363,6 +1253,28 @@ export default function GeradorMinutas() {
               )}
               {saving ? 'Salvando...' : 'Salvar Minuta'}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsFullScreen(!isFullScreen)}
+              title={isFullScreen ? 'Sair da Tela Cheia' : 'Tela Cheia'}
+            >
+              {isFullScreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </Button>
+            {!isFullScreen && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                title={isSidebarOpen ? 'Ocultar Painel' : 'Mostrar Painel'}
+              >
+                {isSidebarOpen ? (
+                  <PanelRightClose className="w-4 h-4" />
+                ) : (
+                  <PanelRightOpen className="w-4 h-4" />
+                )}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1446,392 +1358,427 @@ export default function GeradorMinutas() {
         </div>
       </div>
 
-      <div className="w-[380px] flex flex-col gap-4">
-        <Card className="flex flex-col h-full border-border/50 shadow-sm">
-          <CardHeader className="bg-muted/30 pb-4 border-b">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Sparkles className="w-5 h-5 text-primary" />
-              Análise com IA
-            </CardTitle>
-            <CardDescription>
-              Obtenha sugestões e correções para aprimorar sua peça.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col gap-5 p-5 overflow-hidden">
-            {suggestions.length > 0 && (
-              <div className="flex flex-col gap-3 pb-4 border-b border-border animate-in fade-in slide-in-from-top-2 shrink-0">
-                <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
-                  <Sparkles className="w-5 h-5" />
-                  <span>{suggestions.length} sugestões da IA prontas</span>
-                </div>
-                <Button
-                  onClick={() => handleApplySuggestions()}
-                  disabled={
-                    applying || saving || selectedAgents.length === 0 || selectedAgents.length > 8
-                  }
-                  className="w-full bg-green-600 hover:bg-green-700 text-white shadow-sm hover:shadow-md transition-all"
-                >
-                  {applying ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-4 h-4 mr-2" />
-                  )}
-                  {applying ? 'Reescrevendo...' : 'Reescrever e Aplicar Todas'}
-                </Button>
-              </div>
-            )}
-            <ScrollArea className="flex-1 -mx-5 px-5">
-              <div className="flex flex-col gap-5 pb-2 pr-4">
-                <div className="space-y-3">
-                  <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <FolderOpen className="w-4 h-4 text-muted-foreground" /> Vincular Processo
-                  </label>
-                  <Popover open={processOpen} onOpenChange={setProcessOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={processOpen}
-                        className="w-full justify-between font-normal text-left overflow-hidden"
-                      >
-                        <span className="truncate">
-                          {selectedProcess !== 'none'
-                            ? processes.find((p) => p.id === selectedProcess)?.case_number ||
-                              'Não encontrado'
-                            : 'Pesquisar processo...'}
-                        </span>
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[330px] p-0">
-                      <Command>
-                        <CommandInput placeholder="Buscar por número ou cliente..." />
-                        <CommandList>
-                          <CommandEmpty>Nenhum processo encontrado.</CommandEmpty>
-                          <CommandGroup>
-                            <CommandItem
-                              value="none"
-                              onSelect={() => {
-                                setSelectedProcess('none')
-                                setProcessOpen(false)
-                              }}
-                            >
-                              <Check
-                                className={cn(
-                                  'mr-2 h-4 w-4',
-                                  selectedProcess === 'none' ? 'opacity-100' : 'opacity-0',
-                                )}
-                              />
-                              Sem vínculo (Avulso)
-                            </CommandItem>
-                            {processes.map((p) => (
-                              <CommandItem
-                                key={p.id}
-                                value={`${p.case_number} ${p.client_name}`}
-                                onSelect={() => {
-                                  setSelectedProcess(p.id)
-                                  setProcessOpen(false)
-                                }}
-                              >
-                                <Check
-                                  className={cn(
-                                    'mr-2 h-4 w-4',
-                                    selectedProcess === p.id ? 'opacity-100' : 'opacity-0',
-                                  )}
-                                />
-                                <div className="flex flex-col overflow-hidden">
-                                  <span className="truncate font-medium">{p.case_number}</span>
-                                  <span className="truncate text-xs text-muted-foreground">
-                                    {p.client_name}
-                                  </span>
-                                </div>
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-sm font-semibold text-foreground">Tipo de Minuta</label>
-                  <Select value={minuteType} onValueChange={setMinuteType}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MINUTE_TYPES.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Accordion
-                  type="single"
-                  collapsible
-                  className="w-full bg-muted/20 border rounded-md"
-                >
-                  <AccordionItem value="metadata" className="border-b-0 px-3">
-                    <AccordionTrigger className="text-sm font-semibold py-3 hover:no-underline">
-                      Metadados da Minuta
-                    </AccordionTrigger>
-                    <AccordionContent className="space-y-3 pt-1 pb-3">
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Cliente</label>
-                        <Input
-                          className="h-8"
-                          placeholder="Nome do cliente..."
-                          value={clientName}
-                          onChange={(e) => setClientName(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Comarca</label>
-                        <Input
-                          className="h-8"
-                          placeholder="Ex: São Paulo/SP"
-                          value={comarca}
-                          onChange={(e) => setComarca(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Objeto</label>
-                        <Input
-                          className="h-8"
-                          placeholder="Ex: Indenização"
-                          value={objeto}
-                          onChange={(e) => setObjeto(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Pedido / Valor</label>
-                        <Input
-                          className="h-8"
-                          placeholder="Ex: R$ 10.000,00"
-                          value={pedido}
-                          onChange={(e) => setPedido(e.target.value)}
-                        />
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
-
-                {lawyers.length > 0 && (
-                  <div className="space-y-3">
-                    <label className="text-sm font-semibold text-foreground">
-                      Advogado Responsável
-                    </label>
-                    <Select value={selectedLawyer} onValueChange={setSelectedLawyer}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Selecione o advogado..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Nenhum / Não informar</SelectItem>
-                        {lawyers.map((l) => (
-                          <SelectItem key={l.id} value={l.id}>
-                            {l.full_name} ({l.oab_number})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-semibold text-foreground">Agentes de IA</label>
-                    <span
-                      className={cn(
-                        'text-xs font-medium',
-                        selectedAgents.length > 8 ? 'text-destructive' : 'text-muted-foreground',
-                      )}
-                    >
-                      {selectedAgents.length} de 8 agentes selecionados
-                    </span>
-                  </div>
-                  <Popover open={agentOpen} onOpenChange={setAgentOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={agentOpen}
-                        className={cn(
-                          'w-full justify-between font-normal',
-                          selectedAgents.length > 8 && 'border-destructive ring-destructive',
-                        )}
-                      >
-                        <span className="truncate">
-                          {selectedAgents.length > 0
-                            ? `${selectedAgents.length} selecionado(s)`
-                            : 'Selecione agentes...'}
-                        </span>
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[330px] p-0">
-                      <Command>
-                        <CommandInput placeholder="Buscar agente..." />
-                        <CommandList>
-                          <CommandEmpty>Nenhum agente encontrado.</CommandEmpty>
-                          <CommandGroup>
-                            {agents.map((a) => (
-                              <CommandItem
-                                key={a.id}
-                                value={a.name}
-                                onSelect={() => toggleAgent(a.id)}
-                                className="flex flex-col items-start py-2"
-                              >
-                                <div className="flex items-center w-full">
-                                  <Check
-                                    className={cn(
-                                      'mr-2 h-4 w-4 shrink-0',
-                                      selectedAgents.includes(a.id) ? 'opacity-100' : 'opacity-0',
-                                    )}
-                                  />
-                                  <span className="font-medium truncate">{a.name}</span>
-                                </div>
-                                {(a.descricao || a.description) && (
-                                  <span className="text-xs text-muted-foreground ml-6 mt-0.5 line-clamp-2 leading-tight">
-                                    {a.descricao || a.description}
-                                  </span>
-                                )}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-
-                  {selectedAgents.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {selectedAgents.map((id) => {
-                        const agent = agents.find((a) => a.id === id)
-                        return agent ? (
-                          <Badge
-                            key={id}
-                            variant="secondary"
-                            className="flex items-center gap-1 font-normal bg-primary/10 text-primary hover:bg-primary/20"
-                          >
-                            {agent.name}{' '}
-                            <X
-                              className="w-3 h-3 cursor-pointer opacity-70 hover:opacity-100"
-                              onClick={() => toggleAgent(id)}
-                            />
-                          </Badge>
-                        ) : null
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <Upload className="w-4 h-4 text-muted-foreground" /> Anexar Documentos de Base
-                  </label>
-                  <div className="border-2 border-dashed border-border rounded-md p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors relative">
-                    <input
-                      type="file"
-                      multiple
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      onChange={handleFileUpload}
-                      disabled={uploading}
-                      accept=".pdf,.txt,.doc,.docx"
-                    />
-                    {uploading ? (
-                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                        <Loader2 className="w-6 h-6 animate-spin" />{' '}
-                        <span className="text-sm">Processando anexo...</span>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                        <FileText className="w-6 h-6" />{' '}
-                        <span className="text-sm text-balance">
-                          Clique ou arraste arquivos para contexto da IA
-                        </span>
-                      </div>
+      {!isFullScreen && isSidebarOpen && (
+        <div className="w-[35%] lg:w-[30%] flex flex-col gap-4 shrink-0 transition-all duration-300">
+          <Card className="flex flex-col h-full border-border/50 shadow-sm overflow-hidden">
+            <CardHeader className="bg-muted/30 pb-3 pt-3 border-b px-4">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="w-full grid grid-cols-2">
+                  <TabsTrigger value="config">Configuração</TabsTrigger>
+                  <TabsTrigger value="ai" className="relative">
+                    Sugestões IA
+                    {suggestions.length > 0 && (
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                     )}
-                  </div>
-                  {attachments.length > 0 && (
-                    <div className="flex flex-col gap-2 mt-2">
-                      {attachments.map((file, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center justify-between bg-muted/40 p-2 rounded text-sm border border-border/50"
-                        >
-                          <span className="truncate flex-1 mr-2" title={file.name}>
-                            {file.name}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 shrink-0"
-                            onClick={() => removeAttachment(file.path)}
-                          >
-                            <X className="w-4 h-4 text-muted-foreground hover:text-destructive" />
-                          </Button>
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </CardHeader>
+            <CardContent className="flex-1 flex flex-col p-0 overflow-hidden bg-background">
+              <Tabs
+                value={activeTab}
+                onValueChange={setActiveTab}
+                className="w-full h-full flex flex-col"
+              >
+                <TabsContent
+                  value="config"
+                  className="flex-1 h-full overflow-hidden m-0 data-[state=active]:flex flex-col p-4 pt-4"
+                >
+                  <ScrollArea className="flex-1 pr-3 -mr-3">
+                    <div className="flex flex-col gap-5 pb-2">
+                      <div className="space-y-3">
+                        <label className="text-sm font-semibold text-foreground flex items-center gap-2">
+                          <FolderOpen className="w-4 h-4 text-muted-foreground" /> Vincular Processo
+                        </label>
+                        <Popover open={processOpen} onOpenChange={setProcessOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={processOpen}
+                              className="w-full justify-between font-normal text-left overflow-hidden"
+                            >
+                              <span className="truncate">
+                                {selectedProcess !== 'none'
+                                  ? processes.find((p) => p.id === selectedProcess)?.case_number ||
+                                    'Não encontrado'
+                                  : 'Pesquisar processo...'}
+                              </span>
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[330px] p-0">
+                            <Command>
+                              <CommandInput placeholder="Buscar por número ou cliente..." />
+                              <CommandList>
+                                <CommandEmpty>Nenhum processo encontrado.</CommandEmpty>
+                                <CommandGroup>
+                                  <CommandItem
+                                    value="none"
+                                    onSelect={() => {
+                                      setSelectedProcess('none')
+                                      setProcessOpen(false)
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        'mr-2 h-4 w-4',
+                                        selectedProcess === 'none' ? 'opacity-100' : 'opacity-0',
+                                      )}
+                                    />
+                                    Sem vínculo (Avulso)
+                                  </CommandItem>
+                                  {processes.map((p) => (
+                                    <CommandItem
+                                      key={p.id}
+                                      value={`${p.case_number} ${p.client_name}`}
+                                      onSelect={() => {
+                                        setSelectedProcess(p.id)
+                                        setProcessOpen(false)
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          'mr-2 h-4 w-4',
+                                          selectedProcess === p.id ? 'opacity-100' : 'opacity-0',
+                                        )}
+                                      />
+                                      <div className="flex flex-col overflow-hidden">
+                                        <span className="truncate font-medium">
+                                          {p.case_number}
+                                        </span>
+                                        <span className="truncate text-xs text-muted-foreground">
+                                          {p.client_name}
+                                        </span>
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+
+                      <div className="space-y-3">
+                        <label className="text-sm font-semibold text-foreground">
+                          Tipo de Minuta
+                        </label>
+                        <Select value={minuteType} onValueChange={setMinuteType}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Selecione..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {MINUTE_TYPES.map((type) => (
+                              <SelectItem key={type} value={type}>
+                                {type}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <Accordion
+                        type="single"
+                        collapsible
+                        className="w-full bg-muted/20 border rounded-md"
+                      >
+                        <AccordionItem value="metadata" className="border-b-0 px-3">
+                          <AccordionTrigger className="text-sm font-semibold py-3 hover:no-underline">
+                            Metadados da Minuta
+                          </AccordionTrigger>
+                          <AccordionContent className="space-y-3 pt-1 pb-3">
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium">Cliente</label>
+                              <Input
+                                className="h-8"
+                                placeholder="Nome do cliente..."
+                                value={clientName}
+                                onChange={(e) => setClientName(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium">Comarca</label>
+                              <Input
+                                className="h-8"
+                                placeholder="Ex: São Paulo/SP"
+                                value={comarca}
+                                onChange={(e) => setComarca(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium">Objeto</label>
+                              <Input
+                                className="h-8"
+                                placeholder="Ex: Indenização"
+                                value={objeto}
+                                onChange={(e) => setObjeto(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium">Pedido / Valor</label>
+                              <Input
+                                className="h-8"
+                                placeholder="Ex: R$ 10.000,00"
+                                value={pedido}
+                                onChange={(e) => setPedido(e.target.value)}
+                              />
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
+
+                      {lawyers.length > 0 && (
+                        <div className="space-y-3">
+                          <label className="text-sm font-semibold text-foreground">
+                            Advogado Responsável
+                          </label>
+                          <Select value={selectedLawyer} onValueChange={setSelectedLawyer}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Selecione o advogado..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nenhum / Não informar</SelectItem>
+                              {lawyers.map((l) => (
+                                <SelectItem key={l.id} value={l.id}>
+                                  {l.full_name} ({l.oab_number})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
-                      ))}
+                      )}
+
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <label className="text-sm font-semibold text-foreground">
+                            Agentes de IA
+                          </label>
+                          <span
+                            className={cn(
+                              'text-xs font-medium',
+                              selectedAgents.length > 8
+                                ? 'text-destructive'
+                                : 'text-muted-foreground',
+                            )}
+                          >
+                            {selectedAgents.length} de 8 agentes selecionados
+                          </span>
+                        </div>
+                        <Popover open={agentOpen} onOpenChange={setAgentOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={agentOpen}
+                              className={cn(
+                                'w-full justify-between font-normal',
+                                selectedAgents.length > 8 && 'border-destructive ring-destructive',
+                              )}
+                            >
+                              <span className="truncate">
+                                {selectedAgents.length > 0
+                                  ? `${selectedAgents.length} selecionado(s)`
+                                  : 'Selecione agentes...'}
+                              </span>
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[330px] p-0">
+                            <Command>
+                              <CommandInput placeholder="Buscar agente..." />
+                              <CommandList>
+                                <CommandEmpty>Nenhum agente encontrado.</CommandEmpty>
+                                <CommandGroup>
+                                  {agents.map((a) => (
+                                    <CommandItem
+                                      key={a.id}
+                                      value={a.name}
+                                      onSelect={() => toggleAgent(a.id)}
+                                      className="flex flex-col items-start py-2"
+                                    >
+                                      <div className="flex items-center w-full">
+                                        <Check
+                                          className={cn(
+                                            'mr-2 h-4 w-4 shrink-0',
+                                            selectedAgents.includes(a.id)
+                                              ? 'opacity-100'
+                                              : 'opacity-0',
+                                          )}
+                                        />
+                                        <span className="font-medium truncate">{a.name}</span>
+                                      </div>
+                                      {(a.descricao || a.description) && (
+                                        <span className="text-xs text-muted-foreground ml-6 mt-0.5 line-clamp-2 leading-tight">
+                                          {a.descricao || a.description}
+                                        </span>
+                                      )}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+
+                        {selectedAgents.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {selectedAgents.map((id) => {
+                              const agent = agents.find((a) => a.id === id)
+                              return agent ? (
+                                <Badge
+                                  key={id}
+                                  variant="secondary"
+                                  className="flex items-center gap-1 font-normal bg-primary/10 text-primary hover:bg-primary/20"
+                                >
+                                  {agent.name}{' '}
+                                  <X
+                                    className="w-3 h-3 cursor-pointer opacity-70 hover:opacity-100"
+                                    onClick={() => toggleAgent(id)}
+                                  />
+                                </Badge>
+                              ) : null
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <label className="text-sm font-semibold text-foreground flex items-center gap-2">
+                          <Upload className="w-4 h-4 text-muted-foreground" /> Anexar Documentos de
+                          Base
+                        </label>
+                        <div className="border-2 border-dashed border-border rounded-md p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors relative">
+                          <input
+                            type="file"
+                            multiple
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            onChange={handleFileUpload}
+                            disabled={uploading}
+                            accept=".pdf,.txt,.doc,.docx"
+                          />
+                          {uploading ? (
+                            <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                              <Loader2 className="w-6 h-6 animate-spin" />{' '}
+                              <span className="text-sm">Processando anexo...</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                              <FileText className="w-6 h-6" />{' '}
+                              <span className="text-sm text-balance">
+                                Clique ou arraste arquivos para contexto da IA
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {attachments.length > 0 && (
+                          <div className="flex flex-col gap-2 mt-2">
+                            {attachments.map((file, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center justify-between bg-muted/40 p-2 rounded text-sm border border-border/50"
+                              >
+                                <span className="truncate flex-1 mr-2" title={file.name}>
+                                  {file.name}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 shrink-0"
+                                  onClick={() => removeAttachment(file.path)}
+                                >
+                                  <X className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </ScrollArea>
+                  <div className="pt-4 border-t border-border/50 mt-auto">
+                    <Button
+                      onClick={handleAnalyze}
+                      disabled={
+                        loading ||
+                        applying ||
+                        saving ||
+                        selectedAgents.length === 0 ||
+                        selectedAgents.length > 8
+                      }
+                      className="w-full shrink-0 shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      {loading ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Wand2 className="w-4 h-4 mr-2" />
+                      )}
+                      {loading ? 'Processando Documento...' : 'Analisar com IA'}
+                    </Button>
+                  </div>
+                </TabsContent>
+
+                <TabsContent
+                  value="ai"
+                  className="flex-1 h-full overflow-hidden m-0 data-[state=active]:flex flex-col p-4 pt-4"
+                >
+                  {suggestions.length > 0 && (
+                    <div className="flex flex-col gap-3 pb-4 border-b border-border animate-in fade-in slide-in-from-top-2 shrink-0">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
+                        <Sparkles className="w-5 h-5" />
+                        <span>{suggestions.length} sugestões da IA prontas</span>
+                      </div>
+                      <Button
+                        onClick={() => handleApplySuggestions()}
+                        disabled={
+                          applying ||
+                          saving ||
+                          selectedAgents.length === 0 ||
+                          selectedAgents.length > 8
+                        }
+                        className="w-full bg-green-600 hover:bg-green-700 text-white shadow-sm hover:shadow-md transition-all"
+                      >
+                        {applying ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4 mr-2" />
+                        )}
+                        {applying ? 'Reescrevendo...' : 'Reescrever e Aplicar Todas'}
+                      </Button>
                     </div>
                   )}
-                </div>
-
-                {suggestions.length > 0 && (
-                  <div
-                    ref={suggestionsRef}
-                    className="flex flex-col gap-4 mt-2 pt-4 border-t border-border scroll-mt-4"
-                  >
-                    <h3 className="font-semibold text-sm flex items-center gap-2">
-                      <Check className="w-4 h-4 text-green-600" /> Sugestões Identificadas:
-                    </h3>
-                    <div className="space-y-3">
-                      {suggestions.map((s, i) => (
-                        <div
-                          key={i}
-                          className="bg-primary/5 border border-primary/10 p-3 rounded-md text-sm text-foreground/90 shadow-sm leading-relaxed"
-                        >
-                          {s}
+                  <ScrollArea className="flex-1 pr-3 -mr-3 mt-2">
+                    <div className="flex flex-col gap-5 pb-2">
+                      {suggestions.length > 0 ? (
+                        <div ref={suggestionsRef} className="flex flex-col gap-4 scroll-mt-4">
+                          <div className="space-y-3">
+                            {suggestions.map((s, i) => (
+                              <div
+                                key={i}
+                                className="bg-primary/5 border border-primary/10 p-3 rounded-md text-sm text-foreground/90 shadow-sm leading-relaxed"
+                              >
+                                {s}
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      ))}
+                      ) : (
+                        <div className="flex items-center justify-center text-center px-4 pt-10">
+                          <p className="text-sm text-muted-foreground">
+                            {loading
+                              ? 'Analisando...'
+                              : 'Nenhuma sugestão ainda. Anexe documentos e analise na aba de configuração.'}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
-
-                {suggestions.length === 0 && !loading && (
-                  <div className="flex items-center justify-center text-center px-4 pt-4 border-t border-border">
-                    <p className="text-sm text-muted-foreground">
-                      Anexe documentos e clique abaixo para o Agente analisar ou reescrever a peça.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-
-            <Button
-              onClick={handleAnalyze}
-              disabled={
-                loading ||
-                applying ||
-                saving ||
-                selectedAgents.length === 0 ||
-                selectedAgents.length > 8
-              }
-              className="w-full shrink-0 shadow-sm hover:shadow-md transition-shadow"
-            >
-              {loading ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Wand2 className="w-4 h-4 mr-2" />
-              )}
-              {loading ? 'Processando Documento...' : 'Analisar com IA'}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
