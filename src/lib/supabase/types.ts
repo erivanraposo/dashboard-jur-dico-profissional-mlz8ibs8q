@@ -820,11 +820,23 @@ export const Constants = {
 //     USING: true
 //     WITH CHECK: true
 // Table: profiles
+//   Policy "authenticated_insert_profiles" (INSERT, PERMISSIVE) roles={authenticated}
+//     WITH CHECK: (id = auth.uid())
 //   Policy "authenticated_select_profiles" (SELECT, PERMISSIVE) roles={authenticated}
 //     USING: true
+//   Policy "authenticated_update_profiles" (UPDATE, PERMISSIVE) roles={authenticated}
+//     USING: (id = auth.uid())
+//     WITH CHECK: (id = auth.uid())
 // Table: workspaces
+//   Policy "authenticated_delete_workspaces" (DELETE, PERMISSIVE) roles={authenticated}
+//     USING: true
+//   Policy "authenticated_insert_workspaces" (INSERT, PERMISSIVE) roles={authenticated}
+//     WITH CHECK: true
 //   Policy "authenticated_select_workspaces" (SELECT, PERMISSIVE) roles={authenticated}
-//     USING: (EXISTS ( SELECT 1    FROM profiles   WHERE ((profiles.workspace_id = workspaces.id) AND (profiles.id = auth.uid()))))
+//     USING: true
+//   Policy "authenticated_update_workspaces" (UPDATE, PERMISSIVE) roles={authenticated}
+//     USING: true
+//     WITH CHECK: true
 
 // --- DATABASE FUNCTIONS ---
 // FUNCTION get_agent_ranking(timestamp with time zone, timestamp with time zone)
