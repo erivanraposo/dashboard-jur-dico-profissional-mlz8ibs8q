@@ -25,10 +25,41 @@ import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase/client'
 import { Link } from 'react-router-dom'
 import { Skeleton } from '@/components/ui/skeleton'
-import { format, subDays, parseISO } from 'date-fns'
+import { format, subDays, parseISO, isValid } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import React, { Component, ErrorInfo, ReactNode } from 'react'
 
-export default function Index() {
+class DashboardErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Dashboard Error:', error, errorInfo)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center space-y-4">
+          <AlertCircle className="h-12 w-12 text-destructive" />
+          <h2 className="text-2xl font-bold">Erro ao carregar o Dashboard</h2>
+          <p className="text-muted-foreground max-w-md">
+            Ocorreu um problema inesperado ao carregar os dados. Nossa equipe já foi notificada.
+          </p>
+          <Button onClick={() => window.location.reload()} variant="outline">
+            Tentar Novamente
+          </Button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+function DashboardContent() {
   const [stats, setStats] = useState({
     processes: 0,
     agents: 0,
@@ -50,7 +81,7 @@ export default function Index() {
         const endDate = new Date().toISOString()
         const startDate = subDays(new Date(), 30).toISOString()
 
-        const results = await Promise.all([
+        const promises = [
           supabase.from('processes').select('*', { count: 'exact', head: true }),
           supabase
             .from('agentes')
@@ -68,23 +99,35 @@ export default function Index() {
           user
             ? supabase.from('profiles').select('*').eq('id', user.id).single()
             : Promise.resolve({ data: null }),
-        ])
+        ]
 
-        const processesCount = results[0].count || 0
-        const agentsCount = results[1].count || 0
-        const invocationsCount = results[2].count || 0
-        const custosData = results[3].data || []
-        const dailyConsumption = results[4].data || []
-        const recentInvocations = results[5].data || []
-        const agentRanking = results[6].data || []
-        const profileData = results[7].data || null
+        const results = await Promise.allSettled(promises)
+
+        const getRes = (idx: number): any => {
+          const r = results[idx]
+          if (r.status === 'fulfilled') {
+            if (r.value?.error) console.error(`Supabase Query ${idx} Error:`, r.value.error)
+            return r.value || { data: null, count: 0 }
+          }
+          console.error(`Promise ${idx} rejected:`, r.reason)
+          return { data: null, count: 0 }
+        }
+
+        const processesCount = getRes(0).count || 0
+        const agentsCount = getRes(1).count || 0
+        const invocationsCount = getRes(2).count || 0
+        const custosData = getRes(3).data || []
+        const dailyConsumption = getRes(4).data || []
+        const recentInvocations = getRes(5).data || []
+        const agentRanking = getRes(6).data || []
+        const profileData = getRes(7).data || null
 
         if (profileData) {
           setProfile(profileData)
         }
 
-        const totalCost = custosData.reduce(
-          (acc: number, curr: any) => acc + (curr.estimated_cost || 0),
+        const totalCost = (Array.isArray(custosData) ? custosData : []).reduce(
+          (acc: number, curr: any) => acc + (Number(curr?.estimated_cost) || 0),
           0,
         )
 
@@ -96,10 +139,23 @@ export default function Index() {
         })
 
         if (dailyConsumption && Array.isArray(dailyConsumption)) {
-          const formattedDaily = dailyConsumption.map((d: any) => ({
-            ...d,
-            displayDate: d.date ? format(parseISO(d.date), 'dd/MM', { locale: ptBR }) : '',
-          }))
+          const formattedDaily = dailyConsumption.map((d: any) => {
+            let parsedDate = ''
+            if (d?.date) {
+              try {
+                const parsed = parseISO(d.date)
+                if (isValid(parsed)) {
+                  parsedDate = format(parsed, 'dd/MM', { locale: ptBR })
+                }
+              } catch (e) {
+                // Ignorar erro de formatação de data individual
+              }
+            }
+            return {
+              ...d,
+              displayDate: parsedDate,
+            }
+          })
           setDailyData(formattedDaily)
         }
 
@@ -163,7 +219,7 @@ export default function Index() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Bem-vindo(a){profile?.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''}!
+            Bem-vindo(a){profile?.full_name ? `, ${String(profile.full_name).split(' ')[0]}` : ''}!
           </h1>
           <p className="text-muted-foreground mt-1">
             Dashboard Geral - Visão completa das suas atividades e consumo de IA.
@@ -410,9 +466,15 @@ export default function Index() {
                         </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
-                        {act?.created_at
-                          ? format(new Date(act.created_at), 'dd/MM/yyyy HH:mm')
-                          : '-'}
+                        {(() => {
+                          if (!act?.created_at) return '-'
+                          try {
+                            const d = new Date(act.created_at)
+                            return isValid(d) ? format(d, 'dd/MM/yyyy HH:mm') : '-'
+                          } catch (e) {
+                            return '-'
+                          }
+                        })()}
                       </TableCell>
                       <TableCell className="text-right text-sm">
                         {new Intl.NumberFormat('en-US', {
@@ -434,5 +496,13 @@ export default function Index() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function Index() {
+  return (
+    <DashboardErrorBoundary>
+      <DashboardContent />
+    </DashboardErrorBoundary>
   )
 }
