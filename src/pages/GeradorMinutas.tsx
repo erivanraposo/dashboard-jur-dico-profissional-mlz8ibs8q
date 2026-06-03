@@ -45,8 +45,6 @@ import {
 } from '@/components/ui/accordion'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-// @ts-expect-error
-import HTMLtoDOCX from 'html-to-docx'
 import { Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from 'lucide-react'
 
 const MINUTE_TYPES = [
@@ -1115,25 +1113,28 @@ export default function GeradorMinutas() {
 
       toast({ title: 'Processando', description: 'Gerando o arquivo DOCX...' })
 
-      const fileBuffer = await HTMLtoDOCX(htmlString, null, {
-        table: { row: { cantSplit: true } },
-        footer: true,
-        pageNumber: true,
-      })
+      const docxHtml = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head><meta charset='utf-8'><title>${min.title || 'Documento Jurídico'}</title></head>
+        <body>
+          ${htmlString}
+        </body>
+        </html>
+      `
 
-      const blob = new Blob([fileBuffer], {
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      const blob = new Blob(['\ufeff', docxHtml], {
+        type: 'application/msword',
       })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${min.title || 'documento'}.docx`
+      link.download = `${min.title || 'documento'}.doc`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
 
-      toast({ title: 'Sucesso', description: 'Download do DOCX concluído.' })
+      toast({ title: 'Sucesso', description: 'Download do documento concluído.' })
     } catch (err: any) {
       toast({ title: 'Erro ao gerar DOCX', description: err.message, variant: 'destructive' })
     }
