@@ -1049,8 +1049,16 @@ export default function GeradorMinutas() {
         <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 15mm 10mm; color: black; max-width: 100%; overflow: hidden;">
           <style>
             table { table-layout: fixed; width: 100%; border-collapse: collapse; word-wrap: break-word; overflow-wrap: break-word; hyphens: auto; }
-            td, th { font-size: 9pt; padding: 4px; border: 1px solid black; word-break: break-word; }
-            img { max-width: 100%; height: auto; }
+            th, td { font-size: 9pt; padding: 6px; border: 1px solid #000; word-break: break-word; vertical-align: top; }
+            thead { display: table-header-group; }
+            tfoot { display: table-footer-group; }
+            tr { page-break-inside: avoid; break-inside: avoid; }
+            h1, h2, h3, h4, h5, h6 { page-break-after: avoid; break-after: avoid-page; page-break-inside: avoid; break-inside: avoid; }
+            h1 + *, h2 + *, h3 + *, h4 + * { page-break-before: avoid; break-before: avoid-page; }
+            p { orphans: 3; widows: 3; }
+            blockquote, .callout, .box, .quote-box, figure, pre { page-break-inside: avoid; break-inside: avoid; }
+            div[style*="background"], div[style*="background-color"] { page-break-inside: avoid; break-inside: avoid; }
+            img { max-width: 100%; height: auto; page-break-inside: avoid; break-inside: avoid; }
             .column-resize-handle, .selectedCell, .resize-cursor, .grip-row, .grip-column { display: none !important; }
           </style>
           ${headerHTML}
@@ -1109,12 +1117,15 @@ export default function GeradorMinutas() {
       })
 
       const opt = {
-        margin: [20, 20, 25, 20],
+        margin: [25, 20, 30, 20],
         filename: `${min.title || 'documento'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+        html2canvas: { scale: 2, useCORS: true, letterRendering: true, windowWidth: 1200 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-        pagebreak: { mode: ['css', 'legacy'] },
+        pagebreak: {
+          mode: ['css', 'legacy'],
+          avoid: ['tr', 'h1', 'h2', 'h3', 'h4', 'blockquote', '.callout', '.box', 'figure'],
+        },
       }
 
       toast({ title: 'Processando', description: 'Gerando o arquivo PDF...' })
