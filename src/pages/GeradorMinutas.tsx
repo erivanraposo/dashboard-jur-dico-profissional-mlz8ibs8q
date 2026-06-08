@@ -1022,30 +1022,31 @@ export default function GeradorMinutas() {
       const proc = min.processes as any
       const contentHasCover = /class=["']cover-page["']/i.test(min.content)
 
+      const hasProcData =
+        proc?.case_number || min.client_name || min.comarca || min.objeto || min.pedido
+      const procHeader = hasProcData
+        ? `
+          <div style="margin: 0 0 1.5em 0; padding: 8px 12px; border: 1px solid #ccc; background: #fafafa; font-size: 10pt; line-height: 1.4;">
+            ${proc?.case_number ? `<div style="margin-bottom: 4px;"><strong>Processo nº:</strong> ${proc.case_number}</div>` : ''}
+            ${min.client_name ? `<div style="margin-bottom: 4px;"><strong>Cliente:</strong> ${min.client_name}</div>` : ''}
+            ${min.comarca ? `<div style="margin-bottom: 4px;"><strong>Comarca:</strong> ${min.comarca}</div>` : ''}
+            ${min.objeto ? `<div style="margin-bottom: 4px;"><strong>Objeto:</strong> ${min.objeto}</div>` : ''}
+            ${min.pedido ? `<div style="margin-bottom: 4px;"><strong>Pedido/Valor:</strong> ${min.pedido}</div>` : ''}
+          </div>
+        `
+        : ''
+
       let headerHTML = ''
       if (!contentHasCover) {
         headerHTML = `
           <div style="text-align: center; margin-bottom: 2em;">
-            <h1 style="text-transform: uppercase; font-size: 14pt; font-weight: bold;">${min.title || 'Documento Jurídico'}</h1>
-            ${proc?.case_number ? `<h2 style="font-size: 12pt; font-weight: bold;">Processo Nº ${proc.case_number}</h2>` : ''}
+            <h1 style="text-transform: uppercase; font-size: 14pt; font-weight: bold; margin: 0;">${min.title || 'Documento Jurídico'}</h1>
           </div>
-          ${
-            min.client_name || min.comarca || min.objeto || min.pedido
-              ? `
-          <div style="margin-bottom: 2em; border-bottom: 2px solid black; padding-bottom: 1em; font-size: 10pt;">
-            ${min.client_name ? `<p style="margin:0; text-indent:0;"><strong>Cliente:</strong> ${min.client_name}</p>` : ''}
-            ${min.comarca ? `<p style="margin:0; text-indent:0;"><strong>Comarca:</strong> ${min.comarca}</p>` : ''}
-            ${min.objeto ? `<p style="margin:0; text-indent:0;"><strong>Objeto:</strong> ${min.objeto}</p>` : ''}
-            ${min.pedido ? `<p style="margin:0; text-indent:0;"><strong>Pedido/Valor:</strong> ${min.pedido}</p>` : ''}
-          </div>
-          `
-              : ''
-          }
         `
       }
 
       const htmlContent = `
-        <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 10mm; color: black; max-width: 100%; overflow: hidden;">
+        <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 15mm 10mm; color: black; max-width: 100%; overflow: hidden;">
           <style>
             table { table-layout: fixed; width: 100%; border-collapse: collapse; word-wrap: break-word; overflow-wrap: break-word; hyphens: auto; }
             td, th { font-size: 9pt; padding: 4px; border: 1px solid black; word-break: break-word; }
@@ -1053,6 +1054,7 @@ export default function GeradorMinutas() {
             .column-resize-handle, .selectedCell, .resize-cursor, .grip-row, .grip-column { display: none !important; }
           </style>
           ${headerHTML}
+          ${procHeader}
           <div style="text-align: justify; text-indent: 2em;">
             ${min.content}
           </div>
