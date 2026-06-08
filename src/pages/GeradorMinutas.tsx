@@ -281,9 +281,14 @@ export default function GeradorMinutas() {
       const invocation_id = crypto.randomUUID()
       const processCtx = getProcessContext()
 
+      const hasValidContent = content && content.trim().length >= 10 && content !== defaultContent
+      const payloadContent = hasValidContent
+        ? content
+        : `<p>Solicitação de análise de documentos anexados. Tipo de minuta: ${minuteType}.</p>`
+
       const bodyPayload: any = {
         invocation_id,
-        content,
+        content: payloadContent,
         agent_ids: selectedAgents,
         action: 'analyze',
         minute_type: minuteType,
