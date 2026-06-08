@@ -25,6 +25,7 @@ import {
   Download,
   LayoutTemplate,
   Plus,
+  Trash2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -1250,13 +1251,15 @@ export default function GeradorMinutas() {
   }
 
   useEffect(() => {
-    if (
-      minuteType === 'Relatório de Caso' &&
-      (content === defaultContent || content.trim() === '')
-    ) {
-      handleApplyTemplate()
+    if (minuteType && content.includes('class="cover-page"')) {
+      toast({
+        title: 'Editor contém um template antigo',
+        description:
+          "O conteúdo no editor é de um tipo de minuta anterior. Clique em 'Limpar Editor' antes de gerar a nova minuta para evitar duplicação de capa.",
+      })
     }
-  }, [minuteType, selectedProcess, clientName])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minuteType])
 
   return (
     <div
@@ -1297,6 +1300,26 @@ export default function GeradorMinutas() {
               className="bg-green-600 hover:bg-green-700 text-white border-none"
             >
               <Plus className="w-4 h-4 mr-2" /> Nova Minuta
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (window.confirm('Descartar o conteúdo atual do editor e começar do zero?')) {
+                  setContent(defaultContent)
+                  localStorage.removeItem('lexcontrol_gerador_draft')
+                  setMinuteId(null)
+                  setSuggestions([])
+                  toast({
+                    title: 'Editor limpo',
+                    description: 'Você pode começar uma nova minuta agora.',
+                  })
+                }
+              }}
+              disabled={content === defaultContent || saving || applying || loading}
+              className="text-muted-foreground"
+            >
+              <Trash2 className="w-4 h-4 mr-2" /> Limpar Editor
             </Button>
             {content !== defaultContent && content.trim() !== '' && (
               <>
