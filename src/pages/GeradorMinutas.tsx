@@ -658,37 +658,8 @@ export default function GeradorMinutas() {
         )
       }
 
-      if (minuteType === 'Relatório de Caso' && !isResume && retryCount === 0) {
-        const proc = processes.find((p) => p.id === selectedProcess)
-        const processStr = proc ? `Processo nº ${proc.case_number}` : 'Processo nº [NÚMERO]'
-        const clientStr = clientName || (proc ? proc.client_name : '[NOME DO CLIENTE]')
-
-        const templateHead = `
-          <div class="cover-page" style="text-align: center; margin-top: 100px; margin-bottom: 200px;">
-            <h1 style="color: #1E40AF; font-size: 36px; font-weight: bold; margin-bottom: 20px;">Relatório de Caso Jurídico</h1>
-            <h2 style="color: #334155; font-size: 24px; margin-bottom: 10px;">${processStr}</h2>
-            <h3 style="color: #64748b; font-size: 20px;">Cliente: ${clientStr}</h3>
-            <div style="margin-top: 60px; padding-top: 20px; border-top: 2px solid #e2e8f0; display: inline-block; color: #94a3b8; font-weight: 500;">
-              LexControl - Inteligência Jurídica
-            </div>
-          </div>
-          <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
-          <div class="table-of-contents" style="margin-bottom: 30px;">
-            <h2 style="color: #1E40AF; border-bottom: 2px solid #1E40AF; padding-bottom: 10px; margin-bottom: 20px; font-weight: bold;">Sumário</h2>
-            <ul style="list-style-type: none; padding-left: 0; line-height: 2; font-size: 18px; color: #334155;">
-              <li><span style="font-weight: bold;">1.</span> Situação Atual</li>
-              <li><span style="font-weight: bold;">2.</span> Problemas Identificados</li>
-              <li><span style="font-weight: bold;">3.</span> Soluções e Estratégias</li>
-              <li><span style="font-weight: bold;">4.</span> Próximos Passos</li>
-            </ul>
-          </div>
-          <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
-          <div class="report-content" style="font-family: inherit;">
-        `
-        revised_content = templateHead + revised_content + '</div>'
-        setContent(revised_content)
-        localStorage.setItem('lexcontrol_gerador_draft', revised_content)
-      }
+      setContent(revised_content)
+      localStorage.setItem('lexcontrol_gerador_draft', revised_content)
 
       setSuggestions([])
 
@@ -1075,25 +1046,49 @@ export default function GeradorMinutas() {
       const element = document.createElement('div')
       element.innerHTML = htmlContent
 
-      let maxCols = 0
-      element.querySelectorAll('tr').forEach((tr) => {
-        const cols = tr.querySelectorAll('td, th').length
-        if (cols > maxCols) maxCols = cols
-      })
-      const orientation = maxCols > 6 ? 'landscape' : 'portrait'
-
       const opt = {
         margin: [35, 15, 35, 15],
         filename: `${min.title || 'documento'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: orientation },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
       }
 
       toast({ title: 'Processando', description: 'Gerando o arquivo PDF...' })
-      await (window as any).html2pdf().set(opt).from(element).save()
-      toast({ title: 'Sucesso', description: 'Download do PDF concluído.' })
+
+      const styleEl = document.createElement('style')
+      styleEl.innerHTML = `
+        @media print {
+          p, li, td, th {
+            orphans: 3;
+            widows: 3;
+            page-break-inside: avoid;
+          }
+          table {
+            table-layout: auto !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            border-collapse: collapse !important;
+            font-size: 9pt !important;
+          }
+          th, td {
+            padding: 3px 5px !important;
+            word-wrap: break-word !important;
+            vertical-align: top !important;
+          }
+        }
+      `
+      document.head.appendChild(styleEl)
+
+      try {
+        await (window as any).html2pdf().set(opt).from(element).save()
+        toast({ title: 'Sucesso', description: 'Download do PDF concluído.' })
+      } finally {
+        if (styleEl && styleEl.parentNode) {
+          styleEl.parentNode.removeChild(styleEl)
+        }
+      }
     } catch (err: any) {
       toast({ title: 'Erro ao gerar PDF', description: err.message, variant: 'destructive' })
     }
