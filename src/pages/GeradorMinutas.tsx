@@ -107,6 +107,19 @@ export default function GeradorMinutas() {
 
   const { toast } = useToast()
 
+  const handleClearEditor = () => {
+    if (window.confirm('Descartar o conteúdo atual do editor e começar do zero?')) {
+      setContent(defaultContent)
+      localStorage.removeItem('lexcontrol_gerador_draft')
+      setMinuteId(null)
+      setSuggestions([])
+      toast({
+        title: 'Editor limpo',
+        description: 'Você pode começar uma nova minuta agora.',
+      })
+    }
+  }
+
   const handleNovaMinuta = () => {
     if (content && content !== defaultContent && content !== '') {
       if (
@@ -117,7 +130,7 @@ export default function GeradorMinutas() {
         return
       }
     }
-    setContent('')
+    setContent(defaultContent)
     setSelectedProcess('none')
     setSelectedAgents([])
     setAttachments([])
@@ -1355,18 +1368,7 @@ export default function GeradorMinutas() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                if (window.confirm('Descartar o conteúdo atual do editor e começar do zero?')) {
-                  setContent(defaultContent)
-                  localStorage.removeItem('lexcontrol_gerador_draft')
-                  setMinuteId(null)
-                  setSuggestions([])
-                  toast({
-                    title: 'Editor limpo',
-                    description: 'Você pode começar uma nova minuta agora.',
-                  })
-                }
-              }}
+              onClick={handleClearEditor}
               disabled={content === defaultContent || saving || applying || loading}
               className="text-muted-foreground"
             >
