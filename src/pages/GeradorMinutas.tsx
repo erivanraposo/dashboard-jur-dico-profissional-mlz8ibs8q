@@ -1159,42 +1159,57 @@ export default function GeradorMinutas() {
           return
         }
 
-        const addKeepWithNext = (nodes: any) => {
+        const isHeadingNode = (node: any) => {
+          if (!node) return false
+          if (node.style) {
+            const isHeadingStyle = (style: any) =>
+              typeof style === 'string' && /\b(h[1-4]|html-h[1-4])\b/i.test(style)
+            if (Array.isArray(node.style)) {
+              if (node.style.some(isHeadingStyle)) return true
+            } else if (typeof node.style === 'string') {
+              if (isHeadingStyle(node.style)) return true
+            }
+          }
+          if (node.bold === true && node.fontSize >= 12) {
+            return true
+          }
+          return false
+        }
+
+        const groupHeadingsWithNext = (nodes: any[]) => {
           if (!Array.isArray(nodes)) return
-          for (let i = 0; i < nodes.length; i++) {
+          for (let i = nodes.length - 1; i >= 0; i--) {
             const node = nodes[i]
             if (!node) continue
 
-            if (node.style) {
-              const isHeading = (style: any) =>
-                typeof style === 'string' && /\b(h[1-4]|html-h[1-4])\b/i.test(style)
-              if (Array.isArray(node.style)) {
-                if (node.style.some(isHeading) && i < nodes.length - 1) {
-                  node.keepWithNext = true
-                }
-              } else if (typeof node.style === 'string') {
-                if (isHeading(node.style) && i < nodes.length - 1) {
-                  node.keepWithNext = true
-                }
-              }
-            }
-
-            if (node.stack) addKeepWithNext(node.stack)
-            if (node.columns) addKeepWithNext(node.columns)
+            if (node.stack) groupHeadingsWithNext(node.stack)
+            if (node.columns) groupHeadingsWithNext(node.columns)
             if (node.table && node.table.body) {
               node.table.body.forEach((row: any[]) => {
                 row.forEach((cell: any) => {
                   if (cell) {
-                    if (cell.text && Array.isArray(cell.text)) addKeepWithNext(cell.text)
-                    if (cell.stack) addKeepWithNext(cell.stack)
+                    if (cell.text && Array.isArray(cell.text)) groupHeadingsWithNext(cell.text)
+                    if (cell.stack) groupHeadingsWithNext(cell.stack)
                   }
                 })
               })
             }
+
+            if (!node._grouped && isHeadingNode(node) && i < nodes.length - 1) {
+              const nextNode = nodes[i + 1]
+              const wrapper = {
+                stack: [node, nextNode],
+                unbreakable: true,
+                _grouped: true,
+              }
+              nodes.splice(i, 2, wrapper)
+            }
           }
         }
 
-        addKeepWithNext(Array.isArray(htmlContentObj) ? htmlContentObj : [htmlContentObj])
+        let nodesToProcess = Array.isArray(htmlContentObj) ? htmlContentObj : [htmlContentObj]
+        groupHeadingsWithNext(nodesToProcess)
+        htmlContentObj = nodesToProcess
       } catch (err: any) {
         toast({
           title: 'Erro ao converter HTML para PDF',
