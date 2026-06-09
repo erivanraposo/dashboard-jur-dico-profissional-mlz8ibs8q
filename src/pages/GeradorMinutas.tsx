@@ -1045,8 +1045,32 @@ export default function GeradorMinutas() {
 
       const proc = min.processes as any
 
+      const rawContent = min.content || ''
+
+      const extractFromHtml = (html: string, pattern: RegExp): string | null => {
+        if (!html) return null
+        const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+        const m = stripped.match(pattern)
+        return m ? m[1].trim() : null
+      }
+
+      const procNumForCover =
+        proc?.case_number ||
+        extractFromHtml(
+          rawContent,
+          /(?:Processo|Ação Penal|Execução(?:\s+Penal)?)[\s:n°ºNo.]*([\d]{4,7}[-.]?[\d]{1,2}[-.]?[\d]{4}[-.]?[\d][-.]?[\d]{2}[-.]?[\d]{4})/i,
+        )
+
+      const clientForCover =
+        min.client_name ||
+        proc?.client_name ||
+        extractFromHtml(
+          rawContent,
+          /Cliente[\s:]+([A-ZÀ-Ý][A-Za-zÀ-ÿ\s.]+?)(?:\s+\(|\s+CPF|\s+\d|[,.])/,
+        )
+
       // --- HTML Sanitization ---
-      let cleanHtml = min.content || ''
+      let cleanHtml = rawContent
 
       // Remove <div class="tableWrapper"> and <div class="table-wrapper"> replacing with <div>
       cleanHtml = cleanHtml.replace(
@@ -1112,8 +1136,8 @@ export default function GeradorMinutas() {
         month: 'long',
         year: 'numeric',
       })
-      const processNumber = proc?.case_number || '—'
-      const clientNamePlaceholder = min.client_name || proc?.client_name || '—'
+      const processNumber = procNumForCover || '—'
+      const clientNamePlaceholder = clientForCover || '—'
 
       cleanHtml = cleanHtml.replace(/\[N[ÚU]MERO(?: DO PROCESSO)?\]/gi, processNumber)
       cleanHtml = cleanHtml.replace(/\[(?:NOME DO )?CLIENTE\]/gi, clientNamePlaceholder)
@@ -1229,18 +1253,18 @@ export default function GeradorMinutas() {
           color: '#1E40AF',
         })
 
-        if (proc?.case_number) {
+        if (procNumForCover) {
           docDefinition.content.push({
-            text: `Processo Nº ${proc.case_number}`,
+            text: `Processo Nº ${procNumForCover}`,
             fontSize: 14,
             alignment: 'center',
             margin: [0, 0, 0, 10],
             color: '#334155',
           })
         }
-        if (min.client_name) {
+        if (clientForCover) {
           docDefinition.content.push({
-            text: `Cliente: ${min.client_name}`,
+            text: `Cliente: ${clientForCover}`,
             fontSize: 14,
             alignment: 'center',
             margin: [0, 0, 0, 10],
@@ -1261,19 +1285,19 @@ export default function GeradorMinutas() {
 
       // Process Information Block
       const hasProcData =
-        proc?.case_number || min.client_name || min.comarca || min.objeto || min.pedido
+        procNumForCover || clientForCover || min.comarca || min.objeto || min.pedido
       if (!contentHasCover && hasProcData) {
         const procTableBody = []
 
-        if (proc?.case_number)
+        if (procNumForCover)
           procTableBody.push([
             { text: 'Processo nº:', bold: true, width: 100 },
-            { text: proc.case_number },
+            { text: procNumForCover },
           ])
-        if (min.client_name)
+        if (clientForCover)
           procTableBody.push([
             { text: 'Cliente:', bold: true, width: 100 },
-            { text: min.client_name },
+            { text: clientForCover },
           ])
         if (min.comarca)
           procTableBody.push([{ text: 'Comarca:', bold: true, width: 100 }, { text: min.comarca }])
@@ -1451,6 +1475,30 @@ export default function GeradorMinutas() {
       const proc = min.processes as any
       const contentHasCover = /class=["']cover-page["']/i.test(min.content)
 
+      const rawContent = min.content || ''
+
+      const extractFromHtml = (html: string, pattern: RegExp): string | null => {
+        if (!html) return null
+        const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+        const m = stripped.match(pattern)
+        return m ? m[1].trim() : null
+      }
+
+      const procNumForCover =
+        proc?.case_number ||
+        extractFromHtml(
+          rawContent,
+          /(?:Processo|Ação Penal|Execução(?:\s+Penal)?)[\s:n°ºNo.]*([\d]{4,7}[-.]?[\d]{1,2}[-.]?[\d]{4}[-.]?[\d][-.]?[\d]{2}[-.]?[\d]{4})/i,
+        )
+
+      const clientForCover =
+        min.client_name ||
+        proc?.client_name ||
+        extractFromHtml(
+          rawContent,
+          /Cliente[\s:]+([A-ZÀ-Ý][A-Za-zÀ-ÿ\s.]+?)(?:\s+\(|\s+CPF|\s+\d|[,.])/,
+        )
+
       const rawTitle = min.title || 'Documento Jurídico'
       const sanitizedTitle = rawTitle.replace(/\s*-\s*\d{1,2}\/\d{1,2}\/\d{4}$/, '')
       const uppercaseTitle = sanitizedTitle.toUpperCase()
@@ -1473,13 +1521,13 @@ export default function GeradorMinutas() {
 
       if (!contentHasCover) {
         htmlString += `<h1 style="text-align: center;">${uppercaseTitle}</h1>`
-        if (proc?.case_number) {
-          htmlString += `<h2 style="text-align: center;">Processo Nº ${proc.case_number}</h2>`
+        if (procNumForCover) {
+          htmlString += `<h2 style="text-align: center;">Processo Nº ${procNumForCover}</h2>`
         }
 
-        if (min.client_name || min.comarca || min.objeto || min.pedido) {
+        if (clientForCover || min.comarca || min.objeto || min.pedido) {
           htmlString += `<div>`
-          if (min.client_name) htmlString += `<p><strong>Cliente:</strong> ${min.client_name}</p>`
+          if (clientForCover) htmlString += `<p><strong>Cliente:</strong> ${clientForCover}</p>`
           if (min.comarca) htmlString += `<p><strong>Comarca:</strong> ${min.comarca}</p>`
           if (min.objeto) htmlString += `<p><strong>Objeto:</strong> ${min.objeto}</p>`
           if (min.pedido) htmlString += `<p><strong>Pedido/Valor:</strong> ${min.pedido}</p>`
