@@ -1245,8 +1245,32 @@ export default function GeradorMinutas() {
       )
       docDefinition.content = docDefinition.content.concat(processedContent)
 
-      pdfMake.createPdf(docDefinition).download(`${min.title || 'documento'}.pdf`)
-      toast({ title: 'Sucesso', description: 'Download do PDF concluído.' })
+      const filename = `${min.title || 'documento'}.pdf`
+      const pdfDocGenerator = pdfMake.createPdf(docDefinition)
+
+      pdfDocGenerator.getBlob((blob: Blob | null) => {
+        if (!blob || blob.size === 0) {
+          console.error('[pdfmake] Generated blob is empty or null', blob)
+          toast({
+            title: 'Erro ao gerar PDF',
+            description: 'O PDF foi gerado vazio. Verifique o console (F12) para detalhes.',
+            variant: 'destructive',
+          })
+          return
+        }
+
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+
+        toast({ title: 'Sucesso', description: 'Download do PDF concluído.' })
+      })
     } catch (err: any) {
       console.error('PDF export failed:', err)
       toast({
