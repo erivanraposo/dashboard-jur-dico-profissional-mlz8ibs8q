@@ -1382,12 +1382,36 @@ export default function GeradorMinutas() {
         <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Defina os responsáveis e os próximos movimentos a serem executados no processo no curto prazo.</p>
       </div>
     `
-    setContent(template)
-    localStorage.setItem('lexcontrol_gerador_draft', template)
-    toast({
-      title: 'Template Aplicado',
-      description: 'Template corporativo de Relatório de Caso gerado com sucesso.',
-    })
+
+    const hasUserContent =
+      content !== defaultContent && content.trim() !== '' && !content.includes('class="cover-page"')
+
+    if (hasUserContent) {
+      if (
+        !window.confirm(
+          'O editor já tem conteúdo. Clique OK para INSERIR a capa + sumário NO INÍCIO (preservando seu texto), ou Cancelar para abortar.',
+        )
+      ) {
+        return
+      }
+
+      const templateHeader = template.replace(/<div class="report-content"[\s\S]*?<\/div>\s*$/, '')
+      const newContent = `${templateHeader}<div class="report-content" style="font-family: inherit;">${content}</div>`
+
+      setContent(newContent)
+      localStorage.setItem('lexcontrol_gerador_draft', newContent)
+      toast({
+        title: 'Template Aplicado',
+        description: 'Capa e sumário inseridos no início do documento.',
+      })
+    } else {
+      setContent(template)
+      localStorage.setItem('lexcontrol_gerador_draft', template)
+      toast({
+        title: 'Template Aplicado',
+        description: 'Template corporativo de Relatório de Caso gerado.',
+      })
+    }
   }
 
   useEffect(() => {
