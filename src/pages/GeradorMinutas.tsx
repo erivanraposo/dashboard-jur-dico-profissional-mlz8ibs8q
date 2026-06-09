@@ -56,6 +56,11 @@ import {
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import pdfMake from 'pdfmake/build/pdfmake'
+import pdfFonts from 'pdfmake/build/vfs_fonts'
+import htmlToPdfmake from 'html-to-pdfmake'
+
+;(pdfMake as any).vfs = (pdfFonts as any).vfs || (pdfFonts as any).pdfMake?.vfs
 
 const MINUTE_TYPES = [
   'Petição Inicial',
