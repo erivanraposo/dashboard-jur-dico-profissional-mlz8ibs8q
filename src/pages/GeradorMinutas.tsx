@@ -1060,6 +1060,19 @@ export default function GeradorMinutas() {
         'data-cover="1" class="$1$2"',
       )
 
+      // Remove empty page-break divs
+      cleanHtml = cleanHtml.replace(
+        /<div[^>]*class=["'][^"']*\bpage-break\b[^"']*["'][^>]*>(?:\s*|&nbsp;|<br\s*\/?>)*<\/div>/gi,
+        '',
+      )
+      cleanHtml = cleanHtml.replace(
+        /<div[^>]*style=["'][^"']*\bpage-break-(?:after|before|inside)[^"']*["'][^>]*>(?:\s*|&nbsp;|<br\s*\/?>)*<\/div>/gi,
+        '',
+      )
+
+      // Strip all inline font-family styles
+      cleanHtml = cleanHtml.replace(/font-family\s*:[^;"']+;?/gi, '')
+
       // Normalize <br>
       cleanHtml = cleanHtml.replace(/<br\s*\/?>/g, '<br/>')
 
@@ -1073,19 +1086,40 @@ export default function GeradorMinutas() {
         P: { fontSize: 11, alignment: 'justify', lineHeight: 1.4 },
         BLOCKQUOTE: { italics: true, margin: [12, 5, 12, 5], background: '#f9fafb' },
         TH: { fillColor: '#f3f4f6', bold: true },
+        TABLE: { margin: [0, 5, 0, 15] },
       }
 
-      const htmlContentObj = htmlToPdfmake(cleanHtml, {
-        defaultStyles: {
-          h1: pdfMakeStyles.H1,
-          h2: pdfMakeStyles.H2,
-          h3: pdfMakeStyles.H3,
-          h4: pdfMakeStyles.H4,
-          p: pdfMakeStyles.P,
-          blockquote: pdfMakeStyles.BLOCKQUOTE,
-          th: pdfMakeStyles.TH,
-        },
-      })
+      let htmlContentObj
+      try {
+        htmlContentObj = htmlToPdfmake(cleanHtml, {
+          defaultStyles: {
+            h1: pdfMakeStyles.H1,
+            h2: pdfMakeStyles.H2,
+            h3: pdfMakeStyles.H3,
+            h4: pdfMakeStyles.H4,
+            p: pdfMakeStyles.P,
+            blockquote: pdfMakeStyles.BLOCKQUOTE,
+            th: pdfMakeStyles.TH,
+            table: pdfMakeStyles.TABLE,
+          },
+        })
+
+        if (!htmlContentObj || (Array.isArray(htmlContentObj) && htmlContentObj.length === 0)) {
+          toast({
+            title: 'Erro ao gerar PDF',
+            description: 'Erro ao gerar PDF: O conteúdo do editor não pôde ser convertido.',
+            variant: 'destructive',
+          })
+          return
+        }
+      } catch (err: any) {
+        toast({
+          title: 'Erro ao converter HTML para PDF',
+          description: err.message || 'Falha na conversão do conteúdo.',
+          variant: 'destructive',
+        })
+        return
+      }
 
       const docDefinition: any = {
         pageSize: 'A4',
