@@ -1034,7 +1034,7 @@ export default function GeradorMinutas() {
         proc?.case_number || min.client_name || min.comarca || min.objeto || min.pedido
       const procHeader = hasProcData
         ? `
-          <div style="margin: 0 0 1.5em 0; padding: 8px 12px; border: 1px solid #ccc; background: #fafafa; font-size: 10pt; line-height: 1.4;">
+          <div style="margin: 0 0 1.5em 0; padding: 10px 14px; border: 1px solid #888; background: #f7f7f5; font-size: 10pt; line-height: 1.5; page-break-inside: avoid; break-inside: avoid;">
             ${proc?.case_number ? `<div style="margin-bottom: 4px;"><strong>Processo nº:</strong> ${proc.case_number}</div>` : ''}
             ${min.client_name ? `<div style="margin-bottom: 4px;"><strong>Cliente:</strong> ${min.client_name}</div>` : ''}
             ${min.comarca ? `<div style="margin-bottom: 4px;"><strong>Comarca:</strong> ${min.comarca}</div>` : ''}
@@ -1054,7 +1054,7 @@ export default function GeradorMinutas() {
       }
 
       const htmlContent = `
-        <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 15mm 10mm; color: black; max-width: 100%; overflow: hidden;">
+        <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 5mm 5mm 25mm 5mm; color: black; max-width: 100%; overflow: hidden;">
           <style>
             table { table-layout: fixed; width: 100%; border-collapse: collapse; word-wrap: break-word; overflow-wrap: break-word; hyphens: auto; }
             th, td { font-size: 9pt; padding: 6px; border: 1px solid #000; word-break: break-word; vertical-align: top; }
