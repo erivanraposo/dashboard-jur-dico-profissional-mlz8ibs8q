@@ -1121,13 +1121,17 @@ export default function GeradorMinutas() {
         return
       }
 
+      const rawTitle = min.title || 'Documento Jurídico'
+      const sanitizedTitle = rawTitle.replace(/\s*-\s*\d{1,2}\/\d{1,2}\/\d{4}$/, '')
+      const uppercaseTitle = sanitizedTitle.toUpperCase()
+
       const docDefinition: any = {
         pageSize: 'A4',
         pageMargins: [50, 70, 50, 60],
         header: function (currentPage: number) {
           if (currentPage > 1 && !contentHasCover) {
             return {
-              text: (min.title || 'Documento Jurídico').toUpperCase(),
+              text: uppercaseTitle,
               alignment: 'right',
               margin: [0, 30, 50, 0],
               fontSize: 9,
@@ -1165,7 +1169,7 @@ export default function GeradorMinutas() {
       // Cover Page Logic
       if (!contentHasCover) {
         docDefinition.content.push({
-          text: min.title || 'Documento Jurídico',
+          text: uppercaseTitle,
           fontSize: 26,
           bold: true,
           alignment: 'center',
@@ -1344,7 +1348,11 @@ export default function GeradorMinutas() {
       const proc = min.processes as any
       const contentHasCover = /class=["']cover-page["']/i.test(min.content)
 
-      let htmlString = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${min.title || 'Documento Jurídico'}</title>
+      const rawTitle = min.title || 'Documento Jurídico'
+      const sanitizedTitle = rawTitle.replace(/\s*-\s*\d{1,2}\/\d{1,2}\/\d{4}$/, '')
+      const uppercaseTitle = sanitizedTitle.toUpperCase()
+
+      let htmlString = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${uppercaseTitle}</title>
       <style>
         @page { margin: 2.5cm; }
         body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; color: black; }
@@ -1361,7 +1369,7 @@ export default function GeradorMinutas() {
       </head><body>`
 
       if (!contentHasCover) {
-        htmlString += `<h1 style="text-align: center;">${min.title || 'Documento Jurídico'}</h1>`
+        htmlString += `<h1 style="text-align: center;">${uppercaseTitle}</h1>`
         if (proc?.case_number) {
           htmlString += `<h2 style="text-align: center;">Processo Nº ${proc.case_number}</h2>`
         }
