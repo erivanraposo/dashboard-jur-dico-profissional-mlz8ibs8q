@@ -1491,22 +1491,31 @@ export default function GeradorMinutas() {
                 // Visual Sanitization
                 for (const cell of firstRow) {
                   if (!cell) continue
-                  delete cell.fillColor
-                  delete cell.background
-                  cell.bold = true
+
+                  if (typeof cell === 'object') {
+                    delete cell.fillColor
+                    delete cell.background
+                    delete cell.color
+                    cell.bold = true
+                    cell.fontSize = cell.fontSize || 10
+                  }
 
                   if (Array.isArray(cell.text)) {
                     for (const t of cell.text) {
-                      if (t) {
+                      if (t && typeof t === 'object') {
                         delete t.fillColor
                         delete t.background
+                        delete t.color
                         t.bold = true
+                        t.fontSize = t.fontSize || 10
                       }
                     }
                   } else if (cell.text && typeof cell.text === 'object') {
                     delete cell.text.fillColor
                     delete cell.text.background
+                    delete cell.text.color
                     cell.text.bold = true
+                    cell.text.fontSize = cell.text.fontSize || 10
                   }
                 }
               }
