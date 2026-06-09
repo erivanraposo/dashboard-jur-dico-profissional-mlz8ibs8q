@@ -57,10 +57,19 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import pdfMake from 'pdfmake/build/pdfmake'
-import pdfFonts from 'pdfmake/build/vfs_fonts'
+import * as _pdfFonts from 'pdfmake/build/vfs_fonts'
 import htmlToPdfmake from 'html-to-pdfmake'
 
-;(pdfMake as any).vfs = (pdfFonts as any).vfs || (pdfFonts as any).pdfMake?.vfs
+;(pdfMake as any).vfs =
+  (_pdfFonts as any).pdfMake?.vfs ||
+  (_pdfFonts as any).vfs ||
+  (_pdfFonts as any).default?.pdfMake?.vfs ||
+  (_pdfFonts as any).default?.vfs ||
+  (pdfMake as any).vfs
+
+if (!(pdfMake as any).vfs || Object.keys((pdfMake as any).vfs).length === 0) {
+  console.error('[pdfmake] VFS não foi carregado — verifique o import de vfs_fonts')
+}
 
 const MINUTE_TYPES = [
   'Petição Inicial',
