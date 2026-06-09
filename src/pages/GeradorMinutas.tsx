@@ -1032,8 +1032,9 @@ export default function GeradorMinutas() {
 
       const hasProcData =
         proc?.case_number || min.client_name || min.comarca || min.objeto || min.pedido
-      const procHeader = hasProcData
-        ? `
+      const procHeader =
+        !contentHasCover && hasProcData
+          ? `
           <div style="margin: 0 0 1.5em 0; padding: 10px 14px; border: 1px solid #888; background: #f7f7f5; font-size: 10pt; line-height: 1.5; page-break-inside: avoid; break-inside: avoid;">
             ${proc?.case_number ? `<div style="margin-bottom: 4px;"><strong>Processo nº:</strong> ${proc.case_number}</div>` : ''}
             ${min.client_name ? `<div style="margin-bottom: 4px;"><strong>Cliente:</strong> ${min.client_name}</div>` : ''}
@@ -1042,7 +1043,7 @@ export default function GeradorMinutas() {
             ${min.pedido ? `<div style="margin-bottom: 4px;"><strong>Pedido/Valor:</strong> ${min.pedido}</div>` : ''}
           </div>
         `
-        : ''
+          : ''
 
       let headerHTML = ''
       if (!contentHasCover) {
