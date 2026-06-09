@@ -1538,8 +1538,6 @@ export default function GeradorMinutas() {
         }
       }
 
-      ensureTableHeaderRows(processedContent)
-
       const isHeadingNode = (node: any) => {
         if (!node) return false
         if (node.style) {
@@ -1607,49 +1605,59 @@ export default function GeradorMinutas() {
             if (chainLen > 1) {
               const chain = nodes.slice(i, i + chainLen)
 
-              if (hasTableNext && tableNode) {
-                const headings = chain.slice(0, chain.length - 1)
-                const spacer = { text: '', margin: [0, 60] }
-                const wrapper = {
-                  stack: [...headings, spacer],
-                  unbreakable: true,
-                  _grouped: true,
-                }
-
-                let currentMargin = tableNode.margin || [0, 0, 0, 15]
-                if (typeof currentMargin === 'number') {
-                  currentMargin = [currentMargin, currentMargin, currentMargin, currentMargin]
-                } else if (Array.isArray(currentMargin) && currentMargin.length === 2) {
-                  currentMargin = [
-                    currentMargin[0],
-                    currentMargin[1],
-                    currentMargin[0],
-                    currentMargin[1],
-                  ]
-                } else if (Array.isArray(currentMargin) && currentMargin.length === 4) {
-                  currentMargin = [...currentMargin]
-                } else {
-                  currentMargin = [0, 0, 0, 15]
-                }
-                currentMargin[1] = (currentMargin[1] || 0) - 60
-                tableNode.margin = currentMargin
-                tableNode._grouped = true
-
-                nodes.splice(i, chainLen, wrapper, tableNode)
-              } else {
-                const wrapper = {
-                  stack: chain,
-                  unbreakable: true,
-                  _grouped: true,
-                }
-                nodes.splice(i, chainLen, wrapper)
+              const wrapper = {
+                stack: chain,
+                unbreakable: true,
+                _grouped: true,
               }
+              nodes.splice(i, chainLen, wrapper)
+            }
+          }
+        }
+      }
+
+      const preventWidowedHeadingsBeforeLargeTables = (nodes: any[]) => {
+        if (!Array.isArray(nodes)) return
+
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i]
+          if (!node) continue
+
+          if (node.stack) preventWidowedHeadingsBeforeLargeTables(node.stack)
+          if (node.columns) preventWidowedHeadingsBeforeLargeTables(node.columns)
+          if (node.table && node.table.body) {
+            node.table.body.forEach((row: any[]) => {
+              row.forEach((cell: any) => {
+                if (cell) {
+                  if (cell.text && Array.isArray(cell.text))
+                    preventWidowedHeadingsBeforeLargeTables(cell.text)
+                  if (cell.stack) preventWidowedHeadingsBeforeLargeTables(cell.stack)
+                }
+              })
+            })
+          }
+
+          if (node.unbreakable && Array.isArray(node.stack) && node.stack.length > 0) {
+            const lastNode = node.stack[node.stack.length - 1]
+            if (
+              lastNode &&
+              lastNode.table &&
+              Array.isArray(lastNode.table.body) &&
+              lastNode.table.body.length > 10
+            ) {
+              if (node.pageBreak === undefined) {
+                node.pageBreak = 'before'
+              }
+              // Allow large tables to break across pages properly
+              delete node.unbreakable
             }
           }
         }
       }
 
       groupHeadingsWithNext(processedContent)
+      preventWidowedHeadingsBeforeLargeTables(processedContent)
+      ensureTableHeaderRows(processedContent)
 
       docDefinition.content = docDefinition.content.concat(processedContent)
 
