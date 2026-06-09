@@ -1377,31 +1377,53 @@ export default function GeradorMinutas() {
 
       const groupHeadingsWithNext = (nodes: any[]) => {
         if (!Array.isArray(nodes)) return
-        for (let i = nodes.length - 1; i >= 0; i--) {
+
+        // 1. Recursive Traversal
+        for (let i = 0; i < nodes.length; i++) {
           const node = nodes[i]
           if (!node) continue
 
-          if (node.stack) groupHeadingsWithNext(node.stack)
+          if (node.stack && !node.unbreakable) groupHeadingsWithNext(node.stack)
           if (node.columns) groupHeadingsWithNext(node.columns)
           if (node.table && node.table.body) {
             node.table.body.forEach((row: any[]) => {
               row.forEach((cell: any) => {
                 if (cell) {
                   if (cell.text && Array.isArray(cell.text)) groupHeadingsWithNext(cell.text)
-                  if (cell.stack) groupHeadingsWithNext(cell.stack)
+                  if (cell.stack && !cell.unbreakable) groupHeadingsWithNext(cell.stack)
                 }
               })
             })
           }
+        }
 
-          if (!node._grouped && isHeadingNode(node) && i < nodes.length - 1) {
-            const nextNode = nodes[i + 1]
-            const wrapper = {
-              stack: [node, nextNode],
-              unbreakable: true,
-              _grouped: true,
+        // 2. Grouping
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i]
+          if (!node) continue
+
+          if (!node._grouped && isHeadingNode(node)) {
+            let chainLen = 1
+            while (
+              i + chainLen < nodes.length &&
+              isHeadingNode(nodes[i + chainLen]) &&
+              !nodes[i + chainLen]._grouped
+            ) {
+              chainLen++
             }
-            nodes.splice(i, 2, wrapper)
+            if (i + chainLen < nodes.length) {
+              chainLen++
+            }
+
+            if (chainLen > 1) {
+              const chain = nodes.slice(i, i + chainLen)
+              const wrapper = {
+                stack: chain,
+                unbreakable: true,
+                _grouped: true,
+              }
+              nodes.splice(i, chainLen, wrapper)
+            }
           }
         }
       }
