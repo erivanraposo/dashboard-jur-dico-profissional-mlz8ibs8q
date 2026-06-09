@@ -1135,9 +1135,9 @@ export default function GeradorMinutas() {
         TABLE: { margin: [0, 5, 0, 15] },
       }
 
-      let htmlContentObj
+      let htmlConverted
       try {
-        htmlContentObj = htmlToPdfmake(cleanHtml, {
+        htmlConverted = htmlToPdfmake(cleanHtml, {
           defaultStyles: {
             h1: pdfMakeStyles.H1,
             h2: pdfMakeStyles.H2,
@@ -1150,7 +1150,7 @@ export default function GeradorMinutas() {
           },
         })
 
-        if (!htmlContentObj || (Array.isArray(htmlContentObj) && htmlContentObj.length === 0)) {
+        if (!htmlConverted || (Array.isArray(htmlConverted) && htmlConverted.length === 0)) {
           toast({
             title: 'Erro ao gerar PDF',
             description: 'Erro ao gerar PDF: O conteúdo do editor não pôde ser convertido.',
@@ -1158,58 +1158,6 @@ export default function GeradorMinutas() {
           })
           return
         }
-
-        const isHeadingNode = (node: any) => {
-          if (!node) return false
-          if (node.style) {
-            const isHeadingStyle = (style: any) =>
-              typeof style === 'string' && /\b(h[1-4]|html-h[1-4])\b/i.test(style)
-            if (Array.isArray(node.style)) {
-              if (node.style.some(isHeadingStyle)) return true
-            } else if (typeof node.style === 'string') {
-              if (isHeadingStyle(node.style)) return true
-            }
-          }
-          if (node.bold === true && node.fontSize >= 12) {
-            return true
-          }
-          return false
-        }
-
-        const groupHeadingsWithNext = (nodes: any[]) => {
-          if (!Array.isArray(nodes)) return
-          for (let i = nodes.length - 1; i >= 0; i--) {
-            const node = nodes[i]
-            if (!node) continue
-
-            if (node.stack) groupHeadingsWithNext(node.stack)
-            if (node.columns) groupHeadingsWithNext(node.columns)
-            if (node.table && node.table.body) {
-              node.table.body.forEach((row: any[]) => {
-                row.forEach((cell: any) => {
-                  if (cell) {
-                    if (cell.text && Array.isArray(cell.text)) groupHeadingsWithNext(cell.text)
-                    if (cell.stack) groupHeadingsWithNext(cell.stack)
-                  }
-                })
-              })
-            }
-
-            if (!node._grouped && isHeadingNode(node) && i < nodes.length - 1) {
-              const nextNode = nodes[i + 1]
-              const wrapper = {
-                stack: [node, nextNode],
-                unbreakable: true,
-                _grouped: true,
-              }
-              nodes.splice(i, 2, wrapper)
-            }
-          }
-        }
-
-        let nodesToProcess = Array.isArray(htmlContentObj) ? htmlContentObj : [htmlContentObj]
-        groupHeadingsWithNext(nodesToProcess)
-        htmlContentObj = nodesToProcess
       } catch (err: any) {
         toast({
           title: 'Erro ao converter HTML para PDF',
@@ -1377,8 +1325,59 @@ export default function GeradorMinutas() {
       }
 
       const processedContent = processHtmlNodes(
-        Array.isArray(htmlContentObj) ? htmlContentObj : [htmlContentObj],
+        Array.isArray(htmlConverted) ? htmlConverted : [htmlConverted],
       )
+
+      const isHeadingNode = (node: any) => {
+        if (!node) return false
+        if (node.style) {
+          const isHeadingStyle = (style: any) =>
+            typeof style === 'string' && /\b(h[1-4]|html-h[1-4])\b/i.test(style)
+          if (Array.isArray(node.style)) {
+            if (node.style.some(isHeadingStyle)) return true
+          } else if (typeof node.style === 'string') {
+            if (isHeadingStyle(node.style)) return true
+          }
+        }
+        if (node.bold === true && node.fontSize >= 12) {
+          return true
+        }
+        return false
+      }
+
+      const groupHeadingsWithNext = (nodes: any[]) => {
+        if (!Array.isArray(nodes)) return
+        for (let i = nodes.length - 1; i >= 0; i--) {
+          const node = nodes[i]
+          if (!node) continue
+
+          if (node.stack) groupHeadingsWithNext(node.stack)
+          if (node.columns) groupHeadingsWithNext(node.columns)
+          if (node.table && node.table.body) {
+            node.table.body.forEach((row: any[]) => {
+              row.forEach((cell: any) => {
+                if (cell) {
+                  if (cell.text && Array.isArray(cell.text)) groupHeadingsWithNext(cell.text)
+                  if (cell.stack) groupHeadingsWithNext(cell.stack)
+                }
+              })
+            })
+          }
+
+          if (!node._grouped && isHeadingNode(node) && i < nodes.length - 1) {
+            const nextNode = nodes[i + 1]
+            const wrapper = {
+              stack: [node, nextNode],
+              unbreakable: true,
+              _grouped: true,
+            }
+            nodes.splice(i, 2, wrapper)
+          }
+        }
+      }
+
+      groupHeadingsWithNext(processedContent)
+
       docDefinition.content = docDefinition.content.concat(processedContent)
 
       const filename = `${min.title || 'documento'}.pdf`
