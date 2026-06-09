@@ -1128,6 +1128,32 @@ export default function GeradorMinutas() {
         }
       })
 
+      const headersToWrap = element.querySelectorAll('h1, h2, h3, h4')
+      headersToWrap.forEach((header) => {
+        const nextEl = header.nextElementSibling
+        if (nextEl) {
+          const nextTag = nextEl.tagName.toUpperCase()
+          const hasTableInside = nextEl.querySelector('table') !== null
+          if (
+            nextTag === 'TABLE' ||
+            nextTag === 'FIGURE' ||
+            nextTag === 'BLOCKQUOTE' ||
+            hasTableInside
+          ) {
+            const wrapper = document.createElement('div')
+            wrapper.className = 'title-block-wrap'
+            wrapper.style.pageBreakInside = 'avoid'
+            wrapper.style.breakInside = 'avoid'
+
+            if (header.parentNode) {
+              header.parentNode.insertBefore(wrapper, header)
+              wrapper.appendChild(header)
+              wrapper.appendChild(nextEl)
+            }
+          }
+        }
+      })
+
       const opt = {
         margin: [25, 20, 40, 20],
         filename: `${min.title || 'documento'}.pdf`,
@@ -1155,6 +1181,7 @@ export default function GeradorMinutas() {
             '.box',
             'figure',
             'thead',
+            '.title-block-wrap',
           ],
         },
       }
