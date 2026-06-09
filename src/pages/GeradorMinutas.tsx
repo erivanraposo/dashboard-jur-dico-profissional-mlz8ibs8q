@@ -1066,7 +1066,7 @@ export default function GeradorMinutas() {
             tr { page-break-inside: avoid; break-inside: avoid; }
             h1, h2, h3, h4, h5, h6 { page-break-after: avoid; break-after: avoid-page; page-break-inside: avoid; break-inside: avoid; }
             h1 + *, h2 + *, h3 + *, h4 + * { page-break-before: avoid; break-before: avoid-page; }
-            p { orphans: 3; widows: 3; margin-bottom: 0.6em; padding-bottom: 1px; }
+            p { orphans: 3; widows: 3; margin-bottom: 0.6em; }
             blockquote, .callout, .box, .quote-box, figure, pre { page-break-inside: avoid; break-inside: avoid; }
             div[style*="background"], div[style*="background-color"] { page-break-inside: avoid; break-inside: avoid; }
             img { max-width: 100%; height: auto; page-break-inside: avoid; break-inside: avoid; }
@@ -1156,7 +1156,7 @@ export default function GeradorMinutas() {
       })
 
       const opt = {
-        margin: [25, 20, 40, 20],
+        margin: [25, 20, 35, 20],
         filename: `${min.title || 'documento'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: {
@@ -1169,21 +1169,8 @@ export default function GeradorMinutas() {
         },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
         pagebreak: {
-          mode: ['avoid-all', 'css', 'legacy'],
-          avoid: [
-            'tr',
-            'table',
-            'h1',
-            'h2',
-            'h3',
-            'h4',
-            'blockquote',
-            '.callout',
-            '.box',
-            'figure',
-            'thead',
-            '.title-block-wrap',
-          ],
+          mode: ['css', 'legacy'],
+          avoid: ['tr', 'table', 'blockquote', '.callout', '.box', 'figure', '.title-block-wrap'],
         },
       }
 
@@ -1192,7 +1179,12 @@ export default function GeradorMinutas() {
       const styleEl = document.createElement('style')
       styleEl.innerHTML = `
         @media print {
-          p, li, td, th {
+          p {
+            orphans: 3;
+            widows: 3;
+            margin-bottom: 0.6em;
+          }
+          li, td, th {
             orphans: 3;
             widows: 3;
             page-break-inside: avoid;
