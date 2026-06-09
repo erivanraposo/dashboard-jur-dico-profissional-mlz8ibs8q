@@ -1112,6 +1112,43 @@ export default function GeradorMinutas() {
           })
           return
         }
+
+        const addKeepWithNext = (nodes: any) => {
+          if (!Array.isArray(nodes)) return
+          for (let i = 0; i < nodes.length; i++) {
+            const node = nodes[i]
+            if (!node) continue
+
+            if (node.style) {
+              const isHeading = (style: any) =>
+                typeof style === 'string' && /\b(h[1-4]|html-h[1-4])\b/i.test(style)
+              if (Array.isArray(node.style)) {
+                if (node.style.some(isHeading) && i < nodes.length - 1) {
+                  node.keepWithNext = true
+                }
+              } else if (typeof node.style === 'string') {
+                if (isHeading(node.style) && i < nodes.length - 1) {
+                  node.keepWithNext = true
+                }
+              }
+            }
+
+            if (node.stack) addKeepWithNext(node.stack)
+            if (node.columns) addKeepWithNext(node.columns)
+            if (node.table && node.table.body) {
+              node.table.body.forEach((row: any[]) => {
+                row.forEach((cell: any) => {
+                  if (cell) {
+                    if (cell.text && Array.isArray(cell.text)) addKeepWithNext(cell.text)
+                    if (cell.stack) addKeepWithNext(cell.stack)
+                  }
+                })
+              })
+            }
+          }
+        }
+
+        addKeepWithNext(Array.isArray(htmlContentObj) ? htmlContentObj : [htmlContentObj])
       } catch (err: any) {
         toast({
           title: 'Erro ao converter HTML para PDF',
