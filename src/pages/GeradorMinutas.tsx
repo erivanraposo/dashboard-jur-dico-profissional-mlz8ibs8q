@@ -1317,6 +1317,15 @@ export default function GeradorMinutas() {
           fontSize: 11,
           lineHeight: 1.4,
         },
+        styles: {
+          tocTitle: {
+            fontSize: 20,
+            bold: true,
+            color: '#1E40AF',
+            alignment: 'left',
+            margin: [0, 0, 0, 16],
+          },
+        },
       }
 
       // Cover Page Logic
@@ -1359,6 +1368,14 @@ export default function GeradorMinutas() {
           pageBreak: 'after',
         })
       }
+
+      docDefinition.content.push({
+        toc: {
+          title: { text: 'Sumário', style: 'tocTitle', margin: [0, 0, 0, 16] },
+          numberStyle: { color: '#6b7280' },
+        },
+        pageBreak: 'after',
+      })
 
       // Process Information Block
       const hasProcData =
@@ -1655,8 +1672,57 @@ export default function GeradorMinutas() {
         }
       }
 
+      const markTocItems = (nodes: any[]) => {
+        if (!Array.isArray(nodes)) return
+
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i]
+          if (!node) continue
+
+          let isHeader = false
+          let isH1 = false
+
+          if (node.style) {
+            const isHeadingStyle = (style: any) =>
+              typeof style === 'string' && /\b(h1|h2|html-h1|html-h2)\b/i.test(style)
+
+            if (Array.isArray(node.style)) {
+              if (node.style.some(isHeadingStyle)) {
+                isHeader = true
+                isH1 = node.style.some((s: string) => /\b(h1|html-h1)\b/i.test(s))
+              }
+            } else if (typeof node.style === 'string') {
+              if (isHeadingStyle(node.style)) {
+                isHeader = true
+                isH1 = /\b(h1|html-h1)\b/i.test(node.style)
+              }
+            }
+          }
+
+          if (isHeader) {
+            node.tocItem = true
+            node.tocStyle = { fontSize: 11, color: '#000000' }
+            node.tocMargin = isH1 ? [0, 4, 0, 0] : [12, 2, 0, 0]
+          }
+
+          if (node.stack) markTocItems(node.stack)
+          if (node.columns) markTocItems(node.columns)
+          if (node.table && node.table.body) {
+            node.table.body.forEach((row: any[]) => {
+              row.forEach((cell: any) => {
+                if (cell) {
+                  if (cell.text && Array.isArray(cell.text)) markTocItems(cell.text)
+                  if (cell.stack) markTocItems(cell.stack)
+                }
+              })
+            })
+          }
+        }
+      }
+
       groupHeadingsWithNext(processedContent)
       preventWidowedHeadingsBeforeLargeTables(processedContent)
+      markTocItems(processedContent)
       ensureTableHeaderRows(processedContent)
 
       docDefinition.content = docDefinition.content.concat(processedContent)
