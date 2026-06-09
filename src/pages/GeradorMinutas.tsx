@@ -1056,23 +1056,27 @@ export default function GeradorMinutas() {
       const htmlContent = `
         <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 5mm 5mm 25mm 5mm; color: black; max-width: 100%; overflow: hidden;">
           <style>
-            table { table-layout: fixed; width: 100%; border-collapse: collapse; word-wrap: break-word; overflow-wrap: break-word; hyphens: auto; }
+            * { box-sizing: border-box; }
+            table { table-layout: fixed; width: 100%; border-collapse: collapse; word-wrap: break-word; overflow-wrap: break-word; hyphens: auto; margin: 1em 0 1.2em 0; page-break-inside: avoid; }
             th, td { font-size: 9pt; padding: 6px; border: 1px solid #000; word-break: break-word; vertical-align: top; }
+            tbody tr:last-child td { border-bottom: 1px solid #000; }
             thead { display: table-header-group; }
             tfoot { display: table-footer-group; }
             tr { page-break-inside: avoid; break-inside: avoid; }
             h1, h2, h3, h4, h5, h6 { page-break-after: avoid; break-after: avoid-page; page-break-inside: avoid; break-inside: avoid; }
             h1 + *, h2 + *, h3 + *, h4 + * { page-break-before: avoid; break-before: avoid-page; }
-            p { orphans: 3; widows: 3; }
+            p { orphans: 3; widows: 3; margin-bottom: 0.6em; }
             blockquote, .callout, .box, .quote-box, figure, pre { page-break-inside: avoid; break-inside: avoid; }
             div[style*="background"], div[style*="background-color"] { page-break-inside: avoid; break-inside: avoid; }
             img { max-width: 100%; height: auto; page-break-inside: avoid; break-inside: avoid; }
             .column-resize-handle, .selectedCell, .resize-cursor, .grip-row, .grip-column { display: none !important; }
+            .last-page-spacer { display: block; height: 20mm; }
           </style>
           ${headerHTML}
           ${procHeader}
           <div style="text-align: justify; text-indent: 2em;">
             ${min.content}
+            <div class="last-page-spacer"></div>
           </div>
         </div>
       `
@@ -1125,14 +1129,32 @@ export default function GeradorMinutas() {
       })
 
       const opt = {
-        margin: [25, 20, 30, 20],
+        margin: [25, 20, 35, 20],
         filename: `${min.title || 'documento'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true, windowWidth: 1200 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          letterRendering: true,
+          windowWidth: 1200,
+          scrollY: 0,
+        },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
         pagebreak: {
           mode: ['css', 'legacy'],
-          avoid: ['tr', 'h1', 'h2', 'h3', 'h4', 'blockquote', '.callout', '.box', 'figure'],
+          avoid: [
+            'tr',
+            'table',
+            'h1',
+            'h2',
+            'h3',
+            'h4',
+            'blockquote',
+            '.callout',
+            '.box',
+            'figure',
+            'thead',
+          ],
         },
       }
 
