@@ -1106,6 +1106,21 @@ export default function GeradorMinutas() {
       // Normalize <br>
       cleanHtml = cleanHtml.replace(/<br\s*\/?>/g, '<br/>')
 
+      // --- Placeholder Replacement ---
+      const currentDate = new Date().toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      })
+      const processNumber = proc?.case_number || '—'
+      const clientNamePlaceholder = min.client_name || proc?.client_name || '—'
+
+      cleanHtml = cleanHtml.replace(/\[N[ÚU]MERO(?: DO PROCESSO)?\]/gi, processNumber)
+      cleanHtml = cleanHtml.replace(/\[(?:NOME DO )?CLIENTE\]/gi, clientNamePlaceholder)
+      cleanHtml = cleanHtml.replace(/\[DATA(?: DE ELABORA[ÇC][ÃA]O)?\]/gi, currentDate)
+      cleanHtml = cleanHtml.replace(/\[VERS[ÃA]O\]/gi, '1.0')
+      cleanHtml = cleanHtml.replace(/\[(?:NOME DO )?RESPONS[ÁA]VEL\]/gi, '—')
+
       // Explicitly set to false to force programmatic cover
       const contentHasCover = false
 
