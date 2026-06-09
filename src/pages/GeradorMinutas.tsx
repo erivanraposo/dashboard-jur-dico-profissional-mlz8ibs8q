@@ -1060,7 +1060,37 @@ export default function GeradorMinutas() {
         'data-cover="1" class="$1$2"',
       )
 
-      // Remove empty page-break divs
+      // Use DOMParser for safer structural manipulation
+      const parser = new DOMParser()
+      const htmlDoc = parser.parseFromString(cleanHtml, 'text/html')
+
+      // Remove Template Cover
+      const covers = htmlDoc.querySelectorAll('[data-cover="1"], .cover-page')
+      covers.forEach((el) => el.remove())
+
+      // Remove Template Summary
+      const tocs = htmlDoc.querySelectorAll('.table-of-contents')
+      tocs.forEach((el) => el.remove())
+
+      // Unwrap Report Content
+      const reportContents = htmlDoc.querySelectorAll('.report-content')
+      reportContents.forEach((el) => {
+        const fragment = document.createDocumentFragment()
+        while (el.firstChild) {
+          fragment.appendChild(el.firstChild)
+        }
+        if (el.parentNode) {
+          el.parentNode.replaceChild(fragment, el)
+        }
+      })
+
+      // Cleanup Page Breaks
+      const pageBreaks = htmlDoc.querySelectorAll('.page-break')
+      pageBreaks.forEach((el) => el.remove())
+
+      cleanHtml = htmlDoc.body.innerHTML
+
+      // Remove empty page-break divs (legacy style matches)
       cleanHtml = cleanHtml.replace(
         /<div[^>]*class=["'][^"']*\bpage-break\b[^"']*["'][^>]*>(?:\s*|&nbsp;|<br\s*\/?>)*<\/div>/gi,
         '',
@@ -1076,7 +1106,8 @@ export default function GeradorMinutas() {
       // Normalize <br>
       cleanHtml = cleanHtml.replace(/<br\s*\/?>/g, '<br/>')
 
-      const contentHasCover = /data-cover="1"/i.test(cleanHtml)
+      // Explicitly set to false to force programmatic cover
+      const contentHasCover = false
 
       const pdfMakeStyles = {
         H1: { fontSize: 16, bold: true, color: '#1E40AF', margin: [0, 16, 0, 8] },
