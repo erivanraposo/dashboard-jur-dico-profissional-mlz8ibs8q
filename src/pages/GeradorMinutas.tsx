@@ -1210,7 +1210,7 @@ export default function GeradorMinutas() {
         H4: { fontSize: 11, bold: true, color: '#334155', margin: [0, 10, 0, 4] },
         P: { fontSize: 11, alignment: 'justify', lineHeight: 1.4 },
         BLOCKQUOTE: { italics: true, margin: [12, 5, 12, 5], background: '#f9fafb' },
-        TH: { fillColor: '#f3f4f6', bold: true },
+        TH: { bold: true, fontSize: 10 },
         TABLE: { margin: [0, 5, 0, 15] },
         UL: { marginBottom: 6, alignment: 'justify' },
         OL: { marginBottom: 6, alignment: 'justify' },
@@ -1412,6 +1412,99 @@ export default function GeradorMinutas() {
       const processedContent = processHtmlNodes(
         Array.isArray(htmlConverted) ? htmlConverted : [htmlConverted],
       )
+
+      const ensureTableHeaderRows = (nodes: any[]) => {
+        if (!Array.isArray(nodes)) return
+
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i]
+          if (!node) continue
+
+          if (
+            node.nodeName === 'TABLE' &&
+            node.table &&
+            node.table.body &&
+            node.table.body.length > 0
+          ) {
+            const firstRow = node.table.body[0]
+            if (Array.isArray(firstRow)) {
+              let hasHeaderHints = false
+
+              // Detect header hints
+              for (const cell of firstRow) {
+                if (!cell) continue
+
+                const isThNode =
+                  cell.nodeName === 'TH' ||
+                  cell.style === 'th' ||
+                  (Array.isArray(cell.style) && cell.style.includes('th'))
+                if (cell.bold === true || cell.fillColor || isThNode) {
+                  hasHeaderHints = true
+                  break
+                }
+
+                if (Array.isArray(cell.text)) {
+                  for (const t of cell.text) {
+                    if (
+                      t &&
+                      (t.bold === true || t.fillColor || t.style === 'th' || t.nodeName === 'TH')
+                    ) {
+                      hasHeaderHints = true
+                      break
+                    }
+                  }
+                } else if (cell.text && typeof cell.text === 'object') {
+                  const t = cell.text
+                  if (t.bold === true || t.fillColor || t.style === 'th' || t.nodeName === 'TH') {
+                    hasHeaderHints = true
+                    break
+                  }
+                }
+              }
+
+              if (hasHeaderHints) {
+                if (node.table.headerRows === undefined) {
+                  node.table.headerRows = 1
+                }
+                // Visual Sanitization
+                for (const cell of firstRow) {
+                  if (!cell) continue
+                  delete cell.fillColor
+                  cell.bold = true
+
+                  if (Array.isArray(cell.text)) {
+                    for (const t of cell.text) {
+                      if (t) {
+                        delete t.fillColor
+                        t.bold = true
+                      }
+                    }
+                  } else if (cell.text && typeof cell.text === 'object') {
+                    delete cell.text.fillColor
+                    cell.text.bold = true
+                  }
+                }
+              }
+            }
+          }
+
+          // Recursion
+          if (node.stack && !node.unbreakable) ensureTableHeaderRows(node.stack)
+          if (node.columns) ensureTableHeaderRows(node.columns)
+          if (node.table && node.table.body) {
+            node.table.body.forEach((row: any[]) => {
+              row.forEach((cell: any) => {
+                if (cell) {
+                  if (cell.text && Array.isArray(cell.text)) ensureTableHeaderRows(cell.text)
+                  if (cell.stack && !cell.unbreakable) ensureTableHeaderRows(cell.stack)
+                }
+              })
+            })
+          }
+        }
+      }
+
+      ensureTableHeaderRows(processedContent)
 
       const isHeadingNode = (node: any) => {
         if (!node) return false
