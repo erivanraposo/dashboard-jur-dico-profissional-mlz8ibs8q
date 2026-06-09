@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import {
