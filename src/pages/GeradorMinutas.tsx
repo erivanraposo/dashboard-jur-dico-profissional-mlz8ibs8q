@@ -1023,6 +1023,8 @@ export default function GeradorMinutas() {
       })
     }
 
+    toast({ title: 'Processando', description: 'Gerando o arquivo PDF...' })
+
     try {
       const { data: min, error } = await supabase
         .from('minutes')
@@ -1033,193 +1035,216 @@ export default function GeradorMinutas() {
       if (error || !min) throw new Error('Minuta não encontrada.')
 
       const proc = min.processes as any
-      const contentHasCover = /class=["']cover-page["']/i.test(min.content)
 
-      const hasProcData =
-        proc?.case_number || min.client_name || min.comarca || min.objeto || min.pedido
-      const procHeader =
-        !contentHasCover && hasProcData
-          ? `
-          <div style="margin: 0 0 1.5em 0; padding: 10px 14px; border: 1px solid #888; background: #f7f7f5; font-size: 10pt; line-height: 1.5; page-break-inside: avoid; break-inside: avoid;">
-            ${proc?.case_number ? `<div style="margin-bottom: 4px;"><strong>Processo nº:</strong> ${proc.case_number}</div>` : ''}
-            ${min.client_name ? `<div style="margin-bottom: 4px;"><strong>Cliente:</strong> ${min.client_name}</div>` : ''}
-            ${min.comarca ? `<div style="margin-bottom: 4px;"><strong>Comarca:</strong> ${min.comarca}</div>` : ''}
-            ${min.objeto ? `<div style="margin-bottom: 4px;"><strong>Objeto:</strong> ${min.objeto}</div>` : ''}
-            ${min.pedido ? `<div style="margin-bottom: 4px;"><strong>Pedido/Valor:</strong> ${min.pedido}</div>` : ''}
-          </div>
-        `
-          : ''
+      // --- HTML Sanitization ---
+      let cleanHtml = min.content || ''
 
-      let headerHTML = ''
-      if (!contentHasCover) {
-        headerHTML = `
-          <div style="text-align: center; margin-bottom: 2em;">
-            <h1 style="text-transform: uppercase; font-size: 14pt; font-weight: bold; margin: 0;">${min.title || 'Documento Jurídico'}</h1>
-          </div>
-        `
+      // Remove <div class="tableWrapper"> and <div class="table-wrapper"> replacing with <div>
+      cleanHtml = cleanHtml.replace(
+        /<div[^>]*class=["'][^"']*(?:tableWrapper|table-wrapper)[^"']*["'][^>]*>/g,
+        '<div>',
+      )
+
+      // Convert cover-page class to data-cover="1"
+      cleanHtml = cleanHtml.replace(
+        /class=["']([^"']*)cover-page([^"']*)["']/g,
+        'data-cover="1" class="$1$2"',
+      )
+
+      // Normalize <br>
+      cleanHtml = cleanHtml.replace(/<br\s*\/?>/g, '<br/>')
+
+      const contentHasCover = /data-cover="1"/i.test(cleanHtml)
+
+      const pdfMakeStyles = {
+        H1: { fontSize: 16, bold: true, color: '#1E40AF', margin: [0, 16, 0, 8] },
+        H2: { fontSize: 13, bold: true, color: '#1E40AF', margin: [0, 12, 0, 6] },
+        H3: { fontSize: 11, bold: true, color: '#334155', margin: [0, 10, 0, 4] },
+        H4: { fontSize: 11, bold: true, color: '#334155', margin: [0, 10, 0, 4] },
+        P: { fontSize: 11, alignment: 'justify', lineHeight: 1.4 },
+        BLOCKQUOTE: { italics: true, margin: [12, 5, 12, 5], background: '#f9fafb' },
+        TH: { fillColor: '#f3f4f6', bold: true },
       }
 
-      const htmlContent = `
-        <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; padding: 5mm 5mm 25mm 5mm; color: black; max-width: 100%; overflow: hidden;">
-          <style>
-            * { box-sizing: border-box; }
-            table { table-layout: fixed; width: 100%; border-collapse: collapse; word-wrap: break-word; overflow-wrap: break-word; hyphens: auto; margin: 1em 0 1.2em 0; page-break-inside: avoid; }
-            th, td { font-size: 9pt; padding: 6px; border: 1px solid #000; word-break: break-word; vertical-align: top; }
-            tbody tr:last-child td { border-bottom: 1px solid #000; }
-            thead { display: table-header-group; }
-            tfoot { display: table-footer-group; }
-            tr { page-break-inside: avoid; break-inside: avoid; }
-            h1, h2, h3, h4, h5, h6 { page-break-after: avoid; break-after: avoid-page; page-break-inside: avoid; break-inside: avoid; }
-            h1 + *, h2 + *, h3 + *, h4 + * { page-break-before: avoid; break-before: avoid-page; }
-            p { orphans: 3; widows: 3; margin-bottom: 0.6em; }
-            blockquote, .callout, .box, .quote-box, figure, pre { page-break-inside: avoid; break-inside: avoid; }
-            div[style*="background"], div[style*="background-color"] { page-break-inside: avoid; break-inside: avoid; }
-            img { max-width: 100%; height: auto; page-break-inside: avoid; break-inside: avoid; }
-            .column-resize-handle, .selectedCell, .resize-cursor, .grip-row, .grip-column { display: none !important; }
-            .last-page-spacer { display: block; height: 20mm; }
-          </style>
-          ${headerHTML}
-          ${procHeader}
-          <div style="text-align: justify; text-indent: 2em;">
-            ${min.content}
-            <div class="last-page-spacer"></div>
-          </div>
-        </div>
-      `
+      const htmlContentObj = htmlToPdfmake(cleanHtml, {
+        defaultStyles: {
+          h1: pdfMakeStyles.H1,
+          h2: pdfMakeStyles.H2,
+          h3: pdfMakeStyles.H3,
+          h4: pdfMakeStyles.H4,
+          p: pdfMakeStyles.P,
+          blockquote: pdfMakeStyles.BLOCKQUOTE,
+          th: pdfMakeStyles.TH,
+        },
+      })
 
-      if (!(window as any).html2pdf) {
-        toast({ title: 'Aguarde', description: 'Carregando biblioteca de exportação...' })
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script')
-          script.src =
-            'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
-          script.onload = () => resolve()
-          script.onerror = () => reject(new Error('Falha ao carregar a biblioteca de PDF.'))
-          document.head.appendChild(script)
+      const docDefinition: any = {
+        pageSize: 'A4',
+        pageMargins: [50, 70, 50, 60],
+        header: function (currentPage: number) {
+          if (currentPage > 1 && !contentHasCover) {
+            return {
+              text: (min.title || 'Documento Jurídico').toUpperCase(),
+              alignment: 'right',
+              margin: [0, 30, 50, 0],
+              fontSize: 9,
+              color: '#64748b',
+            }
+          }
+          return null
+        },
+        footer: function (currentPage: number, pageCount: number) {
+          return {
+            columns: [
+              {
+                text: 'Confidencial — uso restrito ao destinatário',
+                alignment: 'left',
+                color: '#94a3b8',
+                fontSize: 8,
+              },
+              {
+                text: `${currentPage} / ${pageCount}`,
+                alignment: 'right',
+                color: '#94a3b8',
+                fontSize: 8,
+              },
+            ],
+            margin: [50, 20, 50, 0],
+          }
+        },
+        content: [],
+        defaultStyle: {
+          fontSize: 11,
+          lineHeight: 1.4,
+        },
+      }
+
+      // Cover Page Logic
+      if (!contentHasCover) {
+        docDefinition.content.push({
+          text: min.title || 'Documento Jurídico',
+          fontSize: 26,
+          bold: true,
+          alignment: 'center',
+          margin: [0, 150, 0, 20],
+          color: '#1E40AF',
+        })
+
+        if (proc?.case_number) {
+          docDefinition.content.push({
+            text: `Processo Nº ${proc.case_number}`,
+            fontSize: 14,
+            alignment: 'center',
+            margin: [0, 0, 0, 10],
+            color: '#334155',
+          })
+        }
+        if (min.client_name) {
+          docDefinition.content.push({
+            text: `Cliente: ${min.client_name}`,
+            fontSize: 14,
+            alignment: 'center',
+            margin: [0, 0, 0, 10],
+            color: '#334155',
+          })
+        }
+
+        docDefinition.content.push({
+          text: `Data: ${new Date().toLocaleDateString()}`,
+          fontSize: 11,
+          italics: true,
+          alignment: 'center',
+          margin: [0, 40, 0, 0],
+          color: '#64748b',
+          pageBreak: 'after',
         })
       }
 
-      const element = document.createElement('div')
-      element.innerHTML = htmlContent
+      // Process Information Block
+      const hasProcData =
+        proc?.case_number || min.client_name || min.comarca || min.objeto || min.pedido
+      if (!contentHasCover && hasProcData) {
+        const procTableBody = []
 
-      // DOM Cleanup for TipTap tables
-      const tableWrappers = element.querySelectorAll('.tableWrapper, .table-wrapper')
-      tableWrappers.forEach((wrapper) => {
-        const table = wrapper.querySelector('table')
-        if (table && wrapper.parentNode) {
-          wrapper.parentNode.insertBefore(table, wrapper)
-          wrapper.parentNode.removeChild(wrapper)
-        }
-      })
+        if (proc?.case_number)
+          procTableBody.push([
+            { text: 'Processo nº:', bold: true, width: 100 },
+            { text: proc.case_number },
+          ])
+        if (min.client_name)
+          procTableBody.push([
+            { text: 'Cliente:', bold: true, width: 100 },
+            { text: min.client_name },
+          ])
+        if (min.comarca)
+          procTableBody.push([{ text: 'Comarca:', bold: true, width: 100 }, { text: min.comarca }])
+        if (min.objeto)
+          procTableBody.push([{ text: 'Objeto:', bold: true, width: 100 }, { text: min.objeto }])
+        if (min.pedido)
+          procTableBody.push([
+            { text: 'Pedido/Valor:', bold: true, width: 100 },
+            { text: min.pedido },
+          ])
 
-      const tables = element.querySelectorAll('table')
-      tables.forEach((table) => {
-        const thead = table.querySelector('thead')
-        const tbody = table.querySelector('tbody')
-        if (thead && tbody) {
-          const headerCells = thead.querySelectorAll('tr > th, tr > td')
-          const firstBodyRow = tbody.querySelector('tr')
-          if (firstBodyRow) {
-            const bodyCells = firstBodyRow.querySelectorAll('td, th')
-            if (headerCells.length > bodyCells.length) {
-              const emptyHeaderCells = Array.from(headerCells).filter(
-                (cell) =>
-                  !cell.textContent?.trim() &&
-                  !cell.querySelector('img') &&
-                  !cell.querySelector('svg'),
-              )
-              emptyHeaderCells.forEach((cell) => cell.parentNode?.removeChild(cell))
-            }
-          }
-        }
-      })
-
-      const headersToWrap = element.querySelectorAll('h1, h2, h3, h4')
-      headersToWrap.forEach((header) => {
-        const nextEl = header.nextElementSibling
-        if (nextEl) {
-          const nextTag = nextEl.tagName.toUpperCase()
-          const hasTableInside = nextEl.querySelector('table') !== null
-          if (
-            nextTag === 'TABLE' ||
-            nextTag === 'FIGURE' ||
-            nextTag === 'BLOCKQUOTE' ||
-            hasTableInside
-          ) {
-            const wrapper = document.createElement('div')
-            wrapper.className = 'title-block-wrap'
-            wrapper.style.pageBreakInside = 'avoid'
-            wrapper.style.breakInside = 'avoid'
-
-            if (header.parentNode) {
-              header.parentNode.insertBefore(wrapper, header)
-              wrapper.appendChild(header)
-              wrapper.appendChild(nextEl)
-            }
-          }
-        }
-      })
-
-      const opt = {
-        margin: [25, 20, 35, 20],
-        filename: `${min.title || 'documento'}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: {
-          scale: 1.5,
-          useCORS: true,
-          letterRendering: true,
-          windowWidth: 1200,
-          scrollY: 0,
-          backgroundColor: '#ffffff',
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-        pagebreak: {
-          mode: ['css', 'legacy'],
-          avoid: ['tr', 'table', 'blockquote', '.callout', '.box', 'figure', '.title-block-wrap'],
-        },
-      }
-
-      toast({ title: 'Processando', description: 'Gerando o arquivo PDF...' })
-
-      const styleEl = document.createElement('style')
-      styleEl.innerHTML = `
-        @media print {
-          p {
-            orphans: 3;
-            widows: 3;
-            margin-bottom: 0.6em;
-          }
-          li, td, th {
-            orphans: 3;
-            widows: 3;
-            page-break-inside: avoid;
-          }
-          table {
-            table-layout: auto !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            border-collapse: collapse !important;
-            font-size: 9pt !important;
-          }
-          th, td {
-            padding: 3px 5px !important;
-            word-wrap: break-word !important;
-            vertical-align: top !important;
-          }
-        }
-      `
-      document.head.appendChild(styleEl)
-
-      try {
-        await (window as any).html2pdf().set(opt).from(element).save()
-        toast({ title: 'Sucesso', description: 'Download do PDF concluído.' })
-      } finally {
-        if (styleEl && styleEl.parentNode) {
-          styleEl.parentNode.removeChild(styleEl)
+        if (procTableBody.length > 0) {
+          docDefinition.content.push({
+            table: {
+              widths: [100, '*'],
+              body: procTableBody,
+            },
+            layout: {
+              hLineWidth: function () {
+                return 0.5
+              },
+              vLineWidth: function () {
+                return 0
+              },
+              hLineColor: function () {
+                return '#cbd5e1'
+              },
+              paddingTop: function () {
+                return 4
+              },
+              paddingBottom: function () {
+                return 4
+              },
+            },
+            margin: [0, 0, 0, 20],
+          })
         }
       }
+
+      // Add main content
+      const processHtmlNodes = (nodes: any[]): any[] => {
+        if (!Array.isArray(nodes)) return nodes
+        return nodes.map((node) => {
+          if (node.nodeName === 'TABLE') {
+            if (node.table && node.table.body && node.table.body.length > 0) {
+              const numCols = node.table.body[0].length
+              node.table.widths = Array(numCols).fill('auto')
+            }
+          }
+          if (node.stack) {
+            node.stack = processHtmlNodes(node.stack)
+          }
+          return node
+        })
+      }
+
+      const processedContent = processHtmlNodes(
+        Array.isArray(htmlContentObj) ? htmlContentObj : [htmlContentObj],
+      )
+      docDefinition.content = docDefinition.content.concat(processedContent)
+
+      pdfMake.createPdf(docDefinition).download(`${min.title || 'documento'}.pdf`)
+      toast({ title: 'Sucesso', description: 'Download do PDF concluído.' })
     } catch (err: any) {
-      toast({ title: 'Erro ao gerar PDF', description: err.message, variant: 'destructive' })
+      console.error('PDF export failed:', err)
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: err.message || 'Erro desconhecido ao exportar PDF.',
+        variant: 'destructive',
+      })
     }
   }
 
