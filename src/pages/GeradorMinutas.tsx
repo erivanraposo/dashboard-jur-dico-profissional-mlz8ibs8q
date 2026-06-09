@@ -26,9 +26,17 @@ import {
   LayoutTemplate,
   Plus,
   Trash2,
+  MoreHorizontal,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Command,
   CommandEmpty,
@@ -1356,42 +1364,26 @@ export default function GeradorMinutas() {
           isSidebarOpen ? 'w-[65%] lg:w-[70%]' : 'w-full',
         )}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-primary">Gerador de Minutas</h1>
-            <div className="flex items-center gap-2 mt-1">
-              <p className="text-muted-foreground text-sm">
+        <div className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between gap-2 flex-wrap px-4 py-3 border-b mb-4 -mx-4 sm:mx-0 sm:rounded-t-lg shadow-sm">
+          <div className="flex-1 min-w-[200px]">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-primary">
+              Gerador de Minutas
+            </h1>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <p className="text-muted-foreground text-xs md:text-sm hidden sm:block">
                 Crie e edite suas peças com auxílio de Inteligência Artificial.
               </p>
               {minuteType && (
                 <Badge
                   variant="outline"
-                  className="text-xs bg-primary/5 text-primary border-primary/20"
+                  className="text-xs bg-primary/5 text-primary border-primary/20 whitespace-nowrap"
                 >
                   {minuteType}
                 </Badge>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleNovaMinuta}
-              disabled={saving || applying || loading}
-              className="bg-green-600 hover:bg-green-700 text-white border-none"
-            >
-              <Plus className="w-4 h-4 mr-2" /> Nova Minuta
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClearEditor}
-              disabled={content === defaultContent || saving || applying || loading}
-              className="text-muted-foreground"
-            >
-              <Trash2 className="w-4 h-4 mr-2" /> Limpar Editor
-            </Button>
+          <div className="flex items-center gap-2 flex-wrap">
             {content !== defaultContent && content.trim() !== '' && (
               <>
                 <Button
@@ -1399,38 +1391,68 @@ export default function GeradorMinutas() {
                   size="sm"
                   onClick={handleExportPDF}
                   disabled={saving || applying || loading}
-                  className="text-red-600 border-red-200 hover:bg-red-50"
+                  className="text-red-600 border-red-200 hover:bg-red-50 whitespace-nowrap"
                 >
-                  <Download className="w-4 h-4 mr-2" /> Exportar PDF
+                  <Download className="w-4 h-4 sm:mr-2" />{' '}
+                  <span className="hidden sm:inline">Exportar PDF</span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleExportDOCX}
                   disabled={saving || applying || loading}
-                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50 whitespace-nowrap"
                 >
-                  <Download className="w-4 h-4 mr-2" /> Exportar DOCX
+                  <Download className="w-4 h-4 sm:mr-2" />{' '}
+                  <span className="hidden sm:inline">Exportar DOCX</span>
                 </Button>
               </>
             )}
-            <Button
-              size="sm"
-              onClick={() => handleSave(content)}
-              disabled={saving || content === defaultContent}
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4 mr-2" />
-              )}
-              {saving ? 'Salvando...' : 'Salvar Minuta'}
-            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="px-2" title="Mais opções">
+                  <MoreHorizontal className="w-4 h-4" />
+                  <span className="sr-only">Mais opções</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem
+                  onClick={handleNovaMinuta}
+                  disabled={saving || applying || loading}
+                  className="cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 mr-2 text-green-600" /> Nova Minuta
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleSave(content)}
+                  disabled={saving || content === defaultContent}
+                  className="cursor-pointer"
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin text-primary" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2 text-primary" />
+                  )}
+                  Salvar Minuta
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleClearEditor}
+                  disabled={content === defaultContent || saving || applying || loading}
+                  className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Limpar Editor
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button
               variant="outline"
               size="sm"
               onClick={() => setIsFullScreen(!isFullScreen)}
               title={isFullScreen ? 'Sair da Tela Cheia' : 'Tela Cheia'}
+              className="px-2"
             >
               {isFullScreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </Button>
@@ -1440,6 +1462,7 @@ export default function GeradorMinutas() {
                 size="sm"
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                 title={isSidebarOpen ? 'Ocultar Painel' : 'Mostrar Painel'}
+                className="px-2"
               >
                 {isSidebarOpen ? (
                   <PanelRightClose className="w-4 h-4" />
