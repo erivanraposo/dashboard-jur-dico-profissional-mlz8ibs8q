@@ -71,6 +71,77 @@ if (!(pdfMake as any).vfs || Object.keys((pdfMake as any).vfs).length === 0) {
   console.error('[pdfmake] VFS não foi carregado — verifique o import de vfs_fonts')
 }
 
+const extractCoverHtml = (html: string): string | null => {
+  if (!html) return null
+  const m = html.match(/<div[^>]*class=["']cover-page["'][^>]*>([\s\S]*?)<\/div>/i)
+  return m ? m[1] : null
+}
+
+const htmlToPlain = (html: string): string => {
+  if (!html) return ''
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+const ACTION_VERBS = [
+  'emitir',
+  'pagar',
+  'cumprir',
+  'realizar',
+  'efetuar',
+  'apresentar',
+  'aguardar',
+  'verificar',
+  'monitorar',
+  'notificar',
+  'comparecer',
+  'depositar',
+  'recolher',
+  'juntar',
+  'protocolar',
+  'encaminhar',
+  'designar',
+]
+
+const looksLikeAction = (text: string): boolean => {
+  if (!text) return false
+  const firstWord = text.trim().split(' ')[0].toLowerCase()
+  return ACTION_VERBS.includes(firstWord)
+}
+
+const extractFromText = (text: string, pattern: RegExp): string | null => {
+  if (!text) return null
+  const m = text.match(pattern)
+  return m ? m[1].trim() : null
+}
+
+const extractMetadata = (min: any, proc: any, rawContent: string) => {
+  const coverHtml = extractCoverHtml(rawContent) || ''
+  const coverPlain = htmlToPlain(coverHtml)
+  const fullPlain = htmlToPlain(rawContent)
+
+  const processRegex =
+    /(?:Processo|Ação Penal|Execução(?:\s+Penal)?)[\s:n°ºNo.]*([\d]{4,7}[-.]?[\d]{1,2}[-.]?[\d]{4}[-.]?[\d][-.]?[\d]{2}[-.]?[\d]{4})/i
+  const clientRegex = /Cliente[\s:]+([^[<\n]+?)(?:\s+\(|\s+CPF|\s+Data|\s+LexControl|$)/i
+
+  const procNumForCover =
+    proc?.case_number ||
+    extractFromText(coverPlain, processRegex) ||
+    extractFromText(fullPlain, processRegex)
+
+  let extractedClient = extractFromText(coverPlain, clientRegex)
+  if (extractedClient && looksLikeAction(extractedClient)) {
+    extractedClient = null
+  }
+
+  const clientForCoverSafe = min?.client_name || proc?.client_name || extractedClient || null
+
+  return { procNumForCover, clientForCoverSafe }
+}
+
 const MINUTE_TYPES = [
   'Petição Inicial',
   'Contestação',
@@ -1047,27 +1118,11 @@ export default function GeradorMinutas() {
 
       const rawContent = min.content || ''
 
-      const extractFromHtml = (html: string, pattern: RegExp): string | null => {
-        if (!html) return null
-        const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
-        const m = stripped.match(pattern)
-        return m ? m[1].trim() : null
-      }
-
-      const procNumForCover =
-        proc?.case_number ||
-        extractFromHtml(
-          rawContent,
-          /(?:Processo|Ação Penal|Execução(?:\s+Penal)?)[\s:n°ºNo.]*([\d]{4,7}[-.]?[\d]{1,2}[-.]?[\d]{4}[-.]?[\d][-.]?[\d]{2}[-.]?[\d]{4})/i,
-        )
-
-      const clientForCover =
-        min.client_name ||
-        proc?.client_name ||
-        extractFromHtml(
-          rawContent,
-          /Cliente[\s:]+([A-ZÀ-Ý][A-Za-zÀ-ÿ\s.]+?)(?:\s+\(|\s+CPF|\s+\d|[,.])/,
-        )
+      const { procNumForCover, clientForCoverSafe: clientForCover } = extractMetadata(
+        min,
+        proc,
+        rawContent,
+      )
 
       // --- HTML Sanitization ---
       let cleanHtml = rawContent
@@ -1499,27 +1554,11 @@ export default function GeradorMinutas() {
 
       const rawContent = min.content || ''
 
-      const extractFromHtml = (html: string, pattern: RegExp): string | null => {
-        if (!html) return null
-        const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
-        const m = stripped.match(pattern)
-        return m ? m[1].trim() : null
-      }
-
-      const procNumForCover =
-        proc?.case_number ||
-        extractFromHtml(
-          rawContent,
-          /(?:Processo|Ação Penal|Execução(?:\s+Penal)?)[\s:n°ºNo.]*([\d]{4,7}[-.]?[\d]{1,2}[-.]?[\d]{4}[-.]?[\d][-.]?[\d]{2}[-.]?[\d]{4})/i,
-        )
-
-      const clientForCover =
-        min.client_name ||
-        proc?.client_name ||
-        extractFromHtml(
-          rawContent,
-          /Cliente[\s:]+([A-ZÀ-Ý][A-Za-zÀ-ÿ\s.]+?)(?:\s+\(|\s+CPF|\s+\d|[,.])/,
-        )
+      const { procNumForCover, clientForCoverSafe: clientForCover } = extractMetadata(
+        min,
+        proc,
+        rawContent,
+      )
 
       const rawTitle = min.title || 'Documento Jurídico'
       const sanitizedTitle = rawTitle.replace(/\s*-\s*\d{1,2}\/\d{1,2}\/\d{4}$/, '')
