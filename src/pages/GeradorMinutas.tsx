@@ -1201,7 +1201,10 @@ export default function GeradorMinutas() {
       cleanHtml = cleanHtml.replace(/<br\s*\/?>/g, '<br/>')
 
       // Clean up Emojis and unsupported characters
-      cleanHtml = cleanHtml.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}]/gu, '')
+      cleanHtml = cleanHtml.replace(
+        /[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F600}-\u{1F64F}\u{1FA00}-\u{1FAFF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}]/gu,
+        '',
+      )
 
       // --- Placeholder Replacement ---
       const currentDate = new Date().toLocaleDateString('pt-BR', {
