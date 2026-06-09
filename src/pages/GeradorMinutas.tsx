@@ -77,6 +77,18 @@ const extractCoverHtml = (html: string): string | null => {
   return m ? m[1] : null
 }
 
+const extractTitleFromCover = (coverHtmlInner: string | null): string | null => {
+  if (!coverHtmlInner) return null
+  const m = coverHtmlInner.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
+  if (!m) return null
+  return (
+    m[1]
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .trim() || null
+  )
+}
+
 const htmlToPlain = (html: string): string => {
   if (!html) return ''
   return html
@@ -1124,6 +1136,9 @@ export default function GeradorMinutas() {
         rawContent,
       )
 
+      const coverHtmlForTitle = extractCoverHtml(rawContent) || ''
+      const titleFromCover = extractTitleFromCover(coverHtmlForTitle)
+
       // --- HTML Sanitization ---
       let cleanHtml = rawContent
 
@@ -1184,6 +1199,9 @@ export default function GeradorMinutas() {
 
       // Normalize <br>
       cleanHtml = cleanHtml.replace(/<br\s*\/?>/g, '<br/>')
+
+      // Clean up Emojis and unsupported characters
+      cleanHtml = cleanHtml.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}]/gu, '')
 
       // --- Placeholder Replacement ---
       const currentDate = new Date().toLocaleDateString('pt-BR', {
@@ -1254,7 +1272,8 @@ export default function GeradorMinutas() {
 
       const rawTitle = min.title || 'Documento Jurídico'
       const sanitizedTitle = rawTitle.replace(/\s*-\s*\d{1,2}\/\d{1,2}\/\d{4}$/, '')
-      const uppercaseTitle = sanitizedTitle.toUpperCase()
+      const finalTitle = titleFromCover || sanitizedTitle
+      const uppercaseTitle = finalTitle.toUpperCase()
 
       const docDefinition: any = {
         pageSize: 'A4',
@@ -1470,17 +1489,20 @@ export default function GeradorMinutas() {
                 for (const cell of firstRow) {
                   if (!cell) continue
                   delete cell.fillColor
+                  delete cell.background
                   cell.bold = true
 
                   if (Array.isArray(cell.text)) {
                     for (const t of cell.text) {
                       if (t) {
                         delete t.fillColor
+                        delete t.background
                         t.bold = true
                       }
                     }
                   } else if (cell.text && typeof cell.text === 'object') {
                     delete cell.text.fillColor
+                    delete cell.text.background
                     cell.text.bold = true
                   }
                 }
@@ -1559,18 +1581,57 @@ export default function GeradorMinutas() {
             ) {
               chainLen++
             }
+
+            let hasTableNext = false
+            let tableNode = null
             if (i + chainLen < nodes.length) {
+              if (nodes[i + chainLen].nodeName === 'TABLE') {
+                hasTableNext = true
+                tableNode = nodes[i + chainLen]
+              }
               chainLen++
             }
 
             if (chainLen > 1) {
               const chain = nodes.slice(i, i + chainLen)
-              const wrapper = {
-                stack: chain,
-                unbreakable: true,
-                _grouped: true,
+
+              if (hasTableNext && tableNode) {
+                const headings = chain.slice(0, chain.length - 1)
+                const spacer = { text: '', margin: [0, 60] }
+                const wrapper = {
+                  stack: [...headings, spacer],
+                  unbreakable: true,
+                  _grouped: true,
+                }
+
+                let currentMargin = tableNode.margin || [0, 0, 0, 15]
+                if (typeof currentMargin === 'number') {
+                  currentMargin = [currentMargin, currentMargin, currentMargin, currentMargin]
+                } else if (Array.isArray(currentMargin) && currentMargin.length === 2) {
+                  currentMargin = [
+                    currentMargin[0],
+                    currentMargin[1],
+                    currentMargin[0],
+                    currentMargin[1],
+                  ]
+                } else if (Array.isArray(currentMargin) && currentMargin.length === 4) {
+                  currentMargin = [...currentMargin]
+                } else {
+                  currentMargin = [0, 0, 0, 15]
+                }
+                currentMargin[1] = (currentMargin[1] || 0) - 60
+                tableNode.margin = currentMargin
+                tableNode._grouped = true
+
+                nodes.splice(i, chainLen, wrapper, tableNode)
+              } else {
+                const wrapper = {
+                  stack: chain,
+                  unbreakable: true,
+                  _grouped: true,
+                }
+                nodes.splice(i, chainLen, wrapper)
               }
-              nodes.splice(i, chainLen, wrapper)
             }
           }
         }
@@ -1653,9 +1714,13 @@ export default function GeradorMinutas() {
         rawContent,
       )
 
+      const coverHtmlForTitle = extractCoverHtml(rawContent) || ''
+      const titleFromCover = extractTitleFromCover(coverHtmlForTitle)
+
       const rawTitle = min.title || 'Documento Jurídico'
       const sanitizedTitle = rawTitle.replace(/\s*-\s*\d{1,2}\/\d{1,2}\/\d{4}$/, '')
-      const uppercaseTitle = sanitizedTitle.toUpperCase()
+      const finalTitle = titleFromCover || sanitizedTitle
+      const uppercaseTitle = finalTitle.toUpperCase()
 
       let htmlString = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${uppercaseTitle}</title>
       <style>
