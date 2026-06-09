@@ -1133,6 +1133,9 @@ export default function GeradorMinutas() {
         BLOCKQUOTE: { italics: true, margin: [12, 5, 12, 5], background: '#f9fafb' },
         TH: { fillColor: '#f3f4f6', bold: true },
         TABLE: { margin: [0, 5, 0, 15] },
+        UL: { marginBottom: 6, alignment: 'justify' },
+        OL: { marginBottom: 6, alignment: 'justify' },
+        LI: { fontSize: 11, marginBottom: 3, alignment: 'justify', lineHeight: 1.4 },
       }
 
       let htmlConverted
@@ -1147,6 +1150,9 @@ export default function GeradorMinutas() {
             blockquote: pdfMakeStyles.BLOCKQUOTE,
             th: pdfMakeStyles.TH,
             table: pdfMakeStyles.TABLE,
+            ul: pdfMakeStyles.UL,
+            ol: pdfMakeStyles.OL,
+            li: pdfMakeStyles.LI,
           },
         })
 
