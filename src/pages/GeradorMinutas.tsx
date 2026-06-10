@@ -468,6 +468,70 @@ export default function GeradorMinutas() {
       if (!session) throw new Error('Não autenticado')
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+
+      // Diagnostic Check
+      if (attachments.length > 0) {
+        try {
+          console.log('[diagnóstico anexos] Iniciando verificação de anexos...')
+          const lowTextFiles: string[] = []
+
+          for (const att of attachments) {
+            try {
+              const extractRes = await fetch(`${supabaseUrl}/functions/v1/extract-document`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify({ path: att.path }),
+              })
+
+              if (!extractRes.ok) {
+                console.log(
+                  `[diagnóstico anexos] Erro ao extrair ${att.name}: HTTP ${extractRes.status}`,
+                )
+                continue
+              }
+
+              const extractData = await extractRes.json()
+              const extractedText =
+                extractData.text || extractData.extracted || extractData.content || ''
+              const charCount = extractedText.length
+
+              console.log(`[diagnóstico anexos] ${att.name}: ${charCount} caracteres`)
+
+              if (charCount < 200) {
+                lowTextFiles.push(`• ${att.name} (${charCount} chars)`)
+              }
+            } catch (innerErr) {
+              console.log(`[diagnóstico anexos] Falha ao processar ${att.name}:`, innerErr)
+            }
+          }
+
+          if (lowTextFiles.length > 0) {
+            toast({
+              title: 'Atenção — anexo com pouco texto',
+              description: (
+                <div className="flex flex-col gap-1 mt-1">
+                  {lowTextFiles.map((f, i) => (
+                    <span key={i} className="text-xs font-mono">
+                      {f}
+                    </span>
+                  ))}
+                  <span className="mt-1 text-xs">
+                    Verifique se são PDFs escaneados sem OCR. A análise continuará, mas pode gerar
+                    conteúdo genérico.
+                  </span>
+                </div>
+              ),
+              variant: 'destructive',
+            })
+          }
+        } catch (diagErr) {
+          console.error('[diagnóstico anexos] Erro geral no diagnóstico:', diagErr)
+        }
+      }
+
       const res = await fetch(`${supabaseUrl}/functions/v1/analyze-legal-text`, {
         method: 'POST',
         headers: {
