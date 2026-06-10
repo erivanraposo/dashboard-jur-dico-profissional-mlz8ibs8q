@@ -1642,40 +1642,38 @@ export default function GeradorMinutas() {
         }
       }
 
-      const preventWidowedHeadingsBeforeLargeTables = (nodes: any[]) => {
+      const forcePageBreakBeforeTableInUnbreakable = (nodes: any[]) => {
         if (!Array.isArray(nodes)) return
 
         for (let i = 0; i < nodes.length; i++) {
           const node = nodes[i]
           if (!node) continue
 
-          if (node.stack) preventWidowedHeadingsBeforeLargeTables(node.stack)
-          if (node.columns) preventWidowedHeadingsBeforeLargeTables(node.columns)
+          if (node.stack) forcePageBreakBeforeTableInUnbreakable(node.stack)
+          if (node.columns) forcePageBreakBeforeTableInUnbreakable(node.columns)
           if (node.table && node.table.body) {
             node.table.body.forEach((row: any[]) => {
               row.forEach((cell: any) => {
                 if (cell) {
                   if (cell.text && Array.isArray(cell.text))
-                    preventWidowedHeadingsBeforeLargeTables(cell.text)
-                  if (cell.stack) preventWidowedHeadingsBeforeLargeTables(cell.stack)
+                    forcePageBreakBeforeTableInUnbreakable(cell.text)
+                  if (cell.stack) forcePageBreakBeforeTableInUnbreakable(cell.stack)
                 }
               })
             })
           }
 
           if (node.unbreakable && Array.isArray(node.stack) && node.stack.length > 0) {
-            const lastNode = node.stack[node.stack.length - 1]
-            if (
-              lastNode &&
-              lastNode.table &&
-              Array.isArray(lastNode.table.body) &&
-              lastNode.table.body.length > 3
-            ) {
+            const hasTable = node.stack.some((n: any) => n?.table || n?.nodeName === 'TABLE')
+            if (hasTable) {
               if (node.pageBreak === undefined) {
                 node.pageBreak = 'before'
               }
-              // Allow large tables to break across pages properly
-              delete node.unbreakable
+
+              const hasLargeTable = node.stack.find((n: any) => n?.table?.body?.length > 15)
+              if (hasLargeTable) {
+                delete node.unbreakable
+              }
             }
           }
         }
@@ -1730,7 +1728,7 @@ export default function GeradorMinutas() {
       }
 
       groupHeadingsWithNext(processedContent)
-      preventWidowedHeadingsBeforeLargeTables(processedContent)
+      forcePageBreakBeforeTableInUnbreakable(processedContent)
       markTocItems(processedContent)
       ensureTableHeaderRows(processedContent)
 
