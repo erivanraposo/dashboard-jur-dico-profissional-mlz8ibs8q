@@ -166,6 +166,61 @@ const MINUTE_TYPES = [
   'Outros',
 ]
 
+const sanitizeForDocx = (html: string): string => {
+  if (!html) return ''
+
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<root>${html}</root>`, 'text/html')
+    const root = doc.querySelector('root')
+
+    if (!root) return ''
+
+    const elements = Array.from(root.getElementsByTagName('*'))
+    const validAttrRegex = /^[a-zA-Z_][a-zA-Z0-9_.-]*$/
+
+    for (const el of elements) {
+      const attributesToRemove: string[] = []
+      for (let i = 0; i < el.attributes.length; i++) {
+        const attr = el.attributes[i]
+        if (!validAttrRegex.test(attr.name)) {
+          attributesToRemove.push(attr.name)
+        }
+      }
+      attributesToRemove.forEach((attrName) => {
+        try {
+          el.removeAttribute(attrName)
+        } catch (e) {
+          // ignore error if attribute can't be removed
+        }
+      })
+    }
+
+    for (let i = elements.length - 1; i >= 0; i--) {
+      const el = elements[i]
+      if (!el.parentNode) continue
+
+      const tagName = el.tagName.toLowerCase()
+      if (/^(o|w|x|st1|m):/i.test(tagName)) {
+        while (el.firstChild) {
+          el.parentNode.insertBefore(el.firstChild, el)
+        }
+        el.parentNode.removeChild(el)
+      }
+    }
+
+    let sanitizedHtml = root.innerHTML
+
+    sanitizedHtml = sanitizedHtml.replace(/<!--[\s\S]*?-->/g, '')
+    sanitizedHtml = sanitizedHtml.replace(/\p{Extended_Pictographic}/gu, '')
+
+    return sanitizedHtml
+  } catch (error) {
+    console.error('Error in sanitizeForDocx:', error)
+    return html
+  }
+}
+
 export default function GeradorMinutas() {
   const defaultContent =
     '<h1>Nova Peça Jurídica</h1><p>Inicie a redação do seu documento aqui...</p>'
@@ -1950,35 +2005,7 @@ export default function GeradorMinutas() {
 
       const rawContent = min.content || ''
 
-      let safeContent = rawContent
-
-      // 1. Remove HTML Comments
-      safeContent = safeContent.replace(/<!--[\s\S]*?-->/g, '')
-
-      // 2. Remove Office Tags like <o:p>, <w:sdt>, etc.
-      safeContent = safeContent.replace(/<\/?(?:o|w|v):[^>]*>/gi, '')
-
-      // 3. Remove @ Attributes (e.g., @w, @style)
-      safeContent = safeContent.replace(/\s+@[^\s=>]+\s*=\s*(?:"[^"]*"|'[^']*')/g, '')
-
-      // 4. Remove XML Namespaces
-      safeContent = safeContent.replace(
-        /\s+(?:xmlns|w|o|v):[^\s=>]+\s*=\s*(?:"[^"]*"|'[^']*')/gi,
-        '',
-      )
-
-      // 5. Remove TipTap Data
-      safeContent = safeContent.replace(/\s+data-[^\s=>]+\s*=\s*(?:"[^"]*"|'[^']*')/gi, '')
-
-      // 6. Remove Non-ASCII Attributes
-      // eslint-disable-next-line no-control-regex
-      safeContent = safeContent.replace(
-        /\s+[^\s=>"']*[^\x00-\x7F]+[^\s=>"']*\s*=\s*(?:"[^"]*"|'[^']*')/g,
-        '',
-      )
-
-      // 7. Clean up Emojis and graphic symbols
-      safeContent = safeContent.replace(/\p{Extended_Pictographic}/gu, '')
+      const safeContent = sanitizeForDocx(rawContent)
 
       const contentHasCover = /class=["']cover-page["']/i.test(safeContent)
 
