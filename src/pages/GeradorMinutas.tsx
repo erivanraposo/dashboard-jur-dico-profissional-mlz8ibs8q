@@ -1197,14 +1197,14 @@ export default function GeradorMinutas() {
       // Strip all inline font-family styles
       cleanHtml = cleanHtml.replace(/font-family\s*:[^;"']+;?/gi, '')
 
+      // Strip chaotic background colors from tables and notes
+      cleanHtml = cleanHtml.replace(/background(-color)?\s*:[^;"']+;?/gi, '')
+
       // Normalize <br>
       cleanHtml = cleanHtml.replace(/<br\s*\/?>/g, '<br/>')
 
       // Clean up Emojis and unsupported characters
-      cleanHtml = cleanHtml.replace(
-        /[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F600}-\u{1F64F}\u{1FA00}-\u{1FAFF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}]/gu,
-        '',
-      )
+      cleanHtml = cleanHtml.replace(/\p{Extended_Pictographic}/gu, '')
 
       // --- Placeholder Replacement ---
       const currentDate = new Date().toLocaleDateString('pt-BR', {
@@ -1660,7 +1660,7 @@ export default function GeradorMinutas() {
               lastNode &&
               lastNode.table &&
               Array.isArray(lastNode.table.body) &&
-              lastNode.table.body.length > 10
+              lastNode.table.body.length > 3
             ) {
               if (node.pageBreak === undefined) {
                 node.pageBreak = 'before'
@@ -1790,9 +1790,17 @@ export default function GeradorMinutas() {
       if (error || !min) throw new Error('Minuta não encontrada.')
 
       const proc = min.processes as any
-      const contentHasCover = /class=["']cover-page["']/i.test(min.content)
 
       const rawContent = min.content || ''
+
+      let safeContent = rawContent
+      safeContent = safeContent.replace(/\s+@[a-zA-Z][\w-]*\s*=\s*"[^"]*"/g, '')
+      safeContent = safeContent.replace(/\s+@[a-zA-Z][\w-]*\s*=\s*'[^']*'/g, '')
+      safeContent = safeContent.replace(/\s+data-[a-zA-Z][\w-]*\s*=\s*"[^"]*"/g, '')
+      safeContent = safeContent.replace(/\s+data-[a-zA-Z][\w-]*\s*=\s*'[^']*'/g, '')
+      safeContent = safeContent.replace(/\p{Extended_Pictographic}/gu, '')
+
+      const contentHasCover = /class=["']cover-page["']/i.test(safeContent)
 
       const { procNumForCover, clientForCoverSafe: clientForCover } = extractMetadata(
         min,
@@ -1840,7 +1848,7 @@ export default function GeradorMinutas() {
         }
       }
 
-      htmlString += min.content
+      htmlString += safeContent
       htmlString += `</body></html>`
 
       toast({ title: 'Processando', description: 'Gerando o arquivo DOCX...' })
