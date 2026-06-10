@@ -1892,34 +1892,18 @@ export default function GeradorMinutas() {
             const headerRows = node.table.headerRows || 0
 
             node.layout = {
-              hLineWidth: function () {
-                return 0.5
+              fillColor: (rowIdx: number) => {
+                if (rowIdx < headerRows) return null
+                return (rowIdx - headerRows) % 2 === 0 ? '#fafafa' : null
               },
-              vLineWidth: function () {
-                return 0.5
-              },
-              hLineColor: function () {
-                return '#cbd5e1'
-              },
-              vLineColor: function () {
-                return '#cbd5e1'
-              },
-              paddingTop: function () {
-                return 5
-              },
-              paddingBottom: function () {
-                return 5
-              },
-              paddingLeft: function () {
-                return 6
-              },
-              paddingRight: function () {
-                return 6
-              },
-              fillColor: function (rowIndex: number) {
-                if (rowIndex < headerRows) return null
-                return (rowIndex - headerRows) % 2 === 0 ? '#fafafa' : null
-              },
+              hLineWidth: () => 0.6,
+              vLineWidth: () => 0.6,
+              hLineColor: () => '#94a3b8',
+              vLineColor: () => '#94a3b8',
+              paddingTop: () => 5,
+              paddingBottom: () => 5,
+              paddingLeft: () => 6,
+              paddingRight: () => 6,
             }
 
             for (let r = headerRows; r < node.table.body.length; r++) {
