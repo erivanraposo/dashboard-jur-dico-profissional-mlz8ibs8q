@@ -1725,6 +1725,93 @@ export default function GeradorMinutas() {
       markTocItems(processedContent)
       ensureTableHeaderRows(processedContent)
 
+      const cleanTableBodyFills = (nodes: any[]) => {
+        if (!Array.isArray(nodes)) return
+
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i]
+          if (!node) continue
+
+          if (node.nodeName === 'TABLE' && node.table && node.table.body) {
+            const headerRows = node.table.headerRows || 0
+
+            node.layout = {
+              hLineWidth: function () {
+                return 0.5
+              },
+              vLineWidth: function () {
+                return 0.5
+              },
+              hLineColor: function () {
+                return '#cbd5e1'
+              },
+              vLineColor: function () {
+                return '#cbd5e1'
+              },
+              paddingTop: function () {
+                return 5
+              },
+              paddingBottom: function () {
+                return 5
+              },
+              paddingLeft: function () {
+                return 6
+              },
+              paddingRight: function () {
+                return 6
+              },
+              fillColor: function (rowIndex: number) {
+                if (rowIndex < headerRows) return null
+                return (rowIndex - headerRows) % 2 === 0 ? '#fafafa' : null
+              },
+            }
+
+            for (let r = headerRows; r < node.table.body.length; r++) {
+              const row = node.table.body[r]
+              if (!Array.isArray(row)) continue
+              for (const cell of row) {
+                if (!cell) continue
+
+                if (typeof cell === 'object') {
+                  delete cell.fillColor
+                  delete cell.background
+                  delete cell.color
+                }
+
+                if (Array.isArray(cell.text)) {
+                  for (const t of cell.text) {
+                    if (t && typeof t === 'object') {
+                      delete t.fillColor
+                      delete t.background
+                      delete t.color
+                    }
+                  }
+                } else if (cell.text && typeof cell.text === 'object') {
+                  delete cell.text.fillColor
+                  delete cell.text.background
+                  delete cell.text.color
+                }
+              }
+            }
+          }
+
+          if (node.stack) cleanTableBodyFills(node.stack)
+          if (node.columns) cleanTableBodyFills(node.columns)
+          if (node.table && node.table.body) {
+            node.table.body.forEach((row: any[]) => {
+              row.forEach((cell: any) => {
+                if (cell) {
+                  if (cell.text && Array.isArray(cell.text)) cleanTableBodyFills(cell.text)
+                  if (cell.stack) cleanTableBodyFills(cell.stack)
+                }
+              })
+            })
+          }
+        }
+      }
+
+      cleanTableBodyFills(processedContent)
+
       docDefinition.content = docDefinition.content.concat(processedContent)
 
       const filename = `${min.title || 'documento'}.pdf`
