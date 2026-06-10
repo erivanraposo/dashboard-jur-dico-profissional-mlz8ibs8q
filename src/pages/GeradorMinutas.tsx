@@ -1564,6 +1564,18 @@ export default function GeradorMinutas() {
         }
       }
 
+      const extractNodeText = (node: any): string => {
+        if (!node) return ''
+        if (typeof node === 'string') return node
+        if (Array.isArray(node)) return node.map(extractNodeText).join('')
+        if (typeof node.text === 'string') return node.text
+        if (Array.isArray(node.text)) return node.text.map(extractNodeText).join('')
+        if (node.text && typeof node.text === 'object') return extractNodeText(node.text)
+        if (Array.isArray(node.stack)) return node.stack.map(extractNodeText).join('')
+        if (Array.isArray(node.columns)) return node.columns.map(extractNodeText).join('')
+        return ''
+      }
+
       const isHeadingNode = (node: any) => {
         if (!node) return false
         if (node.style) {
@@ -1578,7 +1590,57 @@ export default function GeradorMinutas() {
         if (node.bold === true && node.fontSize >= 12) {
           return true
         }
+
+        let isFullyBold = node.bold === true
+        if (!isFullyBold && Array.isArray(node.text)) {
+          isFullyBold =
+            node.text.length > 0 &&
+            node.text.every((t: any) => t && typeof t === 'object' && t.bold === true)
+        }
+        if (
+          !isFullyBold &&
+          node.text &&
+          typeof node.text === 'object' &&
+          !Array.isArray(node.text)
+        ) {
+          if (node.text.bold === true) isFullyBold = true
+        }
+
+        if (isFullyBold) {
+          const text = extractNodeText(node).trim()
+          if (text.length > 0 && text.length < 120) {
+            const headingPattern = /^(\d+(\.\d+)*\.?\s+|[a-zA-Z]\.\d+\.?\s+)/i
+            const keywordPattern = /^(anexo|apêndice|apendice)s?\b/i
+            if (headingPattern.test(text) || keywordPattern.test(text)) {
+              return true
+            }
+          }
+        }
+
         return false
+      }
+
+      const forcePageBreakBeforeAnexo = (nodes: any[]) => {
+        if (!Array.isArray(nodes)) return
+
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i]
+          if (!node) continue
+
+          if (node.stack) forcePageBreakBeforeAnexo(node.stack)
+          if (node.columns) forcePageBreakBeforeAnexo(node.columns)
+
+          if (typeof node !== 'string') {
+            const text = extractNodeText(node).trim()
+            if (/^(anexo|apêndice|apendice)s?\b/i.test(text)) {
+              if (text.length < 200 || isHeadingNode(node)) {
+                if (node.pageBreak === undefined) {
+                  node.pageBreak = 'before'
+                }
+              }
+            }
+          }
+        }
       }
 
       const groupHeadingsWithNext = (nodes: any[]) => {
@@ -1729,6 +1791,7 @@ export default function GeradorMinutas() {
 
       groupHeadingsWithNext(processedContent)
       forcePageBreakBeforeTableInUnbreakable(processedContent)
+      forcePageBreakBeforeAnexo(processedContent)
       markTocItems(processedContent)
       ensureTableHeaderRows(processedContent)
 
@@ -1888,11 +1951,33 @@ export default function GeradorMinutas() {
       const rawContent = min.content || ''
 
       let safeContent = rawContent
-      safeContent = safeContent.replace(/\s+@[a-zA-Z][\w-]*\s*=\s*"[^"]*"/g, '')
-      safeContent = safeContent.replace(/\s+@[a-zA-Z][\w-]*\s*=\s*'[^']*'/g, '')
-      safeContent = safeContent.replace(/\s+data-[a-zA-Z][\w-]*\s*=\s*"[^"]*"/g, '')
-      safeContent = safeContent.replace(/\s+data-[a-zA-Z][\w-]*\s*=\s*'[^']*'/g, '')
-      // Clean up Emojis and graphic symbols
+
+      // 1. Remove HTML Comments
+      safeContent = safeContent.replace(/<!--[\s\S]*?-->/g, '')
+
+      // 2. Remove Office Tags like <o:p>, <w:sdt>, etc.
+      safeContent = safeContent.replace(/<\/?(?:o|w|v):[^>]*>/gi, '')
+
+      // 3. Remove @ Attributes (e.g., @w, @style)
+      safeContent = safeContent.replace(/\s+@[^\s=>]+\s*=\s*(?:"[^"]*"|'[^']*')/g, '')
+
+      // 4. Remove XML Namespaces
+      safeContent = safeContent.replace(
+        /\s+(?:xmlns|w|o|v):[^\s=>]+\s*=\s*(?:"[^"]*"|'[^']*')/gi,
+        '',
+      )
+
+      // 5. Remove TipTap Data
+      safeContent = safeContent.replace(/\s+data-[^\s=>]+\s*=\s*(?:"[^"]*"|'[^']*')/gi, '')
+
+      // 6. Remove Non-ASCII Attributes
+      // eslint-disable-next-line no-control-regex
+      safeContent = safeContent.replace(
+        /\s+[^\s=>"']*[^\x00-\x7F]+[^\s=>"']*\s*=\s*(?:"[^"]*"|'[^']*')/g,
+        '',
+      )
+
+      // 7. Clean up Emojis and graphic symbols
       safeContent = safeContent.replace(/\p{Extended_Pictographic}/gu, '')
 
       const contentHasCover = /class=["']cover-page["']/i.test(safeContent)
@@ -1945,6 +2030,11 @@ export default function GeradorMinutas() {
 
       htmlString += safeContent
       htmlString += `</body></html>`
+
+      console.log(`[DOCX Export] Sanitized content length: ${safeContent.length} characters`)
+      console.log(
+        `[DOCX Export] Content preview (first 200 chars): ${safeContent.substring(0, 200)}`,
+      )
 
       toast({ title: 'Processando', description: 'Gerando o arquivo DOCX...' })
 
