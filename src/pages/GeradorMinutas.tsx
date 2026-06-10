@@ -1672,6 +1672,29 @@ export default function GeradorMinutas() {
           }
         }
 
+        let hasBoldHint = node.bold === true
+        if (!hasBoldHint && Array.isArray(node.text)) {
+          hasBoldHint = node.text.some((t: any) => t && typeof t === 'object' && t.bold === true)
+        } else if (
+          !hasBoldHint &&
+          node.text &&
+          typeof node.text === 'object' &&
+          !Array.isArray(node.text)
+        ) {
+          if (node.text.bold === true) hasBoldHint = true
+        }
+
+        if (hasBoldHint) {
+          const text = extractNodeText(node).trim()
+          if (text.length > 0 && text.length < 200) {
+            const labelPattern =
+              /^(Argumento|Contra-argumento|Tese|Recomendação|Refutação|Conclusão|Análise|Síntese|Premissa|Hipótese|Observação|Nota|Atenção|Resumo|Parecer|Despacho|Decisão|Acórdão|Ementa)\b[^.\n]{0,80}:/i
+            if (labelPattern.test(text)) {
+              return true
+            }
+          }
+        }
+
         return false
       }
 
