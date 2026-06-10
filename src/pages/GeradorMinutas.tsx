@@ -1264,8 +1264,16 @@ export default function GeradorMinutas() {
         },
       )
 
+      // Remove empty paragraphs
+      cleanHtml = cleanHtml.replace(/<p[^>]*>\s*<\/p>/gi, '')
+      cleanHtml = cleanHtml.replace(/<p[^>]*>\s*&nbsp;\s*<\/p>/gi, '')
+      cleanHtml = cleanHtml.replace(/<p[^>]*>\s*<br\s*\/?>\s*<\/p>/gi, '')
+
       // Normalize <br>
       cleanHtml = cleanHtml.replace(/<br\s*\/?>/g, '<br/>')
+
+      // Collapse 3 or more consecutive <br> tags into exactly 2
+      cleanHtml = cleanHtml.replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>')
 
       // Clean up Emojis and graphic symbols
       cleanHtml = cleanHtml.replace(/\p{Extended_Pictographic}/gu, '')
