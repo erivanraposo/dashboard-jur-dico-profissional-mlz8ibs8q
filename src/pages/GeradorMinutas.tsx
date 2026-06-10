@@ -1212,7 +1212,7 @@ export default function GeradorMinutas() {
       // Normalize <br>
       cleanHtml = cleanHtml.replace(/<br\s*\/?>/g, '<br/>')
 
-      // Clean up Emojis and unsupported characters
+      // Clean up Emojis and graphic symbols
       cleanHtml = cleanHtml.replace(/\p{Extended_Pictographic}/gu, '')
 
       // --- Placeholder Replacement ---
@@ -1892,6 +1892,7 @@ export default function GeradorMinutas() {
       safeContent = safeContent.replace(/\s+@[a-zA-Z][\w-]*\s*=\s*'[^']*'/g, '')
       safeContent = safeContent.replace(/\s+data-[a-zA-Z][\w-]*\s*=\s*"[^"]*"/g, '')
       safeContent = safeContent.replace(/\s+data-[a-zA-Z][\w-]*\s*=\s*'[^']*'/g, '')
+      // Clean up Emojis and graphic symbols
       safeContent = safeContent.replace(/\p{Extended_Pictographic}/gu, '')
 
       const contentHasCover = /class=["']cover-page["']/i.test(safeContent)
