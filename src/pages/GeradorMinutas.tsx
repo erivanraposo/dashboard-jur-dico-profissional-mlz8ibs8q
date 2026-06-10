@@ -1197,8 +1197,17 @@ export default function GeradorMinutas() {
       // Strip all inline font-family styles
       cleanHtml = cleanHtml.replace(/font-family\s*:[^;"']+;?/gi, '')
 
-      // Strip chaotic background colors from tables and notes
-      cleanHtml = cleanHtml.replace(/background(-color)?\s*:[^;"']+;?/gi, '')
+      // Strip chaotic background colors specifically from text elements, preserving tables
+      cleanHtml = cleanHtml.replace(
+        /<(div|p|span|blockquote)\b([^>]*)style=(["'])(.*?)\3([^>]*)>/gi,
+        (match, tag, beforeStyle, quote, styleContent, afterStyle) => {
+          const cleanedStyle = styleContent.replace(
+            /\bbackground(?:-color|_color)?\s*:[^;]+;?/gi,
+            '',
+          )
+          return `<${tag}${beforeStyle}style=${quote}${cleanedStyle}${quote}${afterStyle}>`
+        },
+      )
 
       // Normalize <br>
       cleanHtml = cleanHtml.replace(/<br\s*\/?>/g, '<br/>')
