@@ -1,5 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { PDFDocument } from 'npm:pdf-lib@1.17.1'
+import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,10 +10,186 @@ const corsHeaders = {
     'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
 }
 
+// ============================================================================
+// Helper: prepara anexos para Claude via Files API + visao multimodal nativa.
+//
+// PDFs sao splittados em chunks de ate 100 paginas (limite Anthropic por doc),
+// uploadados para a Anthropic Files API e referenciados por file_id (evita
+// estouro de tamanho de request body que ocorre quando se usa base64 inline).
+//
+// Files API:
+//   POST https://api.anthropic.com/v1/files (multipart/form-data, beta header
+//   'files-api-2025-04-14'). Arquivos persistem 30 dias e nao tem custo de
+//   upload (so contam tokens no uso). file_id pode ser reusado entre os
+//   varios agentes que processam o mesmo documento — combinado com
+//   cache_control, garante reuso maximo do prefix entre as chamadas.
+//
+// DOCX/XLSX/TXT continuam pelo extract-document (texto puro, formatos
+// textuais nativos).
+//
+// Retorno:
+//   documentBlocks: array de blocos {type:'document', source:{type:'file',file_id},
+//                   cache_control} para serem incluidos como content da
+//                   mensagem user. cache_control nos ate 4 ultimos blocos
+//                   (limite Anthropic) para maximizar cache reuse.
+//   textContext: texto puro dos anexos nao-PDF (DOCX, XLSX, TXT, MD, CSV).
+// ============================================================================
+async function uploadToAnthropicFilesApi(
+  bytes: Uint8Array,
+  filename: string,
+  anthropicKey: string,
+): Promise<string> {
+  const form = new FormData()
+  form.append('file', new Blob([bytes], { type: 'application/pdf' }), filename)
+  const res = await fetch('https://api.anthropic.com/v1/files', {
+    method: 'POST',
+    headers: {
+      'x-api-key': anthropicKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'files-api-2025-04-14',
+    },
+    body: form,
+  })
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`Files API upload failed (HTTP ${res.status}): ${errText}`)
+  }
+  const data = await res.json()
+  if (!data?.id) {
+    throw new Error(`Files API upload returned no id: ${JSON.stringify(data)}`)
+  }
+  return data.id
+}
+
+async function prepareAttachmentsForVision(
+  supabase: any,
+  paths: string[],
+  anthropicKey: string,
+  sendEvent: (data: any) => void,
+): Promise<{ documentBlocks: any[]; textContext: string }> {
+  const MAX_PDF_BYTES = 32 * 1024 * 1024 // limite Anthropic por documento
+  const PAGES_PER_CHUNK = 80 // <100 (limite Anthropic) com folga
+
+  const documentBlocks: any[] = []
+  let textContext = ''
+
+  if (!anthropicKey) {
+    textContext += '\n\n[Sem ANTHROPIC_API_KEY: PDFs nao podem ser enviados via Files API.]\n'
+    return { documentBlocks, textContext }
+  }
+
+  for (const path of paths) {
+    const lower = path.toLowerCase()
+    try {
+      if (lower.endsWith('.pdf')) {
+        sendEvent({ status: `Baixando PDF: ${path}...` })
+        const { data: fileData, error: dlErr } = await supabase.storage
+          .from('process-attachments')
+          .download(path)
+        if (dlErr || !fileData) {
+          textContext += `\n\n[Falha ao baixar ${path}: ${dlErr?.message || 'desconhecido'}]\n`
+          continue
+        }
+        if (fileData.size > MAX_PDF_BYTES) {
+          textContext += `\n\n[PDF ${path} excede 32 MB (${(fileData.size / 1024 / 1024).toFixed(1)} MB) — limite da API Anthropic. Reduza o arquivo.]\n`
+          continue
+        }
+        const ab = await fileData.arrayBuffer()
+        const bytes = new Uint8Array(ab)
+
+        // Conta paginas e decide se precisa splittar
+        const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true })
+        const totalPages = srcDoc.getPageCount()
+        const baseName = path.split('/').pop() || path
+
+        if (totalPages <= PAGES_PER_CHUNK) {
+          // Cabe inteiro: upload direto
+          sendEvent({ status: `PDF ${baseName}: ${totalPages} pgs, fazendo upload...` })
+          const fileId = await uploadToAnthropicFilesApi(bytes, baseName, anthropicKey)
+          documentBlocks.push({
+            type: 'document',
+            source: { type: 'file', file_id: fileId },
+            title: baseName,
+          })
+          sendEvent({ status: `PDF ${baseName}: uploaded (file_id=${fileId.slice(0, 16)}...)` })
+        } else {
+          // Splitta em chunks e faz upload de cada chunk em paralelo
+          const numChunks = Math.ceil(totalPages / PAGES_PER_CHUNK)
+          sendEvent({
+            status: `PDF ${baseName}: ${totalPages} pgs, dividindo em ${numChunks} partes e fazendo upload...`,
+          })
+          const chunkUploads = []
+          for (let i = 0; i < numChunks; i++) {
+            const startPage = i * PAGES_PER_CHUNK
+            const endPage = Math.min((i + 1) * PAGES_PER_CHUNK, totalPages)
+            const chunkPromise = (async () => {
+              const chunkDoc = await PDFDocument.create()
+              const pageIndices = []
+              for (let p = startPage; p < endPage; p++) pageIndices.push(p)
+              const copiedPages = await chunkDoc.copyPages(srcDoc, pageIndices)
+              copiedPages.forEach((p) => chunkDoc.addPage(p))
+              const chunkBytes = await chunkDoc.save()
+              const chunkName = `${baseName.replace(/\.pdf$/i, '')}_pt${i + 1}of${numChunks}_pgs${startPage + 1}-${endPage}.pdf`
+              const fileId = await uploadToAnthropicFilesApi(chunkBytes, chunkName, anthropicKey)
+              return {
+                idx: i,
+                fileId,
+                title: `${baseName} — parte ${i + 1}/${numChunks} (pgs ${startPage + 1}-${endPage})`,
+              }
+            })()
+            chunkUploads.push(chunkPromise)
+          }
+          const uploaded = await Promise.all(chunkUploads)
+          // Mantem ordem dos chunks (idx)
+          uploaded.sort((a, b) => a.idx - b.idx)
+          for (const u of uploaded) {
+            documentBlocks.push({
+              type: 'document',
+              source: { type: 'file', file_id: u.fileId },
+              title: u.title,
+            })
+          }
+          sendEvent({ status: `PDF ${baseName}: ${numChunks} partes uploaded.` })
+        }
+      } else {
+        // Formatos textuais: usa extract-document (texto puro)
+        sendEvent({ status: `Extraindo texto: ${path}...` })
+        const { data: extData, error: extError } = await supabase.functions.invoke(
+          'extract-document',
+          { body: { file_path: path } },
+        )
+        if (!extError && extData?.text) {
+          textContext += `\n\n--- Documento Anexo (${path}) ---\n${extData.text}\n`
+        } else if (extError) {
+          textContext += `\n\n[Falha ao extrair ${path}: ${extError.message}]\n`
+        }
+      }
+    } catch (e: any) {
+      console.error(`[prepareAttachmentsForVision] erro em ${path}:`, e?.message || e)
+      textContext += `\n\n[Erro ao processar ${path}: ${e?.message || 'desconhecido'}]\n`
+    }
+  }
+
+  // Aplica cache_control nos ate 4 ultimos document blocks
+  // (limite Anthropic: 4 breakpoints por request; cache cobre via prefix-match)
+  const numBlocks = documentBlocks.length
+  if (numBlocks > 0) {
+    const startCacheAt = Math.max(0, numBlocks - 4)
+    for (let i = startCacheAt; i < numBlocks; i++) {
+      documentBlocks[i].cache_control = { type: 'ephemeral' }
+    }
+  }
+
+  return { documentBlocks, textContext }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  // MARKER de versao deployada - se isso aparecer nos logs, a versao NOVA esta rodando
+  console.log('>>>>>>>> ANALYZE-LEGAL-TEXT VERSAO 2026-06-12 PDF VISION + CACHE TELEMETRY <<<<<<<<')
 
   let activeInvocationId: string | null = null
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
@@ -97,27 +275,30 @@ Deno.serve(async (req: Request) => {
             if (metadata.pedido) additionalContext += `Pedido: ${metadata.pedido}\n`
           }
 
+          // documentBlocks vai como content multimodal no payload Anthropic
+          // (visao nativa de PDF). textContext eh texto puro de anexos
+          // nao-PDF (DOCX/XLSX/TXT) concatenado no userMessage.
+          let documentBlocks: any[] = []
+
           if (
             action !== 'apply' &&
             finalAttachments &&
             Array.isArray(finalAttachments) &&
             finalAttachments.length > 0
           ) {
-            sendEvent({ status: 'Lendo arquivos anexos e processando documentos...' })
-            const extPromises = finalAttachments.map(async (path: string) => {
-              const { data: extData, error: extError } = await supabase.functions.invoke(
-                'extract-document',
-                {
-                  body: { file_path: path },
-                },
-              )
-              if (!extError && extData?.text) {
-                return `\n\n--- Documento Anexo (${path}) ---\n${extData.text}\n`
-              }
-              return ''
+            sendEvent({ status: 'Preparando anexos para analise (visao nativa para PDFs)...' })
+            const anthropicKeyForUpload = Deno.env.get('ANTHROPIC_API_KEY')?.trim() || ''
+            const prepared = await prepareAttachmentsForVision(
+              supabase,
+              finalAttachments,
+              anthropicKeyForUpload,
+              sendEvent,
+            )
+            documentBlocks = prepared.documentBlocks
+            additionalContext += prepared.textContext
+            sendEvent({
+              status: `Anexos prontos: ${documentBlocks.length} blocos PDF (Files API) + ${prepared.textContext.length} chars texto.`,
             })
-            const results = await Promise.all(extPromises)
-            additionalContext += results.join('')
           }
 
           sendEvent({ status: 'Obtendo agentes de IA...' })
@@ -177,8 +358,7 @@ Deno.serve(async (req: Request) => {
               'Você é um editor jurídico especializado em reescrita de documentos HTML. Sua única tarefa é reescrever o documento HTML fornecido aplicando estritamente as sugestões de melhoria que receber, mantendo a formatação HTML original e a estrutura do documento. Retorne EXCLUSIVAMENTE o código HTML revisado e completo, sem comentários explicativos, sem prefácios, sem texto adicional antes ou depois do HTML. Termine sempre com a tag <!-- END_OF_DOCUMENT --> para sinalizar conclusão.'
             // Sonnet 4.6 streaming aceita ate 64K. 32K cobre documentos longos
             // sem precisar de continue_required na maioria dos casos.
-            const maxTokens =
-              agent.max_tokens && agent.max_tokens > 16384 ? agent.max_tokens : 32000
+            const maxTokens = agent.max_tokens && agent.max_tokens > 16384 ? agent.max_tokens : 32000
 
             let activeMinuteId = minute_id
 
@@ -386,9 +566,7 @@ Deno.serve(async (req: Request) => {
               // (unico caso onde retomar com content_so_far faz sentido).
               // Outras causas (refusal, pause_turn, etc.) nao sao retomaveis e
               // foram causando recursao indevida + "FALHA NA GERACAO" no front.
-              console.warn(
-                `>>>>> [APPLY END] stopReason=${stopReason} fullTextLen=${fullText.length} hasEndMarker=${fullText.includes('<!-- END_OF_DOCUMENT -->')} willContinue=${stopReason === 'max_tokens'} outputTokens=${outputTokens} invocation=${activeInvocationId}`,
-              )
+              console.warn(`>>>>> [APPLY END] stopReason=${stopReason} fullTextLen=${fullText.length} hasEndMarker=${fullText.includes('<!-- END_OF_DOCUMENT -->')} willContinue=${stopReason === 'max_tokens'} outputTokens=${outputTokens} invocation=${activeInvocationId}`)
               if (stopReason === 'max_tokens') {
                 sendEvent({ type: 'continue_required' })
               }
@@ -463,16 +641,20 @@ Deno.serve(async (req: Request) => {
             let totalInputTokens = 0
             let totalOutputTokens = 0
             let totalCachedTokens = 0
+            let totalCacheWrite = 0
+            let totalCacheRead = 0
             let totalEstimatedCost = 0
             let successCount = 0
 
-            const agentPromises = agentsToProcess.map(async (agent) => {
+            const runAgent = async (agent: any) => {
               try {
                 let agentSuggestions: string[] = []
                 let structuredResult: any = null
 
-                // For analysis actions, force claude-haiku-4-5 to reduce latency
-                let finalModel = 'claude-haiku-4-5'
+                // For analysis actions, use Sonnet 4.6 (1M context window).
+                // Haiku 4.5 cap is 200K tokens — fica pequeno demais quando
+                // o anexo PDF e grande (e.g. 217 pgs viram ~337K tokens).
+                let finalModel = 'claude-sonnet-4-6'
 
                 const finalSystemPrompt = req_system_prompt || agent.system_prompt
                 const maxTokens = agent.max_tokens || 8192
@@ -480,8 +662,10 @@ Deno.serve(async (req: Request) => {
                 let inputTokens = 0
                 let outputTokens = 0
                 let cachedTokens = 0
-                let costInputPerM = 1.0
-                let costOutputPerM = 5.0
+                let cacheWrite = 0
+                let cacheRead = 0
+                let costInputPerM = 3.0
+                let costOutputPerM = 15.0
 
                 if (anthropicKey) {
                   // Numero de sugestoes por agente eh dinamico: o total fica em ~30-50
@@ -490,13 +674,44 @@ Deno.serve(async (req: Request) => {
                   const targetPerAgent = Math.max(5, Math.ceil(40 / agentsToProcess.length))
                   const minSug = Math.max(3, targetPerAgent - 2)
                   const maxSug = targetPerAgent + 3
-                  let userMessage = `Você é um revisor jurídico sênior. Analise o contexto jurídico abaixo e produza ENTRE ${minSug} E ${maxSug} sugestões objetivas de melhoria, priorizadas (as mais críticas primeiro). Cada sugestão deve ser específica, acionável e referenciar precisamente o ponto do documento. Formate cada sugestão como bullet point em uma linha começando com '- '. NÃO adicione texto introdutório, conclusão ou comentários — apenas a lista.\n\nContexto jurídico:\n\n${fullContext}`
 
-                  if (action === 'brainstorm') {
-                    userMessage = `Analise o contexto a seguir e retorne um JSON estrito (sem crases ou marcação markdown) com duas chaves: "sugerir_secoes" (array de strings) e "perguntas_chave" (array de strings). NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON.\nContexto:\n${fullContext}\nRetorne APENAS o JSON válido.`
-                  } else if (action === 'extract_report_fields') {
-                    userMessage = `Analise o contexto a seguir e extraia as informações para um Relatório de Caso. Retorne um JSON estrito (sem crases ou marcação markdown) com as chaves: "situacao", "problemas", "solucoes", "proximos_passos". O conteúdo de cada chave deve ser um texto resumido e profissional focado em relatório jurídico. NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON.\nContexto:\n${fullContext}\nRetorne APENAS o JSON válido.`
-                  }
+                  // CACHE STRATEGY (Anthropic prompt caching):
+                  // render order = tools → system → messages.user.content
+                  // Para o cache ser COMPARTILHADO entre os N agentes do analyze,
+                  // tudo antes do ultimo cache_control breakpoint precisa ser
+                  // BYTE-identico entre as chamadas. Como cada agente tem
+                  // system_prompt diferente (persona), nao podemos usar
+                  // agent.system_prompt no campo `system` da API — ele vai
+                  // pro user content como instrucao especifica do agente,
+                  // depois dos documentBlocks (cacheados).
+                  //
+                  // Resultado:
+                  //   1o agente: cache_write em system fixo + documentBlocks
+                  //   demais agentes: cache_read no mesmo prefix
+                  const FIXED_SYSTEM =
+                    'Você é um revisor jurídico sênior. Analise os documentos anexados com rigor técnico, identificando fundamentos legais aplicáveis, jurisprudência relevante e pontos de atenção específicos.'
+
+                  // Instrucao de tarefa (varia por action mas eh igual entre agentes do mesmo action)
+                  let taskInstruction =
+                    action === 'brainstorm'
+                      ? `Retorne um JSON estrito (sem crases ou marcação markdown) com duas chaves: "sugerir_secoes" (array de strings) e "perguntas_chave" (array de strings). NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON. Retorne APENAS o JSON válido.`
+                      : action === 'extract_report_fields'
+                        ? `Extraia as informações para um Relatório de Caso. Retorne um JSON estrito (sem crases ou marcação markdown) com as chaves: "situacao", "problemas", "solucoes", "proximos_passos". O conteúdo de cada chave deve ser um texto resumido e profissional focado em relatório jurídico. NÃO INCLUA nenhum texto conversacional ou de preenchimento antes ou depois do JSON. Retorne APENAS o JSON válido.`
+                        : `Produza ENTRE ${minSug} E ${maxSug} sugestões objetivas de melhoria, priorizadas (as mais críticas primeiro). Cada sugestão deve ser específica, acionável e referenciar precisamente o ponto do documento. Formate cada sugestão como bullet point em uma linha começando com '- '. NÃO adicione texto introdutório, conclusão ou comentários — apenas a lista.`
+
+                  // Texto especifico do agente (vai DEPOIS dos documentBlocks, NAO cacheado):
+                  // persona do agente + tarefa + contexto do editor/metadados
+                  const agentInstructionText = `## Sua persona\n${finalSystemPrompt}\n\n## Sua tarefa\n${taskInstruction}\n\n## Contexto do caso\n${fullContext}`
+
+                  // userMessage (string) usada como fallback quando nao ha documentBlocks
+                  const userMessage = agentInstructionText
+
+                  // Monta content multimodal: documentos cacheados (mesmos para todos
+                  // os agentes) + texto especifico do agente (varia, no fim do prefix).
+                  const userContent: any[] =
+                    documentBlocks.length > 0
+                      ? [...documentBlocks, { type: 'text', text: agentInstructionText }]
+                      : userMessage
 
                   const payloadParams: any = {
                     model: finalModel,
@@ -505,12 +720,16 @@ Deno.serve(async (req: Request) => {
                     system: [
                       {
                         type: 'text',
-                        text: finalSystemPrompt,
+                        text: FIXED_SYSTEM,
                         cache_control: { type: 'ephemeral' },
                       },
                     ],
-                    messages: [{ role: 'user', content: userMessage }],
+                    messages: [{ role: 'user', content: userContent }],
                   }
+
+                  // Timeout maior pra 1a chamada (cache write em PDFs grandes
+                  // pode levar 60-120s); chamadas com cache hit voam.
+                  const fetchTimeout = documentBlocks.length > 0 ? 240000 : 90000
 
                   const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
                     method: 'POST',
@@ -518,10 +737,10 @@ Deno.serve(async (req: Request) => {
                       'Content-Type': 'application/json',
                       'x-api-key': anthropicKey,
                       'anthropic-version': '2023-06-01',
-                      'anthropic-beta': 'prompt-caching-2024-07-31',
+                      'anthropic-beta': 'prompt-caching-2024-07-31,files-api-2025-04-14',
                     },
                     body: JSON.stringify(payloadParams),
-                    signal: AbortSignal.timeout(90000),
+                    signal: AbortSignal.timeout(fetchTimeout),
                   })
 
                   if (!anthropicRes.ok) {
@@ -567,10 +786,14 @@ Deno.serve(async (req: Request) => {
 
                   inputTokens = aiData.usage?.input_tokens || 0
                   outputTokens = aiData.usage?.output_tokens || 0
-                  cachedTokens =
-                    aiData.usage?.cache_creation_input_tokens ||
-                    aiData.usage?.cache_read_input_tokens ||
-                    0
+                  cacheWrite = aiData.usage?.cache_creation_input_tokens || 0
+                  cacheRead = aiData.usage?.cache_read_input_tokens || 0
+                  cachedTokens = cacheWrite + cacheRead
+
+                  // Log diagnostico de cache: confirma se PDFs estao sendo reusados entre agentes
+                  console.log(
+                    `[CACHE ${agent.name}] input=${inputTokens} write=${cacheWrite} read=${cacheRead} docs=${documentBlocks.length}`,
+                  )
 
                   const aiText = textBlocks
                     .map((c: any) => c.text)
@@ -668,6 +891,8 @@ Deno.serve(async (req: Request) => {
                   inputTokens,
                   outputTokens,
                   cachedTokens,
+                  cacheWrite,
+                  cacheRead,
                   estimatedCost,
                 }
               } catch (agentErr: any) {
@@ -682,10 +907,21 @@ Deno.serve(async (req: Request) => {
                   }
                 }
               }
-            })
+            }
 
-            // Execute all agents in parallel
-            const results = await Promise.allSettled(agentPromises)
+            // WARM-UP SEQUENCIAL para cache compartilhado:
+            // 1o agente paga cache_write (~330K tokens); os demais 4 rodam em paralelo
+            // e leem do cache (cache_read = ~0.1x do preco de input).
+            // Sem warm-up, 5 requests paralelas chegam antes do cache popular = 5x write.
+            // Trade-off: +1x latencia do 1o agente em troca de ~80% de economia.
+            let results: PromiseSettledResult<any>[]
+            if (agentsToProcess.length > 1) {
+              const firstResults = await Promise.allSettled([runAgent(agentsToProcess[0])])
+              const restResults = await Promise.allSettled(agentsToProcess.slice(1).map(runAgent))
+              results = [...firstResults, ...restResults]
+            } else {
+              results = await Promise.allSettled(agentsToProcess.map(runAgent))
+            }
 
             for (const result of results) {
               if (result.status === 'fulfilled') {
@@ -694,6 +930,8 @@ Deno.serve(async (req: Request) => {
                   totalInputTokens += data.inputTokens!
                   totalOutputTokens += data.outputTokens!
                   totalCachedTokens += data.cachedTokens!
+                  totalCacheWrite += data.cacheWrite || 0
+                  totalCacheRead += data.cacheRead || 0
                   totalEstimatedCost += data.estimatedCost!
                   successCount++
 
@@ -745,21 +983,28 @@ Deno.serve(async (req: Request) => {
               )
             else console.log(`DB Save Successful for invocacoes (ID: ${activeInvocationId})`)
 
-            const { error: costErr } = await supabase.from('custos').upsert(
-              {
-                invocation_id: activeInvocationId,
-                estimated_cost: totalEstimatedCost,
-                currency: 'USD',
-                cached_tokens: totalCachedTokens,
-              },
-              { onConflict: 'invocation_id', ignoreDuplicates: false },
-            )
+            const { error: costErr } = await supabase
+              .from('custos')
+              .upsert(
+                {
+                  invocation_id: activeInvocationId,
+                  estimated_cost: totalEstimatedCost,
+                  currency: 'USD',
+                  cached_tokens: totalCachedTokens,
+                  cache_creation_input_tokens: totalCacheWrite,
+                  cache_read_input_tokens: totalCacheRead,
+                },
+                { onConflict: 'invocation_id', ignoreDuplicates: false },
+              )
             if (costErr)
               console.error(
                 `DB Save Failed for custos (ID: ${activeInvocationId}):`,
                 costErr.message,
               )
-            else console.log(`DB Save Successful for custos (ID: ${activeInvocationId})`)
+            else
+              console.log(
+                `DB Save Successful for custos (ID: ${activeInvocationId}) — write=${totalCacheWrite} read=${totalCacheRead}`,
+              )
 
             if (action === 'brainstorm' || action === 'extract_report_fields') {
               sendEvent({ type: 'suggestions', data: finalSuggestions })
