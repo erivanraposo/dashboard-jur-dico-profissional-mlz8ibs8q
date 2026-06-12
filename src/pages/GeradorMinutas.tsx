@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/RichTextEditor'
@@ -326,6 +326,37 @@ export default function GeradorMinutas() {
       if (proc && !clientName) setClientName(proc.client_name)
     }
   }, [selectedProcess])
+
+  const visibleAgents = useMemo(() => {
+    if (!minuteType) return agents
+    return agents.filter((a) => {
+      if (!Array.isArray(a.compatible_minute_types) || a.compatible_minute_types.length === 0)
+        return true
+      return a.compatible_minute_types.includes(minuteType)
+    })
+  }, [agents, minuteType])
+
+  useEffect(() => {
+    if (!minuteType || agents.length === 0) return
+
+    setSelectedAgents((prev) => {
+      const validSelected = prev.filter((id) => {
+        const agent = agents.find((a) => a.id === id)
+        if (!agent) return false
+        if (
+          !Array.isArray(agent.compatible_minute_types) ||
+          agent.compatible_minute_types.length === 0
+        )
+          return true
+        return agent.compatible_minute_types.includes(minuteType)
+      })
+
+      if (validSelected.length !== prev.length) {
+        return validSelected
+      }
+      return prev
+    })
+  }, [minuteType, agents])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -2713,7 +2744,7 @@ export default function GeradorMinutas() {
                               <CommandList>
                                 <CommandEmpty>Nenhum agente encontrado.</CommandEmpty>
                                 <CommandGroup>
-                                  {agents.map((a) => (
+                                  {visibleAgents.map((a) => (
                                     <CommandItem
                                       key={a.id}
                                       value={a.name}

@@ -358,7 +358,8 @@ Deno.serve(async (req: Request) => {
               'Você é um editor jurídico especializado em reescrita de documentos HTML. Sua única tarefa é reescrever o documento HTML fornecido aplicando estritamente as sugestões de melhoria que receber, mantendo a formatação HTML original e a estrutura do documento. Retorne EXCLUSIVAMENTE o código HTML revisado e completo, sem comentários explicativos, sem prefácios, sem texto adicional antes ou depois do HTML. Termine sempre com a tag <!-- END_OF_DOCUMENT --> para sinalizar conclusão.'
             // Sonnet 4.6 streaming aceita ate 64K. 32K cobre documentos longos
             // sem precisar de continue_required na maioria dos casos.
-            const maxTokens = agent.max_tokens && agent.max_tokens > 16384 ? agent.max_tokens : 32000
+            const maxTokens =
+              agent.max_tokens && agent.max_tokens > 16384 ? agent.max_tokens : 32000
 
             let activeMinuteId = minute_id
 
@@ -566,7 +567,9 @@ Deno.serve(async (req: Request) => {
               // (unico caso onde retomar com content_so_far faz sentido).
               // Outras causas (refusal, pause_turn, etc.) nao sao retomaveis e
               // foram causando recursao indevida + "FALHA NA GERACAO" no front.
-              console.warn(`>>>>> [APPLY END] stopReason=${stopReason} fullTextLen=${fullText.length} hasEndMarker=${fullText.includes('<!-- END_OF_DOCUMENT -->')} willContinue=${stopReason === 'max_tokens'} outputTokens=${outputTokens} invocation=${activeInvocationId}`)
+              console.warn(
+                `>>>>> [APPLY END] stopReason=${stopReason} fullTextLen=${fullText.length} hasEndMarker=${fullText.includes('<!-- END_OF_DOCUMENT -->')} willContinue=${stopReason === 'max_tokens'} outputTokens=${outputTokens} invocation=${activeInvocationId}`,
+              )
               if (stopReason === 'max_tokens') {
                 sendEvent({ type: 'continue_required' })
               }
@@ -983,19 +986,17 @@ Deno.serve(async (req: Request) => {
               )
             else console.log(`DB Save Successful for invocacoes (ID: ${activeInvocationId})`)
 
-            const { error: costErr } = await supabase
-              .from('custos')
-              .upsert(
-                {
-                  invocation_id: activeInvocationId,
-                  estimated_cost: totalEstimatedCost,
-                  currency: 'USD',
-                  cached_tokens: totalCachedTokens,
-                  cache_creation_input_tokens: totalCacheWrite,
-                  cache_read_input_tokens: totalCacheRead,
-                },
-                { onConflict: 'invocation_id', ignoreDuplicates: false },
-              )
+            const { error: costErr } = await supabase.from('custos').upsert(
+              {
+                invocation_id: activeInvocationId,
+                estimated_cost: totalEstimatedCost,
+                currency: 'USD',
+                cached_tokens: totalCachedTokens,
+                cache_creation_input_tokens: totalCacheWrite,
+                cache_read_input_tokens: totalCacheRead,
+              },
+              { onConflict: 'invocation_id', ignoreDuplicates: false },
+            )
             if (costErr)
               console.error(
                 `DB Save Failed for custos (ID: ${activeInvocationId}):`,
