@@ -419,6 +419,77 @@ export type Database = {
           },
         ]
       }
+      workspace_branding: {
+        Row: {
+          cabecalho_extra: string
+          cor_primaria: string
+          cor_secundaria: string
+          email: string
+          endereco_cep: string
+          endereco_cidade: string
+          endereco_logradouro: string
+          endereco_uf: string
+          logo_path: string
+          nome_escritorio: string
+          oab_responsavel_nome: string
+          oab_responsavel_numero: string
+          oab_responsavel_uf: string
+          rodape_confidencialidade: string
+          telefone: string
+          updated_at: string
+          website: string
+          workspace_id: string
+        }
+        Insert: {
+          cabecalho_extra?: string
+          cor_primaria?: string
+          cor_secundaria?: string
+          email?: string
+          endereco_cep?: string
+          endereco_cidade?: string
+          endereco_logradouro?: string
+          endereco_uf?: string
+          logo_path?: string
+          nome_escritorio?: string
+          oab_responsavel_nome?: string
+          oab_responsavel_numero?: string
+          oab_responsavel_uf?: string
+          rodape_confidencialidade?: string
+          telefone?: string
+          updated_at?: string
+          website?: string
+          workspace_id: string
+        }
+        Update: {
+          cabecalho_extra?: string
+          cor_primaria?: string
+          cor_secundaria?: string
+          email?: string
+          endereco_cep?: string
+          endereco_cidade?: string
+          endereco_logradouro?: string
+          endereco_uf?: string
+          logo_path?: string
+          nome_escritorio?: string
+          oab_responsavel_nome?: string
+          oab_responsavel_numero?: string
+          oab_responsavel_uf?: string
+          rodape_confidencialidade?: string
+          telefone?: string
+          updated_at?: string
+          website?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'workspace_branding_workspace_id_fkey'
+            columns: ['workspace_id']
+            isOneToOne: true
+            referencedRelation: 'workspaces'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       workspaces: {
         Row: {
           budget_mensal_usd: number
@@ -747,6 +818,25 @@ export const Constants = {
 //   agent_name: text (nullable)
 //   agent_model: text (nullable)
 //   user_name: text (nullable)
+// Table: workspace_branding
+//   workspace_id: uuid (not null)
+//   nome_escritorio: text (not null, default: ''::text)
+//   endereco_logradouro: text (not null, default: ''::text)
+//   endereco_cidade: text (not null, default: ''::text)
+//   endereco_uf: text (not null, default: ''::text)
+//   endereco_cep: text (not null, default: ''::text)
+//   telefone: text (not null, default: ''::text)
+//   email: text (not null, default: ''::text)
+//   website: text (not null, default: ''::text)
+//   oab_responsavel_nome: text (not null, default: ''::text)
+//   oab_responsavel_numero: text (not null, default: ''::text)
+//   oab_responsavel_uf: text (not null, default: ''::text)
+//   logo_path: text (not null, default: ''::text)
+//   cor_primaria: text (not null, default: '#1a3a5e'::text)
+//   cor_secundaria: text (not null, default: '#666666'::text)
+//   rodape_confidencialidade: text (not null, default: 'Confidencial — uso restrito ao destinatário'::text)
+//   cabecalho_extra: text (not null, default: ''::text)
+//   updated_at: timestamp with time zone (not null, default: now())
 // Table: workspaces
 //   id: uuid (not null, default: gen_random_uuid())
 //   name: text (not null)
@@ -790,6 +880,9 @@ export const Constants = {
 //   PRIMARY KEY profiles_pkey: PRIMARY KEY (id)
 //   CHECK profiles_role_check: CHECK ((role = ANY (ARRAY['admin'::text, 'owner'::text, 'member'::text, 'viewer'::text])))
 //   FOREIGN KEY profiles_workspace_id_fkey: FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
+// Table: workspace_branding
+//   PRIMARY KEY workspace_branding_pkey: PRIMARY KEY (workspace_id)
+//   FOREIGN KEY workspace_branding_workspace_id_fkey: FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 // Table: workspaces
 //   PRIMARY KEY workspaces_pkey: PRIMARY KEY (id)
 
@@ -839,6 +932,14 @@ export const Constants = {
 //   Policy "authenticated_update_profiles" (UPDATE, PERMISSIVE) roles={authenticated}
 //     USING: (id = auth.uid())
 //     WITH CHECK: (id = auth.uid())
+// Table: workspace_branding
+//   Policy "wb_insert_own" (INSERT, PERMISSIVE) roles={authenticated}
+//     WITH CHECK: (workspace_id IN ( SELECT profiles.workspace_id    FROM profiles   WHERE (profiles.id = auth.uid())))
+//   Policy "wb_select_own" (SELECT, PERMISSIVE) roles={authenticated}
+//     USING: (workspace_id IN ( SELECT profiles.workspace_id    FROM profiles   WHERE (profiles.id = auth.uid())))
+//   Policy "wb_update_own" (UPDATE, PERMISSIVE) roles={authenticated}
+//     USING: (workspace_id IN ( SELECT profiles.workspace_id    FROM profiles   WHERE (profiles.id = auth.uid())))
+//     WITH CHECK: (workspace_id IN ( SELECT profiles.workspace_id    FROM profiles   WHERE (profiles.id = auth.uid())))
 // Table: workspaces
 //   Policy "authenticated_delete_workspaces" (DELETE, PERMISSIVE) roles={authenticated}
 //     USING: true

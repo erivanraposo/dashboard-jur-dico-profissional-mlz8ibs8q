@@ -1,7 +1,7 @@
 {
   "_versions": {
-    "analyze-legal-text": 73,
+    "analyze-legal-text": 74,
     "extract-document": 8,
-    "export-docx": 2
+    "export-docx": 17
   }
 }

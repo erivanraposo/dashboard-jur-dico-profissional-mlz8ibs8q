@@ -34,22 +34,69 @@ const corsHeaders = {
 //                   (limite Anthropic) para maximizar cache reuse.
 //   textContext: texto puro dos anexos nao-PDF (DOCX, XLSX, TXT, MD, CSV).
 // ============================================================================
+// HTTPs transientes em que vale retry exponencial.
+// 503/502/504 = upstream sobrecarregado/indisponivel (caso classico Anthropic).
+// 500 = erro generico do servidor (raro nao retry, mas pode ser flaky).
+// 429 = rate limit (Anthropic devolve esse quando ha pico).
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504])
+
+// Helper: fetch com retry exponencial. initFactory regenera o RequestInit
+// a cada tentativa (necessario porque FormData/AbortSignal nao podem ser reusados).
+// Backoff: 1s, 3s, 9s. Max 3 tentativas.
+async function fetchWithRetry(
+  url: string,
+  initFactory: () => RequestInit,
+  label: string,
+  maxAttempts = 3,
+): Promise<Response> {
+  let lastErr: any = null
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch(url, initFactory())
+      if (res.ok) return res
+      if (!RETRYABLE_STATUSES.has(res.status) || attempt === maxAttempts) return res
+      // 5xx/429 com tentativas restantes: espera e retry
+      const backoff = 1000 * Math.pow(3, attempt - 1)
+      console.warn(
+        `[RETRY ${label}] HTTP ${res.status} attempt ${attempt}/${maxAttempts}, waiting ${backoff}ms`,
+      )
+      await new Promise((r) => setTimeout(r, backoff))
+    } catch (err: any) {
+      lastErr = err
+      const isAbort = err?.name === 'TimeoutError' || err?.name === 'AbortError'
+      if (isAbort || attempt === maxAttempts) throw err
+      const backoff = 1000 * Math.pow(3, attempt - 1)
+      console.warn(
+        `[RETRY ${label}] network error "${err?.message}" attempt ${attempt}/${maxAttempts}, waiting ${backoff}ms`,
+      )
+      await new Promise((r) => setTimeout(r, backoff))
+    }
+  }
+  throw lastErr || new Error(`[fetchWithRetry ${label}] exhausted without response`)
+}
+
 async function uploadToAnthropicFilesApi(
   bytes: Uint8Array,
   filename: string,
   anthropicKey: string,
 ): Promise<string> {
-  const form = new FormData()
-  form.append('file', new Blob([bytes], { type: 'application/pdf' }), filename)
-  const res = await fetch('https://api.anthropic.com/v1/files', {
-    method: 'POST',
-    headers: {
-      'x-api-key': anthropicKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-beta': 'files-api-2025-04-14',
+  const res = await fetchWithRetry(
+    'https://api.anthropic.com/v1/files',
+    () => {
+      const form = new FormData()
+      form.append('file', new Blob([bytes], { type: 'application/pdf' }), filename)
+      return {
+        method: 'POST',
+        headers: {
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'files-api-2025-04-14',
+        },
+        body: form,
+      }
     },
-    body: form,
-  })
+    `files-upload:${filename}`,
+  )
   if (!res.ok) {
     const errText = await res.text()
     throw new Error(`Files API upload failed (HTTP ${res.status}): ${errText}`)
@@ -432,19 +479,23 @@ Deno.serve(async (req: Request) => {
               // Ensure thinking mode is strictly disabled for rewriting and applying
               delete payloadParams.thinking
 
-              const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-api-key': anthropicKey,
-                  'anthropic-version': '2023-06-01',
-                  'anthropic-beta': 'prompt-caching-2024-07-31',
-                },
-                body: JSON.stringify(payloadParams),
-                // 10 minutos: Sonnet 4.6 gerando doc longo (20K+ tokens) pode levar
-                // varios minutos. O timeout=900s do config.toml da margem.
-                signal: AbortSignal.timeout(600000),
-              })
+              const anthropicRes = await fetchWithRetry(
+                'https://api.anthropic.com/v1/messages',
+                () => ({
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': anthropicKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-beta': 'prompt-caching-2024-07-31',
+                  },
+                  body: JSON.stringify(payloadParams),
+                  // 10 minutos: Sonnet 4.6 gerando doc longo (20K+ tokens) pode levar
+                  // varios minutos. O timeout=900s do config.toml da margem.
+                  signal: AbortSignal.timeout(600000),
+                }),
+                'messages:apply',
+              )
 
               if (!anthropicRes.ok) {
                 const errText = await anthropicRes.text()
@@ -734,17 +785,21 @@ Deno.serve(async (req: Request) => {
                   // pode levar 60-120s); chamadas com cache hit voam.
                   const fetchTimeout = documentBlocks.length > 0 ? 240000 : 90000
 
-                  const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'x-api-key': anthropicKey,
-                      'anthropic-version': '2023-06-01',
-                      'anthropic-beta': 'prompt-caching-2024-07-31,files-api-2025-04-14',
-                    },
-                    body: JSON.stringify(payloadParams),
-                    signal: AbortSignal.timeout(fetchTimeout),
-                  })
+                  const anthropicRes = await fetchWithRetry(
+                    'https://api.anthropic.com/v1/messages',
+                    () => ({
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': anthropicKey,
+                        'anthropic-version': '2023-06-01',
+                        'anthropic-beta': 'prompt-caching-2024-07-31,files-api-2025-04-14',
+                      },
+                      body: JSON.stringify(payloadParams),
+                      signal: AbortSignal.timeout(fetchTimeout),
+                    }),
+                    `messages:analyze:${agent.name}`,
+                  )
 
                   if (!anthropicRes.ok) {
                     const errText = await anthropicRes.text()

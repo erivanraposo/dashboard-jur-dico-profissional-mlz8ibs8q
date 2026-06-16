@@ -1279,6 +1279,7 @@ export default function GeradorMinutas() {
       const proc = min.processes as any
 
       const rawContent = min.content || ''
+      const contentHasH1 = /<h1[\s>]/i.test((min.content || '').substring(0, 500))
 
       const { procNumForCover, clientForCoverSafe: clientForCover } = extractMetadata(
         min,
@@ -1497,24 +1498,27 @@ export default function GeradorMinutas() {
 
       // Cover Page Logic
       if (!contentHasCover) {
-        docDefinition.content.push({
-          text: uppercaseTitle,
-          fontSize: 26,
-          bold: true,
-          alignment: 'center',
-          margin: [0, 150, 0, 20],
-          color: '#1E40AF',
-        })
-
-        if (procNumForCover) {
+        if (!contentHasH1) {
           docDefinition.content.push({
-            text: `Processo Nº ${procNumForCover}`,
-            fontSize: 14,
+            text: uppercaseTitle,
+            fontSize: 26,
+            bold: true,
             alignment: 'center',
-            margin: [0, 0, 0, 10],
-            color: '#334155',
+            margin: [0, 150, 0, 20],
+            color: '#1E40AF',
           })
+
+          if (procNumForCover) {
+            docDefinition.content.push({
+              text: `Processo Nº ${procNumForCover}`,
+              fontSize: 14,
+              alignment: 'center',
+              margin: [0, 0, 0, 10],
+              color: '#334155',
+            })
+          }
         }
+
         if (clientForCover) {
           docDefinition.content.push({
             text: `Cliente: ${clientForCover}`,
@@ -2114,6 +2118,7 @@ export default function GeradorMinutas() {
       const proc = min.processes as any
 
       const rawContent = min.content || ''
+      const contentHasH1 = /<h1[\s>]/i.test((min.content || '').substring(0, 500))
 
       const safeContent = sanitizeForDocx(rawContent)
 
@@ -2150,9 +2155,11 @@ export default function GeradorMinutas() {
       </head><body>`
 
       if (!contentHasCover) {
-        htmlString += `<h1 style="text-align: center;">${uppercaseTitle}</h1>`
-        if (procNumForCover) {
-          htmlString += `<h2 style="text-align: center;">Processo Nº ${procNumForCover}</h2>`
+        if (!contentHasH1) {
+          htmlString += `<h1 style="text-align: center;">${uppercaseTitle}</h1>`
+          if (procNumForCover) {
+            htmlString += `<h2 style="text-align: center;">Processo Nº ${procNumForCover}</h2>`
+          }
         }
 
         if (clientForCover || min.comarca || min.objeto || min.pedido) {
