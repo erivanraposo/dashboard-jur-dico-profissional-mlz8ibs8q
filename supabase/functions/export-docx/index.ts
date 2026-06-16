@@ -160,31 +160,12 @@ function convertNode(node: any): (Paragraph | Table)[] {
   if (HEADING_MAP[tag]) {
     const headingMeta: Record<
       string,
-      {
-        size: number
-        bold: boolean
-        italics?: boolean
-        color: string
-        align?: any
-        spacing: { before: number; after: number }
-      }
+      { size: number; bold: boolean; italics?: boolean; color: string; align?: any; spacing: { before: number; after: number } }
     > = {
-      h1: {
-        size: 32,
-        bold: true,
-        color: '000000',
-        align: AlignmentType.CENTER,
-        spacing: { before: 360, after: 240 },
-      },
+      h1: { size: 32, bold: true, color: '000000', align: AlignmentType.CENTER, spacing: { before: 360, after: 240 } },
       h2: { size: 28, bold: true, color: '000000', spacing: { before: 280, after: 180 } },
       h3: { size: 26, bold: true, color: '000000', spacing: { before: 200, after: 120 } },
-      h4: {
-        size: 24,
-        bold: true,
-        italics: true,
-        color: '000000',
-        spacing: { before: 160, after: 100 },
-      },
+      h4: { size: 24, bold: true, italics: true, color: '000000', spacing: { before: 160, after: 100 } },
       h5: { size: 24, bold: true, color: '333333', spacing: { before: 120, after: 80 } },
       h6: { size: 22, bold: true, color: '333333', spacing: { before: 100, after: 60 } },
     }
@@ -203,6 +184,11 @@ function convertNode(node: any): (Paragraph | Table)[] {
       new Paragraph({
         alignment: meta.align,
         spacing: meta.spacing,
+        // Mantem o heading sempre junto com o proximo paragrafo na mesma pagina.
+        // Evita titulo sozinho no rodape (ex.: "TERMOS EM QUE PEDE DEFERIMENTO").
+        keepNext: true,
+        // Evita que o proprio heading seja quebrado entre paginas.
+        keepLines: true,
         children: runs,
       }),
     ]
@@ -210,9 +196,32 @@ function convertNode(node: any): (Paragraph | Table)[] {
   if (tag === 'p') {
     const runs = extractRuns(node)
     if (runs.length === 0) return [new Paragraph({})]
+    // Decisao de alinhamento (em ordem de prioridade):
+    // 1. style="text-align: ..." explicito no HTML
+    // 2. Se o p tem <br> (multi-linhas com dados curtos), evita justified
+    //    porque o Word distribui espaco entre palavras de cada linha
+    // 3. Default: justified (peca juridica padrao)
+    const styleAttr = (node.getAttribute && node.getAttribute('style')) || ''
+    const taMatch = styleAttr.match(/text-align\s*:\s*(left|center|right|justify)/i)
+    let alignment: any = AlignmentType.JUSTIFIED
+    if (taMatch) {
+      const t = taMatch[1].toLowerCase()
+      alignment =
+        t === 'center'
+          ? AlignmentType.CENTER
+          : t === 'right'
+            ? AlignmentType.RIGHT
+            : t === 'left'
+              ? AlignmentType.LEFT
+              : AlignmentType.JUSTIFIED
+    } else {
+      // Auto-detecta multi-linhas via <br>
+      const hasBr = !!(node.querySelector && node.querySelector('br'))
+      if (hasBr) alignment = AlignmentType.LEFT
+    }
     return [
       new Paragraph({
-        alignment: AlignmentType.JUSTIFIED,
+        alignment,
         spacing: { after: 120, line: 360 }, // 1.5 line height + 6pt after
         children: runs,
       }),
@@ -324,9 +333,7 @@ function htmlToDocxChildren(html: string): (Paragraph | Table)[] {
   console.log(`[export-docx] body element children: ${children.length}`)
   if (children.length > 0 && children.length <= 5) {
     children.forEach((c: any, i: number) => {
-      console.log(
-        `  [${i}] <${(c.tagName || '?').toLowerCase()}> (childNodes: ${c.childNodes?.length || 0})`,
-      )
+      console.log(`  [${i}] <${(c.tagName || '?').toLowerCase()}> (childNodes: ${c.childNodes?.length || 0})`)
     })
   }
   for (const child of children) {
@@ -630,7 +637,9 @@ Deno.serve(async (req: Request) => {
               },
             },
           },
-          headers: hasBranding ? { default: buildDocxHeader(branding!, logoBytes) } : undefined,
+          headers: hasBranding
+            ? { default: buildDocxHeader(branding!, logoBytes) }
+            : undefined,
           footers: { default: buildDocxFooter(branding) },
           children: bodyChildren,
         },
@@ -645,7 +654,8 @@ Deno.serve(async (req: Request) => {
     return new Response(body, {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'Content-Disposition': `attachment; filename="${safeTitle}.docx"`,
       },
     })
