@@ -1487,119 +1487,16 @@ export default function GeradorMinutas() {
         },
         styles: {
           tocTitle: {
-            fontSize: 20,
+            fontSize: 16,
             bold: true,
-            color: '#1E40AF',
-            alignment: 'left',
-            margin: [0, 0, 0, 16],
+            color: '#1a3a5e',
+            alignment: 'center',
+          },
+          tocEntry: {
+            fontSize: 11,
+            margin: [0, 4, 0, 4],
           },
         },
-      }
-
-      // Cover Page Logic
-      if (!contentHasCover) {
-        if (!contentHasH1) {
-          docDefinition.content.push({
-            text: uppercaseTitle,
-            fontSize: 26,
-            bold: true,
-            alignment: 'center',
-            margin: [0, 150, 0, 20],
-            color: '#1E40AF',
-          })
-
-          if (procNumForCover) {
-            docDefinition.content.push({
-              text: `Processo Nº ${procNumForCover}`,
-              fontSize: 14,
-              alignment: 'center',
-              margin: [0, 0, 0, 10],
-              color: '#334155',
-            })
-          }
-        }
-
-        if (clientForCover) {
-          docDefinition.content.push({
-            text: `Cliente: ${clientForCover}`,
-            fontSize: 14,
-            alignment: 'center',
-            margin: [0, 0, 0, 10],
-            color: '#334155',
-          })
-        }
-
-        docDefinition.content.push({
-          text: `Data: ${new Date().toLocaleDateString()}`,
-          fontSize: 11,
-          italics: true,
-          alignment: 'center',
-          margin: [0, 40, 0, 0],
-          color: '#64748b',
-          pageBreak: 'after',
-        })
-      }
-
-      docDefinition.content.push({
-        toc: {
-          title: { text: 'Sumário', style: 'tocTitle', margin: [0, 0, 0, 16] },
-          numberStyle: { color: '#6b7280' },
-        },
-        pageBreak: 'after',
-      })
-
-      // Process Information Block
-      const hasProcData =
-        procNumForCover || clientForCover || min.comarca || min.objeto || min.pedido
-      if (!contentHasCover && hasProcData) {
-        const procTableBody = []
-
-        if (procNumForCover)
-          procTableBody.push([
-            { text: 'Processo nº:', bold: true, width: 100 },
-            { text: procNumForCover },
-          ])
-        if (clientForCover)
-          procTableBody.push([
-            { text: 'Cliente:', bold: true, width: 100 },
-            { text: clientForCover },
-          ])
-        if (min.comarca)
-          procTableBody.push([{ text: 'Comarca:', bold: true, width: 100 }, { text: min.comarca }])
-        if (min.objeto)
-          procTableBody.push([{ text: 'Objeto:', bold: true, width: 100 }, { text: min.objeto }])
-        if (min.pedido)
-          procTableBody.push([
-            { text: 'Pedido/Valor:', bold: true, width: 100 },
-            { text: min.pedido },
-          ])
-
-        if (procTableBody.length > 0) {
-          docDefinition.content.push({
-            table: {
-              widths: [100, '*'],
-              body: procTableBody,
-            },
-            layout: {
-              hLineWidth: function () {
-                return 0.5
-              },
-              vLineWidth: function () {
-                return 0
-              },
-              hLineColor: function () {
-                return '#cbd5e1'
-              },
-              paddingTop: function () {
-                return 4
-              },
-              paddingBottom: function () {
-                return 4
-              },
-            },
-            margin: [0, 0, 0, 20],
-          })
-        }
       }
 
       // Add main content
@@ -1926,59 +1823,168 @@ export default function GeradorMinutas() {
         }
       }
 
-      const markTocItems = (nodes: any[]) => {
-        if (!Array.isArray(nodes)) return
+      const annotateTocItems = (nodes: any[]): number => {
+        let count = 0
+        if (!Array.isArray(nodes)) return count
 
         for (let i = 0; i < nodes.length; i++) {
           const node = nodes[i]
           if (!node) continue
 
           let isHeader = false
-          let isH1 = false
 
           if (node.style) {
             const isHeadingStyle = (style: any) =>
-              typeof style === 'string' && /\b(h1|h2|html-h1|html-h2)\b/i.test(style)
+              typeof style === 'string' &&
+              /\b(header|h1|h2|h3|html-h1|html-h2|html-h3)\b/i.test(style)
 
             if (Array.isArray(node.style)) {
               if (node.style.some(isHeadingStyle)) {
                 isHeader = true
-                isH1 = node.style.some((s: string) => /\b(h1|html-h1)\b/i.test(s))
               }
             } else if (typeof node.style === 'string') {
               if (isHeadingStyle(node.style)) {
                 isHeader = true
-                isH1 = /\b(h1|html-h1)\b/i.test(node.style)
               }
             }
           }
 
           if (isHeader) {
             node.tocItem = true
-            node.tocStyle = { fontSize: 11, color: '#000000' }
-            node.tocMargin = isH1 ? [0, 4, 0, 0] : [12, 2, 0, 0]
+            node.tocStyle = 'tocEntry'
+            count++
           }
 
-          if (node.stack) markTocItems(node.stack)
-          if (node.columns) markTocItems(node.columns)
+          if (node.stack) count += annotateTocItems(node.stack)
+          if (node.columns) count += annotateTocItems(node.columns)
           if (node.table && node.table.body) {
             node.table.body.forEach((row: any[]) => {
               row.forEach((cell: any) => {
                 if (cell) {
-                  if (cell.text && Array.isArray(cell.text)) markTocItems(cell.text)
-                  if (cell.stack) markTocItems(cell.stack)
+                  if (cell.text && Array.isArray(cell.text)) count += annotateTocItems(cell.text)
+                  if (cell.stack) count += annotateTocItems(cell.stack)
                 }
               })
             })
           }
         }
+        return count
       }
 
       groupHeadingsWithNext(processedContent)
       forcePageBreakBeforeTableInUnbreakable(processedContent)
       forcePageBreakBeforeAnexo(processedContent)
-      markTocItems(processedContent)
+      const headingCount = annotateTocItems(processedContent)
       ensureTableHeaderRows(processedContent)
+
+      // Cover Page Logic
+      if (!contentHasCover) {
+        if (!contentHasH1) {
+          docDefinition.content.push({
+            text: uppercaseTitle,
+            fontSize: 26,
+            bold: true,
+            alignment: 'center',
+            margin: [0, 150, 0, 20],
+            color: '#1E40AF',
+          })
+
+          if (procNumForCover) {
+            docDefinition.content.push({
+              text: `Processo Nº ${procNumForCover}`,
+              fontSize: 14,
+              alignment: 'center',
+              margin: [0, 0, 0, 10],
+              color: '#334155',
+            })
+          }
+        }
+
+        if (clientForCover) {
+          docDefinition.content.push({
+            text: `Cliente: ${clientForCover}`,
+            fontSize: 14,
+            alignment: 'center',
+            margin: [0, 0, 0, 10],
+            color: '#334155',
+          })
+        }
+
+        docDefinition.content.push({
+          text: `Data: ${new Date().toLocaleDateString()}`,
+          fontSize: 11,
+          italics: true,
+          alignment: 'center',
+          margin: [0, 40, 0, 0],
+          color: '#64748b',
+          pageBreak: 'after',
+        })
+      }
+
+      // TOC Injection based on heading count
+      if (headingCount >= 3) {
+        docDefinition.content.push({
+          toc: {
+            title: { text: 'SUMÁRIO', style: 'tocTitle', margin: [0, 0, 0, 20] },
+            numberStyle: { color: '#666' },
+          },
+          pageBreak: 'after',
+        })
+      }
+
+      // Process Information Block
+      const hasProcData =
+        procNumForCover || clientForCover || min.comarca || min.objeto || min.pedido
+      if (!contentHasCover && hasProcData) {
+        const procTableBody = []
+
+        if (procNumForCover)
+          procTableBody.push([
+            { text: 'Processo nº:', bold: true, width: 100 },
+            { text: procNumForCover },
+          ])
+        if (clientForCover)
+          procTableBody.push([
+            { text: 'Cliente:', bold: true, width: 100 },
+            { text: clientForCover },
+          ])
+        if (min.comarca)
+          procTableBody.push([{ text: 'Comarca:', bold: true, width: 100 }, { text: min.comarca }])
+        if (min.objeto)
+          procTableBody.push([{ text: 'Objeto:', bold: true, width: 100 }, { text: min.objeto }])
+        if (min.pedido)
+          procTableBody.push([
+            { text: 'Pedido/Valor:', bold: true, width: 100 },
+            { text: min.pedido },
+          ])
+
+        if (procTableBody.length > 0) {
+          docDefinition.content.push({
+            table: {
+              widths: [100, '*'],
+              body: procTableBody,
+            },
+            layout: {
+              hLineWidth: function () {
+                return 0.5
+              },
+              vLineWidth: function () {
+                return 0
+              },
+              hLineColor: function () {
+                return '#cbd5e1'
+              },
+              paddingTop: function () {
+                return 4
+              },
+              paddingBottom: function () {
+                return 4
+              },
+            },
+            margin: [0, 0, 0, 20],
+          })
+        }
+      }
 
       const cleanTableBodyFills = (nodes: any[]) => {
         if (!Array.isArray(nodes)) return
