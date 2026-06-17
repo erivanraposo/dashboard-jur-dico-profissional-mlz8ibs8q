@@ -1268,6 +1268,48 @@ export default function GeradorMinutas() {
     toast({ title: 'Processando', description: 'Gerando o arquivo PDF...' })
 
     try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('Não autenticado')
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('workspace_id')
+        .eq('id', user.id)
+        .single()
+
+      let branding: any = null
+      let logoBase64: string | null = null
+
+      if (profile?.workspace_id) {
+        const { data: b } = await supabase
+          .from('workspace_branding')
+          .select('*')
+          .eq('workspace_id', profile.workspace_id)
+          .single()
+        branding = b
+
+        if (branding?.logo_path) {
+          const { data: signedUrl } = await supabase.storage
+            .from('workspace-branding')
+            .createSignedUrl(branding.logo_path, 3600)
+          if (signedUrl?.signedUrl) {
+            try {
+              const response = await fetch(signedUrl.signedUrl)
+              const blob = await response.blob()
+              const reader = new FileReader()
+              logoBase64 = await new Promise((resolve) => {
+                reader.onloadend = () => resolve(reader.result as string)
+                reader.readAsDataURL(blob)
+              })
+            } catch (err) {
+              console.error('Error fetching logo:', err)
+            }
+          }
+        }
+      }
+
       const { data: min, error } = await supabase
         .from('minutes')
         .select('*, processes(*)')
@@ -1448,20 +1490,104 @@ export default function GeradorMinutas() {
 
       const docDefinition: any = {
         pageSize: 'A4',
-        pageMargins: [50, 70, 50, 60],
+        pageMargins: branding ? [50, 70, 50, 90] : [50, 70, 50, 60],
+        pageBreakBefore: function (currentNode: any, followingNodesOnPage: any[]) {
+          if (currentNode.headlineLevel && followingNodesOnPage.length < 2) {
+            return true
+          }
+          return false
+        },
         header: function (currentPage: number) {
-          if (currentPage > 1 && !contentHasCover) {
+          if (currentPage === 1 || contentHasCover) return null
+
+          if (branding) {
             return {
-              text: uppercaseTitle,
-              alignment: 'right',
-              margin: [0, 30, 50, 0],
-              fontSize: 9,
-              color: '#64748b',
+              columns: [
+                logoBase64
+                  ? { image: logoBase64, fit: [60, 30], alignment: 'left' }
+                  : { text: '', alignment: 'left' },
+                {
+                  text: branding.nome_escritorio || uppercaseTitle,
+                  alignment: 'right',
+                  color: branding.cor_primaria || '#1E40AF',
+                  fontSize: 10,
+                  bold: true,
+                  margin: [0, 5, 0, 0],
+                },
+              ],
+              margin: [50, 30, 50, 0],
             }
           }
-          return null
+
+          return {
+            text: uppercaseTitle,
+            alignment: 'right',
+            margin: [0, 30, 50, 0],
+            fontSize: 9,
+            color: '#64748b',
+          }
         },
         footer: function (currentPage: number, pageCount: number) {
+          if (branding) {
+            const secondaryColor = branding.cor_secundaria || '#94a3b8'
+
+            const addressParts = [
+              branding.endereco_logradouro,
+              `${branding.endereco_cidade}${branding.endereco_uf ? `/${branding.endereco_uf}` : ''}`,
+              branding.endereco_cep,
+            ].filter(Boolean)
+            const contactParts = [branding.telefone, branding.email, branding.website].filter(
+              Boolean,
+            )
+            const respParts = [
+              branding.oab_responsavel_nome,
+              branding.oab_responsavel_numero ? `OAB ${branding.oab_responsavel_numero}` : null,
+              branding.oab_responsavel_uf,
+            ].filter(Boolean)
+
+            return {
+              columns: [
+                {
+                  stack: [
+                    addressParts.length > 0
+                      ? { text: addressParts.join(' - '), color: secondaryColor, fontSize: 8 }
+                      : null,
+                    contactParts.length > 0
+                      ? { text: contactParts.join(' | '), color: secondaryColor, fontSize: 8 }
+                      : null,
+                    respParts.length > 0
+                      ? {
+                          text: `Responsável: ${respParts.join(' - ')}`,
+                          color: secondaryColor,
+                          fontSize: 8,
+                        }
+                      : null,
+                    {
+                      text:
+                        branding.rodape_confidencialidade ||
+                        'Confidencial — uso restrito ao destinatário',
+                      color: secondaryColor,
+                      fontSize: 8,
+                      italics: true,
+                      margin: [0, 2, 0, 0],
+                    },
+                  ].filter(Boolean),
+                  alignment: 'left',
+                  width: '*',
+                },
+                {
+                  text: `Página ${currentPage} de ${pageCount}`,
+                  alignment: 'right',
+                  color: secondaryColor,
+                  fontSize: 8,
+                  width: 100,
+                  margin: [0, 10, 0, 0],
+                },
+              ],
+              margin: [50, 10, 50, 0],
+            }
+          }
+
           return {
             columns: [
               {
@@ -1852,6 +1978,7 @@ export default function GeradorMinutas() {
           if (isHeader) {
             node.tocItem = true
             node.tocStyle = 'tocEntry'
+            node.headlineLevel = 1
             count++
           }
 
