@@ -912,6 +912,7 @@ export default function GeradorMinutas() {
                     .update({
                       content: accumulatedContent,
                       updated_at: new Date().toISOString(),
+                      minute_type: minuteType || null,
                     })
                     .eq('id', currentMinuteId)
                     .then()
@@ -987,6 +988,7 @@ export default function GeradorMinutas() {
           .update({
             content: revised_content,
             updated_at: new Date().toISOString(),
+            minute_type: minuteType || null,
           })
           .eq('id', currentMinuteId)
       }
