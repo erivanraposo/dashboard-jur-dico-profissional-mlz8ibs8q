@@ -1491,8 +1491,17 @@ export default function GeradorMinutas() {
       const docDefinition: any = {
         pageSize: 'A4',
         pageMargins: branding ? [50, 70, 50, 90] : [50, 70, 50, 60],
-        pageBreakBefore: function (currentNode: any, followingNodesOnPage: any[]) {
-          if (currentNode.headlineLevel && followingNodesOnPage.length < 2) {
+        pageBreakBefore: function (
+          currentNode: any,
+          followingNodesOnPage: any[],
+          nodesOnNextPage: any[],
+        ) {
+          if (
+            currentNode.headlineLevel &&
+            followingNodesOnPage.length < 3 &&
+            nodesOnNextPage &&
+            nodesOnNextPage.length > 0
+          ) {
             return true
           }
           return false
@@ -1763,9 +1772,10 @@ export default function GeradorMinutas() {
 
       const isHeadingNode = (node: any) => {
         if (!node) return false
+        if (node.headlineLevel) return true
         if (node.style) {
           const isHeadingStyle = (style: any) =>
-            typeof style === 'string' && /\b(h[1-4]|html-h[1-4])\b/i.test(style)
+            typeof style === 'string' && /\b(header|h[1-4]|html-h[1-4])\b/i.test(style)
           if (Array.isArray(node.style)) {
             if (node.style.some(isHeadingStyle)) return true
           } else if (typeof node.style === 'string') {
@@ -1828,6 +1838,37 @@ export default function GeradorMinutas() {
         return false
       }
 
+      const estimateNodeSize = (node: any): number => {
+        if (!node) return 0
+        if (typeof node === 'string') return node.length
+        let size = 0
+        if (Array.isArray(node)) {
+          for (const n of node) size += estimateNodeSize(n)
+          return size
+        }
+        if (node.text) {
+          if (typeof node.text === 'string') size += node.text.length
+          else if (Array.isArray(node.text)) {
+            for (const t of node.text) size += estimateNodeSize(t)
+          } else if (typeof node.text === 'object') {
+            size += estimateNodeSize(node.text)
+          }
+        }
+        if (node.stack) {
+          size += estimateNodeSize(node.stack)
+        }
+        if (node.columns) {
+          size += estimateNodeSize(node.columns)
+        }
+        if (node.table && node.table.body) {
+          size += node.table.body.length * 100
+          for (const row of node.table.body) {
+            size += estimateNodeSize(row)
+          }
+        }
+        return size
+      }
+
       const forcePageBreakBeforeAnexo = (nodes: any[]) => {
         if (!Array.isArray(nodes)) return
 
@@ -1888,24 +1929,26 @@ export default function GeradorMinutas() {
               chainLen++
             }
 
-            let hasTableNext = false
-            let tableNode = null
             if (i + chainLen < nodes.length) {
-              if (nodes[i + chainLen].nodeName === 'TABLE') {
-                hasTableNext = true
-                tableNode = nodes[i + chainLen]
-              }
               chainLen++
             }
 
             if (chainLen > 1) {
               const chain = nodes.slice(i, i + chainLen)
 
-              const wrapper = {
+              const estimatedSize = estimateNodeSize(chain)
+              const isUnbreakable = estimatedSize <= 2500
+
+              const wrapper: any = {
                 stack: chain,
-                unbreakable: true,
+                unbreakable: isUnbreakable,
                 _grouped: true,
               }
+
+              if (chain[0] && (chain[0].headlineLevel || isHeadingNode(chain[0]))) {
+                wrapper.headlineLevel = chain[0].headlineLevel || 1
+              }
+
               nodes.splice(i, chainLen, wrapper)
             }
           }
@@ -1961,8 +2004,7 @@ export default function GeradorMinutas() {
 
           if (node.style) {
             const isHeadingStyle = (style: any) =>
-              typeof style === 'string' &&
-              /\b(header|h1|h2|h3|html-h1|html-h2|html-h3)\b/i.test(style)
+              typeof style === 'string' && /\b(header|h[1-4]|html-h[1-4])\b/i.test(style)
 
             if (Array.isArray(node.style)) {
               if (node.style.some(isHeadingStyle)) {
@@ -1980,6 +2022,8 @@ export default function GeradorMinutas() {
             node.tocStyle = 'tocEntry'
             node.headlineLevel = 1
             count++
+          } else if (isHeadingNode(node)) {
+            node.headlineLevel = 1
           }
 
           if (node.stack) count += annotateTocItems(node.stack)
