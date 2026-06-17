@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -95,15 +95,21 @@ export default function Minutas() {
     }
   }
 
-  const filteredMinutes = minutes.filter((m) => {
-    const matchesSearch =
-      m.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.client_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.comarca?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.processes?.case_number?.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesType = selectedType === 'Todos' || (m as any).minute_type === selectedType
-    return matchesSearch && matchesType
-  })
+  const filteredMinutes = useMemo(() => {
+    const term = searchTerm.toLowerCase()
+    return minutes.filter((m) => {
+      const matchesSearch =
+        (m.title || '').toLowerCase().includes(term) ||
+        (m.client_name || '').toLowerCase().includes(term) ||
+        (m.comarca || '').toLowerCase().includes(term) ||
+        ((m as any).objeto || '').toLowerCase().includes(term) ||
+        ((m as any).pedido || '').toLowerCase().includes(term) ||
+        (m.content || '').toLowerCase().includes(term) ||
+        (m.processes?.case_number || '').toLowerCase().includes(term)
+      const matchesType = selectedType === 'Todos' || (m as any).minute_type === selectedType
+      return matchesSearch && matchesType
+    })
+  }, [minutes, searchTerm, selectedType])
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
