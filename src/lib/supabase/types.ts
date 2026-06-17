@@ -1,11 +1,17 @@
 // AVOID UPDATING THIS FILE DIRECTLY. It is automatically generated.
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: '14.5'
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -87,11 +93,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'clipped_cases_jurisprudence_id_fkey'
-            columns: ['jurisprudence_id']
+            foreignKeyName: "clipped_cases_jurisprudence_id_fkey"
+            columns: ["jurisprudence_id"]
             isOneToOne: false
-            referencedRelation: 'jurisprudence'
-            referencedColumns: ['id']
+            referencedRelation: "jurisprudence"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -128,18 +134,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'custos_invocation_id_fkey'
-            columns: ['invocation_id']
+            foreignKeyName: "custos_invocation_id_fkey"
+            columns: ["invocation_id"]
             isOneToOne: true
-            referencedRelation: 'invocacoes'
-            referencedColumns: ['id']
+            referencedRelation: "invocacoes"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'custos_invocation_id_fkey'
-            columns: ['invocation_id']
+            foreignKeyName: "custos_invocation_id_fkey"
+            columns: ["invocation_id"]
             isOneToOne: true
-            referencedRelation: 'vw_recent_invocations'
-            referencedColumns: ['id']
+            referencedRelation: "vw_recent_invocations"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -176,18 +182,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'invocacoes_agent_id_fkey'
-            columns: ['agent_id']
+            foreignKeyName: "invocacoes_agent_id_fkey"
+            columns: ["agent_id"]
             isOneToOne: false
-            referencedRelation: 'agentes'
-            referencedColumns: ['id']
+            referencedRelation: "agentes"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'invocacoes_process_id_fkey'
-            columns: ['process_id']
+            foreignKeyName: "invocacoes_process_id_fkey"
+            columns: ["process_id"]
             isOneToOne: false
-            referencedRelation: 'processes'
-            referencedColumns: ['id']
+            referencedRelation: "processes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -251,6 +257,7 @@ export type Database = {
           id: string
           invocation_id: string | null
           lawyer_id: string | null
+          minute_type: string | null
           objeto: string | null
           pedido: string | null
           process_id: string | null
@@ -266,6 +273,7 @@ export type Database = {
           id?: string
           invocation_id?: string | null
           lawyer_id?: string | null
+          minute_type?: string | null
           objeto?: string | null
           pedido?: string | null
           process_id?: string | null
@@ -281,6 +289,7 @@ export type Database = {
           id?: string
           invocation_id?: string | null
           lawyer_id?: string | null
+          minute_type?: string | null
           objeto?: string | null
           pedido?: string | null
           process_id?: string | null
@@ -290,32 +299,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'minutes_invocation_id_fkey'
-            columns: ['invocation_id']
+            foreignKeyName: "minutes_invocation_id_fkey"
+            columns: ["invocation_id"]
             isOneToOne: false
-            referencedRelation: 'invocacoes'
-            referencedColumns: ['id']
+            referencedRelation: "invocacoes"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'minutes_invocation_id_fkey'
-            columns: ['invocation_id']
+            foreignKeyName: "minutes_invocation_id_fkey"
+            columns: ["invocation_id"]
             isOneToOne: false
-            referencedRelation: 'vw_recent_invocations'
-            referencedColumns: ['id']
+            referencedRelation: "vw_recent_invocations"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'minutes_lawyer_id_fkey'
-            columns: ['lawyer_id']
+            foreignKeyName: "minutes_lawyer_id_fkey"
+            columns: ["lawyer_id"]
             isOneToOne: false
-            referencedRelation: 'lawyers'
-            referencedColumns: ['id']
+            referencedRelation: "lawyers"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'minutes_process_id_fkey'
-            columns: ['process_id']
+            foreignKeyName: "minutes_process_id_fkey"
+            columns: ["process_id"]
             isOneToOne: false
-            referencedRelation: 'processes'
-            referencedColumns: ['id']
+            referencedRelation: "processes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -349,11 +358,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'process_attachments_process_id_fkey'
-            columns: ['process_id']
+            foreignKeyName: "process_attachments_process_id_fkey"
+            columns: ["process_id"]
             isOneToOne: false
-            referencedRelation: 'processes'
-            referencedColumns: ['id']
+            referencedRelation: "processes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -411,11 +420,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'profiles_workspace_id_fkey'
-            columns: ['workspace_id']
+            foreignKeyName: "profiles_workspace_id_fkey"
+            columns: ["workspace_id"]
             isOneToOne: false
-            referencedRelation: 'workspaces'
-            referencedColumns: ['id']
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -482,11 +491,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'workspace_branding_workspace_id_fkey'
-            columns: ['workspace_id']
+            foreignKeyName: "workspace_branding_workspace_id_fkey"
+            columns: ["workspace_id"]
             isOneToOne: true
-            referencedRelation: 'workspaces'
-            referencedColumns: ['id']
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -530,18 +539,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'invocacoes_agent_id_fkey'
-            columns: ['agent_id']
+            foreignKeyName: "invocacoes_agent_id_fkey"
+            columns: ["agent_id"]
             isOneToOne: false
-            referencedRelation: 'agentes'
-            referencedColumns: ['id']
+            referencedRelation: "agentes"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'invocacoes_process_id_fkey'
-            columns: ['process_id']
+            foreignKeyName: "invocacoes_process_id_fkey"
+            columns: ["process_id"]
             isOneToOne: false
-            referencedRelation: 'processes'
-            referencedColumns: ['id']
+            referencedRelation: "processes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -585,31 +594,33 @@ export type Database = {
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
-    ? (DefaultSchema['Tables'] & DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -618,23 +629,23 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -643,23 +654,23 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -668,36 +679,36 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema['Enums']
+    | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
-    ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema['CompositeTypes']
+    | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
-    ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {
@@ -706,334 +717,3 @@ export const Constants = {
   },
 } as const
 
-// ====== DATABASE EXTENDED CONTEXT (auto-generated) ======
-// This section contains actual PostgreSQL column types, constraints, RLS policies,
-// functions, triggers, indexes and materialized views not present in the type definitions above.
-// IMPORTANT: The TypeScript types above map UUID, TEXT, VARCHAR all to "string".
-// Use the COLUMN TYPES section below to know the real PostgreSQL type for each column.
-// Always use the correct PostgreSQL type when writing SQL migrations.
-
-// --- COLUMN TYPES (actual PostgreSQL types) ---
-// Use this to know the real database type when writing migrations.
-// "string" in TypeScript types above may be uuid, text, varchar, timestamptz, etc.
-// Table: agentes
-//   id: uuid (not null, default: gen_random_uuid())
-//   name: text (not null)
-//   description: text (nullable)
-//   system_prompt: text (not null)
-//   model: text (not null)
-//   is_active: boolean (not null, default: true)
-//   created_at: timestamp with time zone (not null, default: now())
-//   titulo: text (nullable)
-//   descricao: text (nullable)
-//   categoria: text (nullable)
-//   max_tokens: integer (nullable, default: 4096)
-//   thinking_mode: text (nullable, default: 'disabled'::text)
-//   effort: text (nullable, default: 'low'::text)
-//   tools: jsonb (nullable, default: '[]'::jsonb)
-//   versao: integer (nullable, default: 1)
-//   compatible_minute_types: _text (not null, default: '{}'::text[])
-// Table: clipped_cases
-//   id: uuid (not null, default: gen_random_uuid())
-//   user_id: uuid (nullable)
-//   jurisprudence_id: uuid (nullable)
-//   created_at: timestamp with time zone (not null, default: now())
-// Table: custos
-//   id: uuid (not null, default: gen_random_uuid())
-//   invocation_id: uuid (not null)
-//   estimated_cost: numeric (not null, default: 0)
-//   currency: text (not null, default: 'USD'::text)
-//   cached_tokens: integer (not null, default: 0)
-//   created_at: timestamp with time zone (not null, default: now())
-//   cache_creation_input_tokens: bigint (nullable, default: 0)
-//   cache_read_input_tokens: bigint (nullable, default: 0)
-// Table: invocacoes
-//   id: uuid (not null, default: gen_random_uuid())
-//   user_id: uuid (not null)
-//   agent_id: uuid (not null)
-//   process_id: uuid (nullable)
-//   input_tokens: integer (not null, default: 0)
-//   output_tokens: integer (not null, default: 0)
-//   created_at: timestamp with time zone (not null, default: now())
-//   diagnostic_log: text (nullable)
-// Table: jurisprudence
-//   id: uuid (not null, default: gen_random_uuid())
-//   court: text (not null)
-//   summary: text (not null)
-//   full_text: text (nullable)
-//   link: text (nullable)
-//   tags: _text (nullable)
-//   created_at: timestamp with time zone (not null, default: now())
-// Table: lawyers
-//   id: uuid (not null, default: gen_random_uuid())
-//   full_name: text (not null)
-//   oab_number: text (not null)
-//   created_at: timestamp with time zone (not null, default: now())
-// Table: minutes
-//   id: uuid (not null, default: gen_random_uuid())
-//   process_id: uuid (nullable)
-//   lawyer_id: uuid (nullable)
-//   title: text (not null)
-//   content: text (not null)
-//   status: text (not null, default: 'Draft'::text)
-//   created_at: timestamp with time zone (not null, default: now())
-//   updated_at: timestamp with time zone (not null, default: now())
-//   client_name: text (nullable)
-//   comarca: text (nullable)
-//   objeto: text (nullable)
-//   pedido: text (nullable)
-//   invocation_id: uuid (nullable)
-// Table: process_attachments
-//   id: uuid (not null, default: gen_random_uuid())
-//   process_id: uuid (nullable)
-//   file_name: text (not null)
-//   file_path: text (not null)
-//   file_type: text (not null)
-//   file_size: bigint (not null)
-//   created_at: timestamp with time zone (not null, default: now())
-// Table: processes
-//   id: uuid (not null, default: gen_random_uuid())
-//   case_number: text (not null)
-//   client_name: text (not null)
-//   area: text (not null)
-//   status: text (not null)
-//   description: text (nullable)
-//   created_at: timestamp with time zone (not null, default: now())
-// Table: profiles
-//   id: uuid (not null)
-//   workspace_id: uuid (nullable)
-//   full_name: text (not null)
-//   role: text (not null, default: 'member'::text)
-//   created_at: timestamp with time zone (not null, default: now())
-// Table: vw_recent_invocations
-//   id: uuid (nullable)
-//   created_at: timestamp with time zone (nullable)
-//   input_tokens: integer (nullable)
-//   output_tokens: integer (nullable)
-//   user_id: uuid (nullable)
-//   agent_id: uuid (nullable)
-//   process_id: uuid (nullable)
-//   estimated_cost: numeric (nullable)
-//   currency: text (nullable)
-//   agent_name: text (nullable)
-//   agent_model: text (nullable)
-//   user_name: text (nullable)
-// Table: workspace_branding
-//   workspace_id: uuid (not null)
-//   nome_escritorio: text (not null, default: ''::text)
-//   endereco_logradouro: text (not null, default: ''::text)
-//   endereco_cidade: text (not null, default: ''::text)
-//   endereco_uf: text (not null, default: ''::text)
-//   endereco_cep: text (not null, default: ''::text)
-//   telefone: text (not null, default: ''::text)
-//   email: text (not null, default: ''::text)
-//   website: text (not null, default: ''::text)
-//   oab_responsavel_nome: text (not null, default: ''::text)
-//   oab_responsavel_numero: text (not null, default: ''::text)
-//   oab_responsavel_uf: text (not null, default: ''::text)
-//   logo_path: text (not null, default: ''::text)
-//   cor_primaria: text (not null, default: '#1a3a5e'::text)
-//   cor_secundaria: text (not null, default: '#666666'::text)
-//   rodape_confidencialidade: text (not null, default: 'Confidencial — uso restrito ao destinatário'::text)
-//   cabecalho_extra: text (not null, default: ''::text)
-//   updated_at: timestamp with time zone (not null, default: now())
-// Table: workspaces
-//   id: uuid (not null, default: gen_random_uuid())
-//   name: text (not null)
-//   budget_mensal_usd: numeric (not null, default: 0)
-//   created_at: timestamp with time zone (not null, default: now())
-
-// --- CONSTRAINTS ---
-// Table: agentes
-//   UNIQUE agentes_name_key: UNIQUE (name)
-//   PRIMARY KEY agentes_pkey: PRIMARY KEY (id)
-// Table: clipped_cases
-//   FOREIGN KEY clipped_cases_jurisprudence_id_fkey: FOREIGN KEY (jurisprudence_id) REFERENCES jurisprudence(id)
-//   PRIMARY KEY clipped_cases_pkey: PRIMARY KEY (id)
-//   FOREIGN KEY clipped_cases_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id)
-//   UNIQUE clipped_cases_user_id_jurisprudence_id_key: UNIQUE (user_id, jurisprudence_id)
-// Table: custos
-//   FOREIGN KEY custos_invocation_id_fkey: FOREIGN KEY (invocation_id) REFERENCES invocacoes(id) ON DELETE CASCADE
-//   UNIQUE custos_invocation_id_key: UNIQUE (invocation_id)
-//   PRIMARY KEY custos_pkey: PRIMARY KEY (id)
-// Table: invocacoes
-//   FOREIGN KEY invocacoes_agent_id_fkey: FOREIGN KEY (agent_id) REFERENCES agentes(id) ON DELETE CASCADE
-//   PRIMARY KEY invocacoes_pkey: PRIMARY KEY (id)
-//   FOREIGN KEY invocacoes_process_id_fkey: FOREIGN KEY (process_id) REFERENCES processes(id) ON DELETE SET NULL
-//   FOREIGN KEY invocacoes_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
-// Table: jurisprudence
-//   PRIMARY KEY jurisprudence_pkey: PRIMARY KEY (id)
-// Table: lawyers
-//   PRIMARY KEY lawyers_pkey: PRIMARY KEY (id)
-// Table: minutes
-//   FOREIGN KEY minutes_invocation_id_fkey: FOREIGN KEY (invocation_id) REFERENCES invocacoes(id) ON DELETE SET NULL
-//   FOREIGN KEY minutes_lawyer_id_fkey: FOREIGN KEY (lawyer_id) REFERENCES lawyers(id)
-//   PRIMARY KEY minutes_pkey: PRIMARY KEY (id)
-//   FOREIGN KEY minutes_process_id_fkey: FOREIGN KEY (process_id) REFERENCES processes(id)
-// Table: process_attachments
-//   PRIMARY KEY process_attachments_pkey: PRIMARY KEY (id)
-//   FOREIGN KEY process_attachments_process_id_fkey: FOREIGN KEY (process_id) REFERENCES processes(id) ON DELETE CASCADE
-// Table: processes
-//   PRIMARY KEY processes_pkey: PRIMARY KEY (id)
-// Table: profiles
-//   FOREIGN KEY profiles_id_fkey: FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE
-//   PRIMARY KEY profiles_pkey: PRIMARY KEY (id)
-//   CHECK profiles_role_check: CHECK ((role = ANY (ARRAY['admin'::text, 'owner'::text, 'member'::text, 'viewer'::text])))
-//   FOREIGN KEY profiles_workspace_id_fkey: FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
-// Table: workspace_branding
-//   PRIMARY KEY workspace_branding_pkey: PRIMARY KEY (workspace_id)
-//   FOREIGN KEY workspace_branding_workspace_id_fkey: FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
-// Table: workspaces
-//   PRIMARY KEY workspaces_pkey: PRIMARY KEY (id)
-
-// --- ROW LEVEL SECURITY POLICIES ---
-// Table: agentes
-//   Policy "authenticated_all_agentes" (ALL, PERMISSIVE) roles={authenticated}
-//     USING: true
-//     WITH CHECK: true
-//   Policy "authenticated_select_agentes" (SELECT, PERMISSIVE) roles={authenticated}
-//     USING: true
-// Table: clipped_cases
-//   Policy "authenticated_all_clipped_cases" (ALL, PERMISSIVE) roles={authenticated}
-//     USING: (auth.uid() = user_id)
-//     WITH CHECK: (auth.uid() = user_id)
-// Table: custos
-//   Policy "authenticated_all_custos" (ALL, PERMISSIVE) roles={authenticated}
-//     USING: true
-//     WITH CHECK: true
-// Table: invocacoes
-//   Policy "authenticated_all_invocacoes" (ALL, PERMISSIVE) roles={authenticated}
-//     USING: true
-//     WITH CHECK: true
-// Table: jurisprudence
-//   Policy "authenticated_all_jurisprudence" (ALL, PERMISSIVE) roles={authenticated}
-//     USING: true
-//     WITH CHECK: true
-// Table: lawyers
-//   Policy "authenticated_select_lawyers" (SELECT, PERMISSIVE) roles={authenticated}
-//     USING: true
-// Table: minutes
-//   Policy "authenticated_all_minutes" (ALL, PERMISSIVE) roles={authenticated}
-//     USING: true
-//     WITH CHECK: true
-// Table: process_attachments
-//   Policy "authenticated_all_process_attachments" (ALL, PERMISSIVE) roles={authenticated}
-//     USING: true
-//     WITH CHECK: true
-// Table: processes
-//   Policy "authenticated_all_processes" (ALL, PERMISSIVE) roles={authenticated}
-//     USING: true
-//     WITH CHECK: true
-// Table: profiles
-//   Policy "authenticated_insert_profiles" (INSERT, PERMISSIVE) roles={authenticated}
-//     WITH CHECK: (id = auth.uid())
-//   Policy "authenticated_select_profiles" (SELECT, PERMISSIVE) roles={authenticated}
-//     USING: true
-//   Policy "authenticated_update_profiles" (UPDATE, PERMISSIVE) roles={authenticated}
-//     USING: (id = auth.uid())
-//     WITH CHECK: (id = auth.uid())
-// Table: workspace_branding
-//   Policy "wb_delete_own" (DELETE, PERMISSIVE) roles={authenticated}
-//     USING: (workspace_id IN ( SELECT profiles.workspace_id    FROM profiles   WHERE (profiles.id = auth.uid())))
-//   Policy "wb_insert_own" (INSERT, PERMISSIVE) roles={authenticated}
-//     WITH CHECK: (workspace_id IN ( SELECT profiles.workspace_id    FROM profiles   WHERE (profiles.id = auth.uid())))
-//   Policy "wb_select_own" (SELECT, PERMISSIVE) roles={authenticated}
-//     USING: (workspace_id IN ( SELECT profiles.workspace_id    FROM profiles   WHERE (profiles.id = auth.uid())))
-//   Policy "wb_update_own" (UPDATE, PERMISSIVE) roles={authenticated}
-//     USING: (workspace_id IN ( SELECT profiles.workspace_id    FROM profiles   WHERE (profiles.id = auth.uid())))
-//     WITH CHECK: (workspace_id IN ( SELECT profiles.workspace_id    FROM profiles   WHERE (profiles.id = auth.uid())))
-// Table: workspaces
-//   Policy "authenticated_delete_workspaces" (DELETE, PERMISSIVE) roles={authenticated}
-//     USING: true
-//   Policy "authenticated_insert_workspaces" (INSERT, PERMISSIVE) roles={authenticated}
-//     WITH CHECK: true
-//   Policy "authenticated_select_workspaces" (SELECT, PERMISSIVE) roles={authenticated}
-//     USING: true
-//   Policy "authenticated_update_workspaces" (UPDATE, PERMISSIVE) roles={authenticated}
-//     USING: true
-//     WITH CHECK: true
-
-// --- DATABASE FUNCTIONS ---
-// FUNCTION get_agent_ranking(timestamp with time zone, timestamp with time zone)
-//   CREATE OR REPLACE FUNCTION public.get_agent_ranking(start_date timestamp with time zone, end_date timestamp with time zone)
-//    RETURNS TABLE(agent_id uuid, agent_name text, invocations_count bigint, total_tokens bigint, total_cost numeric)
-//    LANGUAGE sql
-//    SECURITY DEFINER
-//   AS $function$
-//     SELECT
-//       a.id AS agent_id,
-//       a.name AS agent_name,
-//       COUNT(i.id)::bigint AS invocations_count,
-//       COALESCE(SUM(COALESCE(i.input_tokens, 0) + COALESCE(i.output_tokens, 0)), 0)::bigint AS total_tokens,
-//       COALESCE(SUM(COALESCE(c.estimated_cost, 0.0)), 0.0)::numeric AS total_cost
-//     FROM public.invocacoes i
-//     JOIN public.agentes a ON a.id = i.agent_id
-//     LEFT JOIN public.custos c ON c.invocation_id = i.id
-//     WHERE i.created_at >= start_date AND i.created_at <= end_date
-//     GROUP BY a.id, a.name
-//     ORDER BY total_cost DESC;
-//   $function$
-//
-// FUNCTION get_daily_consumption(timestamp with time zone, timestamp with time zone)
-//   CREATE OR REPLACE FUNCTION public.get_daily_consumption(start_date timestamp with time zone, end_date timestamp with time zone)
-//    RETURNS TABLE(date text, cost numeric, invocations bigint)
-//    LANGUAGE sql
-//    SECURITY DEFINER
-//   AS $function$
-//     SELECT
-//       TO_CHAR(date_trunc('day', i.created_at), 'YYYY-MM-DD') AS date,
-//       COALESCE(SUM(COALESCE(c.estimated_cost, 0.0)), 0.0)::numeric AS cost,
-//       COUNT(i.id)::bigint AS invocations
-//     FROM public.invocacoes i
-//     LEFT JOIN public.custos c ON c.invocation_id = i.id
-//     WHERE i.created_at >= start_date AND i.created_at <= end_date
-//     GROUP BY date_trunc('day', i.created_at)
-//     ORDER BY date_trunc('day', i.created_at) ASC;
-//   $function$
-//
-// FUNCTION get_user_ranking(timestamp with time zone, timestamp with time zone)
-//   CREATE OR REPLACE FUNCTION public.get_user_ranking(start_date timestamp with time zone, end_date timestamp with time zone)
-//    RETURNS TABLE(user_id uuid, full_name text, invocations_count bigint, total_cost numeric, last_activity timestamp with time zone)
-//    LANGUAGE sql
-//    SECURITY DEFINER
-//   AS $function$
-//     SELECT
-//       p.id AS user_id,
-//       COALESCE(p.full_name, 'Desconhecido') AS full_name,
-//       COUNT(i.id)::bigint AS invocations_count,
-//       COALESCE(SUM(COALESCE(c.estimated_cost, 0.0)), 0.0)::numeric AS total_cost,
-//       MAX(i.created_at) AS last_activity
-//     FROM public.invocacoes i
-//     JOIN public.profiles p ON p.id = i.user_id
-//     LEFT JOIN public.custos c ON c.invocation_id = i.id
-//     WHERE i.created_at >= start_date AND i.created_at <= end_date
-//     GROUP BY p.id, p.full_name
-//     ORDER BY total_cost DESC;
-//   $function$
-//
-// FUNCTION set_current_timestamp_updated_at()
-//   CREATE OR REPLACE FUNCTION public.set_current_timestamp_updated_at()
-//    RETURNS trigger
-//    LANGUAGE plpgsql
-//   AS $function$
-//   BEGIN
-//     NEW.updated_at = NOW();
-//     RETURN NEW;
-//   END;
-//   $function$
-//
-
-// --- TRIGGERS ---
-// Table: minutes
-//   set_minutes_updated_at: CREATE TRIGGER set_minutes_updated_at BEFORE UPDATE ON public.minutes FOR EACH ROW EXECUTE FUNCTION set_current_timestamp_updated_at()
-
-// --- INDEXES ---
-// Table: agentes
-//   CREATE UNIQUE INDEX agentes_name_key ON public.agentes USING btree (name)
-// Table: clipped_cases
-//   CREATE UNIQUE INDEX clipped_cases_user_id_jurisprudence_id_key ON public.clipped_cases USING btree (user_id, jurisprudence_id)
-// Table: custos
-//   CREATE UNIQUE INDEX custos_invocation_id_key ON public.custos USING btree (invocation_id)
-//   CREATE INDEX idx_custos_invocation_id ON public.custos USING btree (invocation_id)
-// Table: invocacoes
-//   CREATE INDEX idx_invocacoes_created_at ON public.invocacoes USING btree (created_at DESC)
