@@ -13,6 +13,7 @@ import Index from './pages/Index'
 import Jurisprudencia from './pages/Jurisprudencia'
 import GeradorMinutas from './pages/GeradorMinutas'
 import Processos from './pages/Processos'
+import Minutas from './pages/Minutas'
 import Auditoria from './pages/Auditoria'
 import Configuracoes from './pages/Configuracoes'
 import NotFound from './pages/NotFound'
@@ -94,6 +95,7 @@ const AppContent = () => (
       <Route path="/jurisprudencia" element={<Jurisprudencia />} />
       <Route path="/gerador-minutas" element={<GeradorMinutas />} />
       <Route path="/processos" element={<Processos />} />
+      <Route path="/minutas" element={<Minutas />} />
       <Route path="/auditoria" element={<Auditoria />} />
       <Route path="/configuracoes" element={<Configuracoes />} />
     </Route>

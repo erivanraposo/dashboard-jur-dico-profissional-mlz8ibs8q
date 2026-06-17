@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/RichTextEditor'
@@ -229,7 +230,7 @@ export default function GeradorMinutas() {
 
   useEffect(() => {
     const savedDraft = localStorage.getItem('lexcontrol_gerador_draft')
-    if (savedDraft && savedDraft !== defaultContent) {
+    if (savedDraft && savedDraft !== defaultContent && !window.location.search.includes('id=')) {
       setContent(savedDraft)
     }
   }, [])
@@ -266,6 +267,48 @@ export default function GeradorMinutas() {
   const [activeTab, setActiveTab] = useState('config')
 
   const { toast } = useToast()
+
+  const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    const paramId = searchParams.get('id')
+    if (paramId) {
+      loadMinuteById(paramId)
+    }
+  }, [searchParams])
+
+  const loadMinuteById = async (id: string) => {
+    setLoading(true)
+    try {
+      const { data, error } = await supabase.from('minutes').select('*').eq('id', id).single()
+
+      if (error) throw error
+      if (data) {
+        setMinuteId(data.id)
+        setContent(data.content || defaultContent)
+        setMinuteType((data as any).minute_type || '')
+        setClientName(data.client_name || '')
+        setComarca(data.comarca || '')
+        setObjeto(data.objeto || '')
+        setPedido(data.pedido || '')
+        setSelectedProcess(data.process_id || 'none')
+        setSelectedLawyer(data.lawyer_id || 'none')
+
+        toast({
+          title: 'Sucesso',
+          description: `Minuta carregada: "${data.title}"`,
+        })
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao carregar',
+        description: 'Não foi possível carregar a minuta.',
+        variant: 'destructive',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleClearEditor = () => {
     if (window.confirm('Descartar o conteúdo atual do editor e começar do zero?')) {
@@ -1211,6 +1254,7 @@ export default function GeradorMinutas() {
         comarca: comarca || null,
         objeto: objeto || null,
         pedido: pedido || null,
+        minute_type: minuteType || null,
         updated_at: new Date().toISOString(),
       }
 
