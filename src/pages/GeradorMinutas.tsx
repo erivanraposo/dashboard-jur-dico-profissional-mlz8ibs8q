@@ -1498,7 +1498,7 @@ export default function GeradorMinutas() {
         ) {
           if (
             currentNode.headlineLevel &&
-            followingNodesOnPage.length < 3 &&
+            followingNodesOnPage.length < 6 &&
             nodesOnNextPage &&
             nodesOnNextPage.length > 0
           ) {
@@ -1937,7 +1937,12 @@ export default function GeradorMinutas() {
               const chain = nodes.slice(i, i + chainLen)
 
               const estimatedSize = estimateNodeSize(chain)
-              const isUnbreakable = estimatedSize <= 2500
+              const hasOnlyOneNonHeading =
+                chain.length <= 2 ||
+                (chain.length >= 2 &&
+                  chain.slice(0, -1).every((c: any) => isHeadingNode(c) || c._grouped) &&
+                  !isHeadingNode(chain[chain.length - 1]))
+              const isUnbreakable = hasOnlyOneNonHeading || estimatedSize <= 3500
 
               const wrapper: any = {
                 stack: chain,
