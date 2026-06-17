@@ -2534,6 +2534,20 @@ export default function GeradorMinutas() {
             {content !== defaultContent && content.trim() !== '' && (
               <>
                 <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => handleSave(content)}
+                  disabled={saving || content === defaultContent}
+                  className="whitespace-nowrap"
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 sm:mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 sm:mr-2" />
+                  )}
+                  <span className="hidden sm:inline">{saving ? 'Salvando...' : 'Salvar'}</span>
+                </Button>
+                <Button
                   variant="outline"
                   size="sm"
                   onClick={handleExportPDF}
@@ -2570,18 +2584,6 @@ export default function GeradorMinutas() {
                   className="cursor-pointer"
                 >
                   <Plus className="w-4 h-4 mr-2 text-green-600" /> Nova Minuta
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleSave(content)}
-                  disabled={saving || content === defaultContent}
-                  className="cursor-pointer"
-                >
-                  {saving ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin text-primary" />
-                  ) : (
-                    <Save className="w-4 h-4 mr-2 text-primary" />
-                  )}
-                  Salvar Minuta
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
