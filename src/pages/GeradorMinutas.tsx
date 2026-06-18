@@ -277,6 +277,35 @@ export default function GeradorMinutas() {
     }
   }, [searchParams])
 
+  useEffect(() => {
+    const processId = searchParams.get('process_id')
+    if (processId) {
+      loadProcessForNewMinute(processId)
+    }
+  }, [searchParams])
+
+  const loadProcessForNewMinute = async (processId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('processes')
+        .select('id, case_number, client_name')
+        .eq('id', processId)
+        .single()
+
+      if (error) throw error
+      if (data) {
+        setSelectedProcess(data.id)
+        setClientName(data.client_name || '')
+        toast({
+          title: 'Processo vinculado',
+          description: `Nova minuta será associada ao processo ${data.case_number}`,
+        })
+      }
+    } catch (err: any) {
+      console.error('Erro ao carregar processo:', err)
+    }
+  }
+
   const loadMinuteById = async (id: string) => {
     setLoading(true)
     try {

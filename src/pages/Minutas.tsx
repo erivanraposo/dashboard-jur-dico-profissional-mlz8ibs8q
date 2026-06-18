@@ -191,7 +191,15 @@ export default function Minutas() {
                       {m.client_name || <span className="text-muted-foreground text-xs">—</span>}
                     </TableCell>
                     <TableCell className="font-mono text-sm">
-                      {m.processes?.case_number || (
+                      {m.processes?.case_number ? (
+                        <button
+                          onClick={() => navigate(`/processos?focus=${m.process_id}`)}
+                          className="text-blue-600 hover:underline cursor-pointer"
+                          title="Ir para o processo"
+                        >
+                          {m.processes.case_number}
+                        </button>
+                      ) : (
                         <span className="text-muted-foreground text-xs">—</span>
                       )}
                     </TableCell>

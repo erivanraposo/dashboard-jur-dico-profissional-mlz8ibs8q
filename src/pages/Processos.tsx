@@ -17,9 +17,88 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Briefcase, FileText, Upload, Download, Trash2, File as FileIcon } from 'lucide-react'
+import { Briefcase, FileText, Upload, Download, Trash2, File as FileIcon, Plus } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/use-toast'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+
+const ProcessMinutas = ({ processId, caseNumber }: { processId: string; caseNumber: string }) => {
+  const [minutes, setMinutes] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const fetchMinutes = async () => {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('minutes')
+        .select('id, title, minute_type, updated_at')
+        .eq('process_id', processId)
+        .order('updated_at', { ascending: false })
+
+      if (data) setMinutes(data)
+      setLoading(false)
+    }
+    fetchMinutes()
+  }, [processId])
+
+  return (
+    <div className="space-y-4 pt-2">
+      <div className="flex justify-between items-center">
+        <h3 className="font-semibold text-sm">Minutas Vinculadas</h3>
+        <Button
+          size="sm"
+          onClick={() => navigate(`/gerador-minutas?process_id=${processId}`)}
+          className="gap-2"
+        >
+          <Plus className="h-4 w-4" />
+          Nova Minuta
+        </Button>
+      </div>
+
+      <div className="border rounded-md divide-y max-h-[300px] overflow-auto">
+        {loading ? (
+          <div className="p-4 text-center text-sm text-muted-foreground">Carregando minutas...</div>
+        ) : minutes.length === 0 ? (
+          <div className="p-4 text-center text-sm text-muted-foreground">
+            Nenhuma minuta vinculada a este processo.
+          </div>
+        ) : (
+          minutes.map((m) => (
+            <div
+              key={m.id}
+              className="flex items-center justify-between p-3 hover:bg-muted/50 cursor-pointer transition-colors"
+              onClick={() => navigate(`/gerador-minutas?id=${m.id}`)}
+            >
+              <div className="flex flex-col gap-1 overflow-hidden">
+                <span className="text-sm font-medium truncate" title={m.title}>
+                  {m.title}
+                </span>
+                <div className="flex items-center gap-2">
+                  {m.minute_type && (
+                    <Badge variant="outline" className="text-[10px] py-0 h-4">
+                      {m.minute_type}
+                    </Badge>
+                  )}
+                  <span className="text-[10px] text-muted-foreground">
+                    {new Date(m.updated_at).toLocaleDateString('pt-BR', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
 
 const ProcessDocuments = ({
   processId,
@@ -212,11 +291,13 @@ const ProcessDocuments = ({
 export default function Processos() {
   const [processes, setProcesses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchParams] = useSearchParams()
+  const focusId = searchParams.get('focus')
 
   useEffect(() => {
     supabase
       .from('processes')
-      .select('*')
+      .select('*, minutes(count)')
       .order('created_at', { ascending: false })
       .then(({ data }) => {
         if (data) setProcesses(data)
@@ -243,19 +324,20 @@ export default function Processos() {
                 <TableHead>Cliente</TableHead>
                 <TableHead>Área</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Minutas</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
+                  <TableCell colSpan={6} className="text-center py-8">
                     Carregando...
                   </TableCell>
                 </TableRow>
               ) : processes.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
+                  <TableCell colSpan={6} className="text-center py-8">
                     Nenhum processo encontrado.
                   </TableCell>
                 </TableRow>
@@ -281,22 +363,37 @@ export default function Processos() {
                         {p.status}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{p.minutes?.[0]?.count || 0}</Badge>
+                    </TableCell>
                     <TableCell className="text-right">
-                      <Dialog>
+                      <Dialog defaultOpen={focusId === p.id}>
                         <DialogTrigger asChild>
                           <Button variant="outline" size="sm" className="gap-2">
                             <FileText className="h-4 w-4" />
-                            Documentos
+                            Detalhes
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="sm:max-w-md">
+                        <DialogContent className="sm:max-w-lg">
                           <DialogHeader>
-                            <DialogTitle>Documentos do Processo</DialogTitle>
+                            <DialogTitle>Detalhes do Processo</DialogTitle>
                           </DialogHeader>
-                          <div className="text-sm text-muted-foreground mb-4">
+                          <div className="text-sm text-muted-foreground mb-2">
                             Processo nº {p.case_number} - Cliente: {p.client_name}
                           </div>
-                          <ProcessDocuments processId={p.id} processName={p.case_number} />
+
+                          <Tabs defaultValue="documentos" className="w-full">
+                            <TabsList className="grid w-full grid-cols-2">
+                              <TabsTrigger value="documentos">Documentos</TabsTrigger>
+                              <TabsTrigger value="minutas">Minutas</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="documentos" className="mt-2">
+                              <ProcessDocuments processId={p.id} processName={p.case_number} />
+                            </TabsContent>
+                            <TabsContent value="minutas" className="mt-2">
+                              <ProcessMinutas processId={p.id} caseNumber={p.case_number} />
+                            </TabsContent>
+                          </Tabs>
                         </DialogContent>
                       </Dialog>
                     </TableCell>
