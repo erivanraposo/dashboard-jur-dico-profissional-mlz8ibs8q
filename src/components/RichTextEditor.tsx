@@ -10,6 +10,7 @@ import {
   Heading1,
   Heading2,
   Quote,
+  Link as LinkIcon,
 } from 'lucide-react'
 import { Toggle } from '@/components/ui/toggle'
 import { Separator } from '@/components/ui/separator'
@@ -33,12 +34,37 @@ export function RichTextEditor({
         editorRef.current.innerHTML = value
       }
     }
-  }, [value])
+
+    if (editorRef.current) {
+      const links = editorRef.current.querySelectorAll('a:not(.legal-citation)')
+      if (links.length > 0) {
+        links.forEach((link) => {
+          link.classList.add('legal-citation')
+          link.setAttribute('target', '_blank')
+          link.setAttribute('rel', 'noopener noreferrer')
+        })
+        if (!isUpdatingRef.current) {
+          isUpdatingRef.current = true
+          onChange(editorRef.current.innerHTML)
+          setTimeout(() => {
+            isUpdatingRef.current = false
+          }, 0)
+        }
+      }
+    }
+  }, [value, onChange])
 
   const execCommand = (command: string, arg?: string) => {
     document.execCommand(command, false, arg)
     editorRef.current?.focus()
     handleChange()
+  }
+
+  const handleInsertLink = () => {
+    const url = prompt('Digite a URL do link:')
+    if (url) {
+      execCommand('createLink', url)
+    }
   }
 
   const handleChange = () => {
@@ -92,12 +118,25 @@ export function RichTextEditor({
         <Toggle size="sm" onClick={() => execCommand('formatBlock', 'BLOCKQUOTE')} title="Citação">
           <Quote className="h-4 w-4" />
         </Toggle>
+        <Separator orientation="vertical" className="h-6 mx-1" />
+        <Toggle size="sm" onClick={handleInsertLink} title="Inserir Link">
+          <LinkIcon className="h-4 w-4" />
+        </Toggle>
       </div>
       <div
         ref={editorRef}
         contentEditable={!readOnly}
         onInput={handleChange}
         onBlur={handleChange}
+        onClick={(e) => {
+          const target = e.target as HTMLElement
+          if (target.tagName === 'A') {
+            const href = target.getAttribute('href')
+            if (href) {
+              window.open(href, '_blank', 'noopener,noreferrer')
+            }
+          }
+        }}
         className={cn(
           'flex-1 p-8 outline-none bg-white overflow-y-auto cursor-text',
           'prose prose-slate max-w-none font-serif leading-relaxed',

@@ -125,4 +125,35 @@
     max-width: 800px;
     min-height: 1130px;
   }
+
+  .legal-citation {
+    color: #0066cc !important;
+    text-decoration: none !important;
+    border-bottom: 1px dotted #0066cc !important;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+
+  .legal-citation:hover {
+    color: #003d7a !important;
+    border-bottom: 1px solid #003d7a !important;
+  }
+
+  .legal-suggestion a {
+    color: #0066cc;
+    text-decoration: underline;
+  }
+
+  .prose a.legal-citation {
+    color: #0066cc;
+    text-decoration: none;
+    border-bottom: 1px dotted #0066cc;
+    font-weight: 500;
+  }
+
+  .prose a.legal-citation:hover {
+    color: #003d7a;
+    border-bottom: 1px solid #003d7a;
+  }
 }

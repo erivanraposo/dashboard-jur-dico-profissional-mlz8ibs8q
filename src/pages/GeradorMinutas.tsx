@@ -1521,6 +1521,7 @@ export default function GeradorMinutas() {
         UL: { marginBottom: 6, alignment: 'justify' },
         OL: { marginBottom: 6, alignment: 'justify' },
         LI: { fontSize: 11, marginBottom: 3, alignment: 'justify', lineHeight: 1.4 },
+        A: { color: '#0066cc', decoration: 'underline' },
       }
 
       let htmlConverted
@@ -1538,6 +1539,7 @@ export default function GeradorMinutas() {
             ul: pdfMakeStyles.UL,
             ol: pdfMakeStyles.OL,
             li: pdfMakeStyles.LI,
+            a: pdfMakeStyles.A,
           },
         })
 
@@ -3176,10 +3178,9 @@ export default function GeradorMinutas() {
                             {suggestions.map((s, i) => (
                               <div
                                 key={i}
-                                className="bg-primary/5 border border-primary/10 p-3 rounded-md text-sm text-foreground/90 shadow-sm leading-relaxed"
-                              >
-                                {s}
-                              </div>
+                                className="legal-suggestion bg-primary/5 border border-primary/10 p-3 rounded-md text-sm text-foreground/90 shadow-sm leading-relaxed"
+                                dangerouslySetInnerHTML={{ __html: s }}
+                              />
                             ))}
                           </div>
                         </div>
