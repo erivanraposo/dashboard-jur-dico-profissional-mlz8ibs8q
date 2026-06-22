@@ -53,13 +53,13 @@ const ProcessMinutas = ({ processId, caseNumber }: { processId: string; caseNumb
           className="gap-2"
         >
           <Plus className="h-4 w-4" />
-          Nova Minuta
+          Nova Minuta para este Processo
         </Button>
       </div>
 
       <div className="border rounded-md divide-y max-h-[300px] overflow-auto">
         {loading ? (
-          <div className="p-4 text-center text-sm text-muted-foreground">Carregando minutas...</div>
+          <div className="p-4 text-center text-sm text-muted-foreground">Carregando...</div>
         ) : minutes.length === 0 ? (
           <div className="p-4 text-center text-sm text-muted-foreground">
             Nenhuma minuta vinculada a este processo.

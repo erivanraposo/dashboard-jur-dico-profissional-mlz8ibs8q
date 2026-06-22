@@ -4,6 +4,7 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
+  ExternalHyperlink,
   Footer,
   Header,
   HeadingLevel,
@@ -52,8 +53,10 @@ function normalizeColor(hex: string, fallback: string): string {
 }
 
 // Extrai TextRuns de um node DOM, propagando estilos bold/italic/underline.
-function extractRuns(node: any, parentStyle: any = {}): TextRun[] {
-  const runs: TextRun[] = []
+// Retorna array misto: TextRun para texto normal + ExternalHyperlink para <a href>.
+// ExternalHyperlink envolve TextRuns próprios com cor azul + sublinhado (estilo link).
+function extractRuns(node: any, parentStyle: any = {}): (TextRun | ExternalHyperlink)[] {
+  const runs: (TextRun | ExternalHyperlink)[] = []
   if (!node) return runs
   const children = node.childNodes ? Array.from(node.childNodes) : []
   for (const ch of children) {
@@ -69,6 +72,27 @@ function extractRuns(node: any, parentStyle: any = {}): TextRun[] {
     const tag = (c.tagName || '').toLowerCase()
     if (tag === 'br') {
       runs.push(new TextRun({ break: 1, ...parentStyle }))
+      continue
+    }
+    // <a href="..."> vira ExternalHyperlink com estilo de link
+    if (tag === 'a') {
+      const href = c.getAttribute && c.getAttribute('href')
+      if (href) {
+        const linkStyle = {
+          ...parentStyle,
+          color: '0066CC',
+          underline: { type: 'single' },
+        }
+        const innerRuns = extractRuns(c, linkStyle).filter(
+          (r): r is TextRun => r instanceof TextRun,
+        )
+        if (innerRuns.length > 0) {
+          runs.push(new ExternalHyperlink({ link: href, children: innerRuns }))
+          continue
+        }
+      }
+      // Sem href válido ou sem conteúdo: fallback para texto normal
+      runs.push(...extractRuns(c, parentStyle))
       continue
     }
     const style = { ...parentStyle }
@@ -160,31 +184,12 @@ function convertNode(node: any): (Paragraph | Table)[] {
   if (HEADING_MAP[tag]) {
     const headingMeta: Record<
       string,
-      {
-        size: number
-        bold: boolean
-        italics?: boolean
-        color: string
-        align?: any
-        spacing: { before: number; after: number }
-      }
+      { size: number; bold: boolean; italics?: boolean; color: string; align?: any; spacing: { before: number; after: number } }
     > = {
-      h1: {
-        size: 32,
-        bold: true,
-        color: '000000',
-        align: AlignmentType.CENTER,
-        spacing: { before: 360, after: 240 },
-      },
+      h1: { size: 32, bold: true, color: '000000', align: AlignmentType.CENTER, spacing: { before: 360, after: 240 } },
       h2: { size: 28, bold: true, color: '000000', spacing: { before: 280, after: 180 } },
       h3: { size: 26, bold: true, color: '000000', spacing: { before: 200, after: 120 } },
-      h4: {
-        size: 24,
-        bold: true,
-        italics: true,
-        color: '000000',
-        spacing: { before: 160, after: 100 },
-      },
+      h4: { size: 24, bold: true, italics: true, color: '000000', spacing: { before: 160, after: 100 } },
       h5: { size: 24, bold: true, color: '333333', spacing: { before: 120, after: 80 } },
       h6: { size: 22, bold: true, color: '333333', spacing: { before: 100, after: 60 } },
     }
@@ -352,9 +357,7 @@ function htmlToDocxChildren(html: string): (Paragraph | Table)[] {
   console.log(`[export-docx] body element children: ${children.length}`)
   if (children.length > 0 && children.length <= 5) {
     children.forEach((c: any, i: number) => {
-      console.log(
-        `  [${i}] <${(c.tagName || '?').toLowerCase()}> (childNodes: ${c.childNodes?.length || 0})`,
-      )
+      console.log(`  [${i}] <${(c.tagName || '?').toLowerCase()}> (childNodes: ${c.childNodes?.length || 0})`)
     })
   }
   for (const child of children) {
@@ -658,7 +661,9 @@ Deno.serve(async (req: Request) => {
               },
             },
           },
-          headers: hasBranding ? { default: buildDocxHeader(branding!, logoBytes) } : undefined,
+          headers: hasBranding
+            ? { default: buildDocxHeader(branding!, logoBytes) }
+            : undefined,
           footers: { default: buildDocxFooter(branding) },
           children: bodyChildren,
         },
@@ -673,7 +678,8 @@ Deno.serve(async (req: Request) => {
     return new Response(body, {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'Content-Disposition': `attachment; filename="${safeTitle}.docx"`,
       },
     })

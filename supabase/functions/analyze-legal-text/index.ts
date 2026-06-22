@@ -34,6 +34,136 @@ const corsHeaders = {
 //                   (limite Anthropic) para maximizar cache reuse.
 //   textContext: texto puro dos anexos nao-PDF (DOCX, XLSX, TXT, MD, CSV).
 // ============================================================================
+// CITATION GROUNDING — converte citações jurídicas em hyperlinks para fontes oficiais.
+// Aplicado nas sugestões dos agentes (analyze) e no HTML do documento aplicado (apply).
+// Diferencial competitivo: Jus IA não tem, padrão consolidado pelo Lexis+ Protege.
+// ============================================================================
+
+const CODE_MAP: Record<string, string> = {
+  CC: 'https://www.planalto.gov.br/ccivil_03/leis/2002/L10406compilada.htm',
+  CPC: 'https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2015/lei/L13105.htm',
+  CPP: 'https://www.planalto.gov.br/ccivil_03/decreto-lei/Del3689Compilado.htm',
+  CP: 'https://www.planalto.gov.br/ccivil_03/decreto-lei/Del2848compilado.htm',
+  CTN: 'https://www.planalto.gov.br/ccivil_03/leis/L5172Compilado.htm',
+  CDC: 'https://www.planalto.gov.br/ccivil_03/leis/L8078compilado.htm',
+  CLT: 'https://www.planalto.gov.br/ccivil_03/decreto-lei/Del5452compilado.htm',
+  LINDB: 'https://www.planalto.gov.br/ccivil_03/decreto-lei/Del4657compilado.htm',
+}
+
+// Leis ordinárias frequentemente citadas em peças jurídicas brasileiras.
+const KNOWN_LAWS: Record<string, string> = {
+  '13709/2018': 'https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/L13709compilado.htm', // LGPD
+  '7347/1985': 'https://www.planalto.gov.br/ccivil_03/leis/L7347Compilado.htm', // ACP
+  '8137/1990': 'https://www.planalto.gov.br/ccivil_03/leis/L8137.htm', // Crimes contra ordem tributária
+  '9478/1997': 'https://www.planalto.gov.br/ccivil_03/leis/L9478.htm', // Petróleo
+  '13964/2019': 'https://www.planalto.gov.br/ccivil_03/_ato2019-2022/2019/lei/L13964.htm', // Pacote Anticrime
+  '14905/2024': 'https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2024/lei/L14905.htm', // Juros e correção
+  '13874/2019': 'https://www.planalto.gov.br/ccivil_03/_ato2019-2022/2019/lei/L13874.htm', // Liberdade econômica
+  '12846/2013': 'https://www.planalto.gov.br/ccivil_03/_ato2011-2014/2013/lei/L12846.htm', // Anticorrupção
+  '8429/1992': 'https://www.planalto.gov.br/ccivil_03/leis/L8429compilado.htm', // Improbidade
+  '11340/2006': 'https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2006/lei/L11340.htm', // Maria da Penha
+  '8666/1993': 'https://www.planalto.gov.br/ccivil_03/leis/L8666compilado.htm', // Licitações (revogada)
+  '14133/2021': 'https://www.planalto.gov.br/ccivil_03/_ato2019-2022/2021/lei/L14133.htm', // Nova Lei de Licitações
+}
+
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+}
+
+function buildCitationLink(url: string, label: string): string {
+  return `<a href="${escapeHtmlAttr(url)}" target="_blank" rel="noopener noreferrer" class="legal-citation">${label}</a>`
+}
+
+// Aplica regex de citação SOMENTE em texto puro (fora de tags HTML).
+// Necessário porque o HTML do apply já tem <strong>, <p>, etc — não queremos
+// quebrar essas tags. Para sugestões (texto puro), também funciona.
+function applyToTextOnly(input: string, transform: (txt: string) => string): string {
+  if (!input) return input
+  const segments = input.split(/(<[^>]+>)/g)
+  return segments.map((seg) => (seg.startsWith('<') ? seg : transform(seg))).join('')
+}
+
+function addCitationLinksRaw(text: string): string {
+  if (!text) return text
+  let r = text
+
+  // 1. Súmulas STJ
+  r = r.replace(/\bSúmula\s+(\d+)\s+STJ\b/g, (m, num) =>
+    buildCitationLink(`https://scon.stj.jus.br/SCON/sumanot/toc.jsp?sumano=${num}`, m),
+  )
+
+  // 2. Súmulas STF (vinculantes ou não)
+  r = r.replace(/\bSúmula(?:\s+Vinculante)?\s+(\d+)\s+STF\b/g, (m, num) => {
+    const vinculante = /Vinculante/i.test(m)
+    const url = vinculante
+      ? `https://www.stf.jus.br/portal/jurisprudencia/listarJurisprudencia.asp?s1=%28SUMULA+VINCULANTE+${num}%29&base=baseSumulasVinculantes`
+      : `https://www.stf.jus.br/portal/jurisprudencia/menuSumarioSumulas.asp?sumula=${num}`
+    return buildCitationLink(url, m)
+  })
+
+  // 3. Temas (repetitivos/repercussão geral)
+  r = r.replace(/\bTema\s+([\d.]+)\s+(STJ|STF)\b/g, (m, num, trib) => {
+    const cleanNum = num.replace(/\./g, '')
+    const url =
+      trib === 'STJ'
+        ? `https://processo.stj.jus.br/repetitivos/temas_repetitivos/pesquisa.jsp?numero=${cleanNum}`
+        : `https://portal.stf.jus.br/jurisprudenciaRepercussao/tema.asp?num=${cleanNum}`
+    return buildCitationLink(url, m)
+  })
+
+  // 4. Acórdãos do STJ: REsp, AgInt, AREsp, RHC, RMS, EREsp, MS, HC
+  r = r.replace(
+    /\b((?:AgInt\s+no\s+|AgRg\s+no\s+|EDcl\s+no\s+|EDcl\s+nos\s+)?(?:AREsp|REsp|RHC|RMS|EREsp|MS|HC|AgInt\s+nos\s+EDcl\s+no\s+REsp)\s+[\d.]+(?:\/[A-Z]{2})?)/g,
+    (m) => {
+      const url = `https://scon.stj.jus.br/SCON/pesquisar.jsp?b=ACOR&livre=${encodeURIComponent(m)}`
+      return buildCitationLink(url, m)
+    },
+  )
+
+  // 5. Constituição Federal artigo
+  r = r.replace(
+    /\b(?:CF|Constituição(?:\s+Federal)?)(?:\/88|\s+de\s+1988)?\s+art(?:igo|\.|s\.?)?\s*([\d.]+)/g,
+    (m, num) => {
+      const cleanNum = num.replace(/\./g, '')
+      return buildCitationLink(
+        `https://www.planalto.gov.br/ccivil_03/Constituicao/Constituicao.htm#art${cleanNum}`,
+        m,
+      )
+    },
+  )
+
+  // 6. Códigos (CC, CPC, CPP, CP, CTN, CDC, CLT, LINDB) + artigo
+  for (const [code, baseUrl] of Object.entries(CODE_MAP)) {
+    const re = new RegExp(`\\b${code}\\s+art(?:igo|\\.|s\\.?)?\\s*([\\d.]+)`, 'g')
+    r = r.replace(re, (m, num) => {
+      const cleanNum = num.replace(/\./g, '')
+      return buildCitationLink(`${baseUrl}#art${cleanNum}`, m)
+    })
+  }
+
+  // 7. Lei Complementar (LC NNN/AAAA)
+  r = r.replace(/\bLC\s+(\d+)\/(\d{4})\b/g, (m, num) => {
+    return buildCitationLink(`https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp${num}.htm`, m)
+  })
+
+  // 8. Lei ordinária (Lei NNNN/AAAA) — usa KNOWN_LAWS se conhecida, senão link genérico
+  r = r.replace(/\bLei\s+(?:nº\s+|n\.\s+|n°\s+)?([\d.]+)\/(\d{2,4})\b/g, (m, num, ano) => {
+    const cleanNum = num.replace(/\./g, '')
+    const fullAno = ano.length === 2 ? (parseInt(ano) > 50 ? `19${ano}` : `20${ano}`) : ano
+    const key = `${cleanNum}/${fullAno}`
+    if (KNOWN_LAWS[key]) return buildCitationLink(KNOWN_LAWS[key], m)
+    // Link genérico para o Planalto
+    return buildCitationLink(`https://www.planalto.gov.br/ccivil_03/leis/L${cleanNum}.htm`, m)
+  })
+
+  return r
+}
+
+function addCitationLinks(text: string): string {
+  return applyToTextOnly(text, addCitationLinksRaw)
+}
+
+// ============================================================================
 // HTTPs transientes em que vale retry exponencial.
 // 503/502/504 = upstream sobrecarregado/indisponivel (caso classico Anthropic).
 // 500 = erro generico do servidor (raro nao retry, mas pode ser flaky).
@@ -405,8 +535,7 @@ Deno.serve(async (req: Request) => {
               'Você é um editor jurídico especializado em reescrita de documentos HTML. Sua única tarefa é reescrever o documento HTML fornecido aplicando estritamente as sugestões de melhoria que receber, mantendo a formatação HTML original e a estrutura do documento. Retorne EXCLUSIVAMENTE o código HTML revisado e completo, sem comentários explicativos, sem prefácios, sem texto adicional antes ou depois do HTML. Termine sempre com a tag <!-- END_OF_DOCUMENT --> para sinalizar conclusão.'
             // Sonnet 4.6 streaming aceita ate 64K. 32K cobre documentos longos
             // sem precisar de continue_required na maioria dos casos.
-            const maxTokens =
-              agent.max_tokens && agent.max_tokens > 16384 ? agent.max_tokens : 32000
+            const maxTokens = agent.max_tokens && agent.max_tokens > 16384 ? agent.max_tokens : 32000
 
             let activeMinuteId = minute_id
 
@@ -583,6 +712,10 @@ Deno.serve(async (req: Request) => {
                 .replace(/\r?\n?\s*```\s*$/, '')
                 .trim()
 
+              // Citation grounding: converte citações jurídicas em hyperlinks no HTML.
+              // applyToTextOnly preserva tags HTML existentes (<p>, <strong>, etc).
+              fullText = addCitationLinks(fullText)
+
               if (activeMinuteId && charCountSinceLastSave > 0) {
                 await supabase
                   .from('minutes')
@@ -618,9 +751,7 @@ Deno.serve(async (req: Request) => {
               // (unico caso onde retomar com content_so_far faz sentido).
               // Outras causas (refusal, pause_turn, etc.) nao sao retomaveis e
               // foram causando recursao indevida + "FALHA NA GERACAO" no front.
-              console.warn(
-                `>>>>> [APPLY END] stopReason=${stopReason} fullTextLen=${fullText.length} hasEndMarker=${fullText.includes('<!-- END_OF_DOCUMENT -->')} willContinue=${stopReason === 'max_tokens'} outputTokens=${outputTokens} invocation=${activeInvocationId}`,
-              )
+              console.warn(`>>>>> [APPLY END] stopReason=${stopReason} fullTextLen=${fullText.length} hasEndMarker=${fullText.includes('<!-- END_OF_DOCUMENT -->')} willContinue=${stopReason === 'max_tokens'} outputTokens=${outputTokens} invocation=${activeInvocationId}`)
               if (stopReason === 'max_tokens') {
                 sendEvent({ type: 'continue_required' })
               }
@@ -917,6 +1048,8 @@ Deno.serve(async (req: Request) => {
                     if (agentSuggestions.length === 0 && aiText) agentSuggestions = [aiText]
                     if (agentsToProcess.length > 1)
                       agentSuggestions = agentSuggestions.map((s: string) => `[${agent.name}] ${s}`)
+                    // Citation grounding: converte citações jurídicas em hyperlinks
+                    agentSuggestions = agentSuggestions.map((s: string) => addCitationLinks(s))
                   }
                 } else {
                   await new Promise((r) => setTimeout(r, 1500))
@@ -1041,17 +1174,19 @@ Deno.serve(async (req: Request) => {
               )
             else console.log(`DB Save Successful for invocacoes (ID: ${activeInvocationId})`)
 
-            const { error: costErr } = await supabase.from('custos').upsert(
-              {
-                invocation_id: activeInvocationId,
-                estimated_cost: totalEstimatedCost,
-                currency: 'USD',
-                cached_tokens: totalCachedTokens,
-                cache_creation_input_tokens: totalCacheWrite,
-                cache_read_input_tokens: totalCacheRead,
-              },
-              { onConflict: 'invocation_id', ignoreDuplicates: false },
-            )
+            const { error: costErr } = await supabase
+              .from('custos')
+              .upsert(
+                {
+                  invocation_id: activeInvocationId,
+                  estimated_cost: totalEstimatedCost,
+                  currency: 'USD',
+                  cached_tokens: totalCachedTokens,
+                  cache_creation_input_tokens: totalCacheWrite,
+                  cache_read_input_tokens: totalCacheRead,
+                },
+                { onConflict: 'invocation_id', ignoreDuplicates: false },
+              )
             if (costErr)
               console.error(
                 `DB Save Failed for custos (ID: ${activeInvocationId}):`,
