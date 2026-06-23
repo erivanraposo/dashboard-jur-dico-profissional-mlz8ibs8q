@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { FolderOpen, FileEdit, Trash2, Search as SearchIcon } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 
 const MINUTE_TYPES = [
@@ -181,11 +182,37 @@ export default function Minutas() {
                       {m.title}
                     </TableCell>
                     <TableCell>
-                      {(m as any).minute_type ? (
-                        <Badge variant="outline">{(m as any).minute_type}</Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">—</span>
-                      )}
+                      <div className="flex flex-col gap-1 items-start">
+                        {(m as any).minute_type ? (
+                          <Badge variant="outline" className="whitespace-nowrap">
+                            {(m as any).minute_type}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
+                        <Badge
+                          variant={
+                            m.approval_status === 'aprovada'
+                              ? 'default'
+                              : m.approval_status === 'em_revisao'
+                                ? 'secondary'
+                                : 'outline'
+                          }
+                          className={cn(
+                            'text-[10px] px-1.5 py-0',
+                            m.approval_status === 'aprovada' &&
+                              'bg-green-100 text-green-800 border-green-200',
+                            m.approval_status === 'em_revisao' &&
+                              'bg-yellow-100 text-yellow-800 border-yellow-200',
+                          )}
+                        >
+                          {m.approval_status === 'aprovada'
+                            ? 'Aprovada'
+                            : m.approval_status === 'em_revisao'
+                              ? 'Em revisão'
+                              : 'Rascunho'}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell className="max-w-[150px] truncate" title={m.client_name}>
                       {m.client_name || <span className="text-muted-foreground text-xs">—</span>}

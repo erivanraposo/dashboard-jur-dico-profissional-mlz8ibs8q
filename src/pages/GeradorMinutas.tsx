@@ -56,7 +56,18 @@ import {
 } from '@/components/ui/accordion'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { Maximize2, Minimize2, PanelRightClose, PanelRightOpen, AlertCircle } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+import { useCurrentUser } from '@/hooks/use-current-user'
 import pdfMake from 'pdfmake/build/pdfmake'
 import * as _pdfFonts from 'pdfmake/build/vfs_fonts'
 import htmlToPdfmake from 'html-to-pdfmake'
@@ -266,6 +277,12 @@ export default function GeradorMinutas() {
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [activeTab, setActiveTab] = useState('config')
 
+  const [approvalStatus, setApprovalStatus] = useState<string>('rascunho')
+  const [revisionNotes, setRevisionNotes] = useState<string | null>(null)
+  const [adjustmentOpen, setAdjustmentOpen] = useState(false)
+  const [pendingRevisionNote, setPendingRevisionNote] = useState('')
+  const { user: currentUser, canApprove, role } = useCurrentUser()
+
   const { toast } = useToast()
 
   const [searchParams] = useSearchParams()
@@ -322,6 +339,8 @@ export default function GeradorMinutas() {
         setPedido(data.pedido || '')
         setSelectedProcess(data.process_id || 'none')
         setSelectedLawyer(data.lawyer_id || 'none')
+        setApprovalStatus(data.approval_status || 'rascunho')
+        setRevisionNotes(data.revision_notes || null)
 
         toast({
           title: 'Sucesso',
@@ -336,6 +355,69 @@ export default function GeradorMinutas() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleRequestReview = async () => {
+    if (!minuteId) return
+    try {
+      const { error } = await supabase
+        .from('minutes')
+        .update({
+          approval_status: 'em_revisao',
+          approval_requested_by: currentUser?.id,
+          approval_requested_at: new Date().toISOString(),
+        })
+        .eq('id', minuteId)
+      if (error) throw error
+      setApprovalStatus('em_revisao')
+      toast({ title: 'Enviado para revisão' })
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' })
+    }
+  }
+
+  const handleApprove = async () => {
+    if (!minuteId) return
+    try {
+      const { error } = await supabase
+        .from('minutes')
+        .update({
+          approval_status: 'aprovada',
+          approved_by: currentUser?.id,
+          approved_at: new Date().toISOString(),
+          revision_notes: null,
+        })
+        .eq('id', minuteId)
+      if (error) throw error
+      setApprovalStatus('aprovada')
+      setRevisionNotes(null)
+      toast({ title: 'Minuta aprovada com sucesso' })
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' })
+    }
+  }
+
+  const handleRequestAdjustments = async () => {
+    if (!minuteId || !pendingRevisionNote.trim()) return
+    try {
+      const { error } = await supabase
+        .from('minutes')
+        .update({
+          approval_status: 'rascunho',
+          revision_notes: pendingRevisionNote,
+          approved_by: null,
+          approved_at: null,
+        })
+        .eq('id', minuteId)
+      if (error) throw error
+      setApprovalStatus('rascunho')
+      setRevisionNotes(pendingRevisionNote)
+      setAdjustmentOpen(false)
+      setPendingRevisionNote('')
+      toast({ title: 'Ajustes solicitados' })
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' })
     }
   }
 
@@ -373,6 +455,8 @@ export default function GeradorMinutas() {
     setComarca('')
     setObjeto('')
     setPedido('')
+    setApprovalStatus('rascunho')
+    setRevisionNotes(null)
     localStorage.removeItem('lexcontrol_gerador_draft')
     toast({ title: 'Nova minuta iniciada' })
   }
@@ -2605,9 +2689,94 @@ export default function GeradorMinutas() {
                   {minuteType}
                 </Badge>
               )}
+              {minuteId && (
+                <Badge
+                  variant={
+                    approvalStatus === 'aprovada'
+                      ? 'default'
+                      : approvalStatus === 'em_revisao'
+                        ? 'secondary'
+                        : 'outline'
+                  }
+                  className={cn(
+                    'text-xs whitespace-nowrap',
+                    approvalStatus === 'aprovada' && 'bg-green-100 text-green-800 border-green-200',
+                    approvalStatus === 'em_revisao' &&
+                      'bg-yellow-100 text-yellow-800 border-yellow-200',
+                  )}
+                >
+                  {approvalStatus === 'aprovada' && <Check className="w-3 h-3 mr-1" />}
+                  {approvalStatus === 'em_revisao' && <AlertCircle className="w-3 h-3 mr-1" />}
+                  {approvalStatus === 'aprovada'
+                    ? 'Aprovada'
+                    : approvalStatus === 'em_revisao'
+                      ? 'Em revisão'
+                      : 'Rascunho'}
+                </Badge>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {minuteId &&
+              approvalStatus === 'rascunho' &&
+              (role === 'estagiario' || role === 'associado') && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRequestReview}
+                  className="whitespace-nowrap text-yellow-600 border-yellow-200 hover:bg-yellow-50"
+                >
+                  Enviar para Revisão
+                </Button>
+              )}
+            {minuteId && approvalStatus === 'em_revisao' && canApprove && (
+              <>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleApprove}
+                  className="bg-green-600 hover:bg-green-700 whitespace-nowrap"
+                >
+                  Aprovar
+                </Button>
+                <Dialog open={adjustmentOpen} onOpenChange={setAdjustmentOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-yellow-600 border-yellow-200 hover:bg-yellow-50 whitespace-nowrap"
+                    >
+                      Pedir Ajustes
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Solicitar Ajustes</DialogTitle>
+                      <DialogDescription>
+                        Descreva o que precisa ser ajustado na minuta.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <Textarea
+                      value={pendingRevisionNote}
+                      onChange={(e) => setPendingRevisionNote(e.target.value)}
+                      placeholder="Detalhes dos ajustes..."
+                      className="min-h-[100px]"
+                    />
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setAdjustmentOpen(false)}>
+                        Cancelar
+                      </Button>
+                      <Button
+                        onClick={handleRequestAdjustments}
+                        disabled={!pendingRevisionNote.trim()}
+                      >
+                        Enviar Solicitação
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </>
+            )}
             {content !== defaultContent && content.trim() !== '' && (
               <>
                 <Button
@@ -2699,6 +2868,16 @@ export default function GeradorMinutas() {
             )}
           </div>
         </div>
+
+        {revisionNotes && approvalStatus === 'rascunho' && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
+            <div className="text-sm text-yellow-800">
+              <strong>Pedido de ajustes pelo revisor:</strong>
+              <p className="mt-1 whitespace-pre-wrap">{revisionNotes}</p>
+            </div>
+          </div>
+        )}
 
         {minuteType === 'Relatório de Caso' && (
           <div className="mb-4 p-3 bg-blue-50/50 border border-blue-100 rounded-md flex items-center justify-between">

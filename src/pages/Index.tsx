@@ -69,6 +69,7 @@ function DashboardContent() {
   const [dailyData, setDailyData] = useState<any[]>([])
   const [recentActivity, setRecentActivity] = useState<any[]>([])
   const [agentsRanking, setAgentsRanking] = useState<any[]>([])
+  const [pendingApprovals, setPendingApprovals] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const { user, loading: authLoading } = useAuth()
   const [profile, setProfile] = useState<any>(null)
@@ -107,6 +108,13 @@ function DashboardContent() {
           user
             ? supabase.from('profiles').select('*').eq('id', user.id).single()
             : Promise.resolve({ data: null }),
+          user
+            ? supabase
+                .from('minutes')
+                .select('id, title, minute_type, approval_requested_at')
+                .eq('approval_status', 'em_revisao')
+                .order('approval_requested_at', { ascending: true })
+            : Promise.resolve({ data: [] }),
         ]
 
         const results = await Promise.allSettled(promises)
@@ -129,9 +137,14 @@ function DashboardContent() {
         const recentInvocations = getRes(5).data || []
         const agentRanking = getRes(6).data || []
         const profileData = getRes(7).data || null
+        const pendingData = getRes(8).data || []
 
         if (profileData) {
           setProfile(profileData)
+        }
+
+        if (pendingData && Array.isArray(pendingData)) {
+          setPendingApprovals(pendingData)
         }
 
         const totalCost = (Array.isArray(custosData) ? custosData : []).reduce(
@@ -354,6 +367,52 @@ function DashboardContent() {
           </CardContent>
         </Card>
       </div>
+
+      {(profile?.role === 'owner' || profile?.role === 'socio') && (
+        <Card className="bg-yellow-50/30 border-yellow-300 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-yellow-800 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-yellow-600" />
+              Aguardando sua aprovação ({pendingApprovals.length})
+            </CardTitle>
+            <CardDescription className="text-yellow-700/80">
+              Minutas enviadas para revisão por associados e estagiários.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {pendingApprovals.length > 0 ? (
+              <div className="space-y-4">
+                {pendingApprovals.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between border-b border-yellow-200/50 pb-3 last:border-0 last:pb-0"
+                  >
+                    <div>
+                      <h4 className="font-medium text-sm text-yellow-900">{m.title}</h4>
+                      <p className="text-xs text-yellow-700/80 mt-1">
+                        {m.minute_type || 'Sem tipo'} • Enviado em:{' '}
+                        {new Date(m.approval_requested_at).toLocaleDateString('pt-BR')}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      asChild
+                      className="border-yellow-300 text-yellow-700 hover:bg-yellow-100 shadow-sm bg-white"
+                    >
+                      <Link to={`/gerador-minutas?id=${m.id}`}>Revisar</Link>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-yellow-700/80 font-medium">
+                Nenhuma minuta aguardando aprovação no momento.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 md:grid-cols-7">
         <Card className="md:col-span-4 border-border/50 shadow-sm flex flex-col">
