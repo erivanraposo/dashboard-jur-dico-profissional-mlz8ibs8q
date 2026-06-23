@@ -5,8 +5,23 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { useAuth } from '@/hooks/use-auth'
+import { useCurrentUser } from '@/hooks/use-current-user'
 import { supabase } from '@/lib/supabase/client'
 import {
   Settings,
@@ -38,7 +53,7 @@ const DEFAULT_BRANDING = {
 }
 
 export default function Configuracoes() {
-  const { user } = useAuth()
+  const { user, isOwner } = useCurrentUser()
   const { toast } = useToast()
 
   const [loading, setLoading] = useState(true)
@@ -47,6 +62,7 @@ export default function Configuracoes() {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
   const [formData, setFormData] = useState(DEFAULT_BRANDING)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [teamMembers, setTeamMembers] = useState<any[]>([])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -60,24 +76,16 @@ export default function Configuracoes() {
     try {
       setLoading(true)
 
-      // 1. Get workspace_id
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('workspace_id')
-        .eq('id', user!.id)
-        .single()
-
-      if (profileError || !profile?.workspace_id) {
+      if (!user?.workspace_id) {
         throw new Error('Workspace não encontrado.')
       }
 
-      setWorkspaceId(profile.workspace_id)
+      setWorkspaceId(user.workspace_id)
 
-      // 2. Get branding data
       const { data: branding, error: brandingError } = await supabase
         .from('workspace_branding')
         .select('*')
-        .eq('workspace_id', profile.workspace_id)
+        .eq('workspace_id', user.workspace_id)
         .maybeSingle()
 
       if (brandingError && brandingError.code !== 'PGRST116') {
@@ -87,10 +95,18 @@ export default function Configuracoes() {
       if (branding) {
         setFormData((prev) => ({ ...prev, ...branding }))
 
-        // 3. Get logo signed URL if exists
         if (branding.logo_path) {
           await fetchLogoUrl(branding.logo_path)
         }
+      }
+
+      if (isOwner) {
+        const { data: members } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('workspace_id', user.workspace_id)
+          .order('created_at', { ascending: true })
+        if (members) setTeamMembers(members)
       }
     } catch (error: any) {
       toast({
@@ -124,7 +140,6 @@ export default function Configuracoes() {
     const file = e.target.files?.[0]
     if (!file || !workspaceId) return
 
-    // Validate size (2MB)
     if (file.size > 2 * 1024 * 1024) {
       toast({
         title: 'Arquivo muito grande',
@@ -134,7 +149,6 @@ export default function Configuracoes() {
       return
     }
 
-    // Validate type
     if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
       toast({
         title: 'Formato inválido',
@@ -220,12 +234,10 @@ export default function Configuracoes() {
     try {
       setSaving(true)
 
-      // Remove logo from storage if exists
       if (formData.logo_path) {
         await supabase.storage.from('workspace-branding').remove([formData.logo_path])
       }
 
-      // Delete record from DB
       const { error } = await supabase
         .from('workspace_branding')
         .delete()
@@ -247,6 +259,21 @@ export default function Configuracoes() {
     }
   }
 
+  const handleRoleChange = async (memberId: string, newRole: string) => {
+    try {
+      const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', memberId)
+      if (error) throw error
+      setTeamMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m)))
+      toast({ title: 'Sucesso', description: 'Papel atualizado com sucesso.' })
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível atualizar o papel.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -263,9 +290,59 @@ export default function Configuracoes() {
           Identidade e Configurações
         </h1>
         <p className="text-muted-foreground mt-1">
-          Gerencie a identidade visual do escritório para documentos e minutas.
+          Gerencie a equipe e a identidade visual do escritório.
         </p>
       </div>
+
+      {isOwner && (
+        <Card className="border-border/50 shadow-sm">
+          <CardHeader>
+            <CardTitle>Gestão de Equipe</CardTitle>
+            <CardDescription>Gerencie os membros do seu workspace e seus papéis.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Membro desde</TableHead>
+                    <TableHead>Papel</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {teamMembers.map((member) => (
+                    <TableRow key={member.id}>
+                      <TableCell className="font-medium">{member.full_name}</TableCell>
+                      <TableCell>
+                        {new Date(member.created_at).toLocaleDateString('pt-BR')}
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={member.role || 'associado'}
+                          onValueChange={(val) => handleRoleChange(member.id, val)}
+                          disabled={member.role === 'owner'}
+                        >
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="owner">Owner</SelectItem>
+                            <SelectItem value="socio">Sócio</SelectItem>
+                            <SelectItem value="associado">Associado</SelectItem>
+                            <SelectItem value="estagiario">Estagiário</SelectItem>
+                            <SelectItem value="financeiro">Financeiro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-6 items-start">
         <div className="space-y-6">
