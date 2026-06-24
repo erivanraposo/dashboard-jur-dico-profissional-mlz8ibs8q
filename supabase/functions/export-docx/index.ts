@@ -373,18 +373,9 @@ function htmlToDocxChildren(html: string): (Paragraph | Table)[] {
 
   const result: (Paragraph | Table)[] = []
   const children = elementChildren(body)
-  console.log(`[export-docx] body element children: ${children.length}`)
-  if (children.length > 0 && children.length <= 5) {
-    children.forEach((c: any, i: number) => {
-      console.log(
-        `  [${i}] <${(c.tagName || '?').toLowerCase()}> (childNodes: ${c.childNodes?.length || 0})`,
-      )
-    })
-  }
   for (const child of children) {
     result.push(...convertNode(child))
   }
-  console.log(`[export-docx] block-level elementos gerados: ${result.length}`)
   // Fallback: se body tem so texto solto (sem tags block-level), gera um Paragraph
   if (result.length === 0) {
     const text = body.textContent ?? ''
@@ -399,7 +390,22 @@ function htmlToDocxChildren(html: string): (Paragraph | Table)[] {
 
 // ----------------- Branding (header + footer programaticos) -----------------
 
-function buildDocxHeader(b: Branding, logoBytes: Uint8Array | null): Header {
+// Detecta tipo de imagem pela extensao do path. Default png se desconhecido.
+// docx@9 aceita 'png' | 'jpg' | 'gif' | 'bmp' | 'svg' como type.
+function detectImageType(logoPath: string): 'png' | 'jpg' | 'gif' | 'bmp' | 'svg' {
+  const ext = logoPath.toLowerCase().split('.').pop() || 'png'
+  if (ext === 'jpg' || ext === 'jpeg') return 'jpg'
+  if (ext === 'gif') return 'gif'
+  if (ext === 'bmp') return 'bmp'
+  if (ext === 'svg') return 'svg'
+  return 'png'
+}
+
+function buildDocxHeader(
+  b: Branding,
+  logoBytes: Uint8Array | null,
+  logoType: 'png' | 'jpg' | 'gif' | 'bmp' | 'svg' = 'png',
+): Header {
   const children: Paragraph[] = []
   const corPrimaria = normalizeColor(b.cor_primaria, '1a3a5e')
   const corSecundaria = normalizeColor(b.cor_secundaria, '666666')
@@ -413,7 +419,7 @@ function buildDocxHeader(b: Branding, logoBytes: Uint8Array | null): Header {
             new ImageRun({
               data: logoBytes,
               transformation: { width: 100, height: 50 },
-              type: 'png',
+              type: logoType,
             } as any),
           ],
         }),
@@ -520,22 +526,27 @@ function buildDocxFooter(b: Branding | null): Footer {
 async function fetchBrandingForUser(
   supabase: any,
   userId: string,
-): Promise<{ branding: Branding | null; logoBytes: Uint8Array | null }> {
+): Promise<{
+  branding: Branding | null
+  logoBytes: Uint8Array | null
+  logoType: 'png' | 'jpg' | 'gif' | 'bmp' | 'svg'
+}> {
   const { data: profile } = await supabase
     .from('profiles')
     .select('workspace_id')
     .eq('id', userId)
     .maybeSingle()
-  if (!profile?.workspace_id) return { branding: null, logoBytes: null }
+  if (!profile?.workspace_id) return { branding: null, logoBytes: null, logoType: 'png' }
 
   const { data: branding } = await supabase
     .from('workspace_branding')
     .select('*')
     .eq('workspace_id', profile.workspace_id)
     .maybeSingle()
-  if (!branding) return { branding: null, logoBytes: null }
+  if (!branding) return { branding: null, logoBytes: null, logoType: 'png' }
 
   let logoBytes: Uint8Array | null = null
+  let logoType: 'png' | 'jpg' | 'gif' | 'bmp' | 'svg' = 'png'
   if (branding.logo_path) {
     try {
       const { data: logoData } = await supabase.storage
@@ -544,13 +555,14 @@ async function fetchBrandingForUser(
       if (logoData) {
         const ab = await logoData.arrayBuffer()
         logoBytes = new Uint8Array(ab)
+        logoType = detectImageType(branding.logo_path)
       }
     } catch (e) {
       console.warn('[export-docx] logo download falhou:', e)
     }
   }
 
-  return { branding, logoBytes }
+  return { branding, logoBytes, logoType }
 }
 
 // ----------------- HTTP handler -----------------
@@ -581,12 +593,10 @@ Deno.serve(async (req: Request) => {
     }
     const safeTitle = (title || 'Documento').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').slice(0, 100)
 
-    const { branding, logoBytes } = await fetchBrandingForUser(supabase, user.id)
+    const { branding, logoBytes, logoType } = await fetchBrandingForUser(supabase, user.id)
     const hasBranding = !!(branding?.nome_escritorio || branding?.logo_path)
 
-    console.log(`[export-docx] convertendo HTML (${html.length} chars)...`)
     const bodyChildren = htmlToDocxChildren(html)
-    console.log(`[export-docx] ${bodyChildren.length} elementos docx criados`)
 
     const doc = new Document({
       creator: 'Dashboard Juridico',
@@ -682,17 +692,17 @@ Deno.serve(async (req: Request) => {
               },
             },
           },
-          headers: hasBranding ? { default: buildDocxHeader(branding!, logoBytes) } : undefined,
+          headers: hasBranding
+            ? { default: buildDocxHeader(branding!, logoBytes, logoType) }
+            : undefined,
           footers: { default: buildDocxFooter(branding) },
           children: bodyChildren,
         },
       ],
     })
 
-    console.log(`[export-docx] gerando DOCX via Packer...`)
     const buffer = await Packer.toBuffer(doc)
     const body = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer)
-    console.log(`[export-docx] DOCX gerado: ${body.byteLength} bytes`)
 
     return new Response(body, {
       headers: {

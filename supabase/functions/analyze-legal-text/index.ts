@@ -735,6 +735,9 @@ Deno.serve(async (req: Request) => {
 
                           if (activeMinuteId && charCountSinceLastSave > 500) {
                             charCountSinceLastSave = 0
+                            // Fire-and-forget: nao bloqueia o stream da IA, mas loga erro
+                            // se o save incremental falhar (antes era .then() sem callback,
+                            // silenciava falhas — code review ChatGPT 24/06).
                             supabase
                               .from('minutes')
                               .update({
@@ -742,7 +745,13 @@ Deno.serve(async (req: Request) => {
                                 updated_at: new Date().toISOString(),
                               })
                               .eq('id', activeMinuteId)
-                              .then()
+                              .then((res) => {
+                                if (res.error) {
+                                  console.error(
+                                    `[apply] save incremental falhou (invocation ${activeInvocationId}): ${res.error.message}`,
+                                  )
+                                }
+                              })
                           }
                         } else if (
                           data.delta?.type === 'thinking_delta' ||

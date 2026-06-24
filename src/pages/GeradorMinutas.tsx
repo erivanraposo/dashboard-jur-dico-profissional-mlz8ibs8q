@@ -555,7 +555,11 @@ export default function GeradorMinutas() {
           process_id: selectedProcess !== 'none' ? selectedProcess : null,
         }
 
-        await supabase.from('process_attachments').insert(attachmentData)
+        const { error: dbError } = await supabase.from('process_attachments').insert(attachmentData)
+        if (dbError) {
+          await supabase.storage.from('process-attachments').remove([filePath])
+          throw new Error(`Falha ao registrar anexo no banco: ${dbError.message}`)
+        }
         newAttachments.push({ name: file.name, path: filePath })
       }
 
@@ -576,8 +580,33 @@ export default function GeradorMinutas() {
     }
   }
 
-  const removeAttachment = (path: string) => {
+  const removeAttachment = async (path: string) => {
+    if (!window.confirm('Remover este anexo? O arquivo será excluído do sistema.')) return
+
+    const attachmentToRemove = attachments.find((a) => a.path === path)
+    if (!attachmentToRemove) return
+
     setAttachments((prev) => prev.filter((a) => a.path !== path))
+
+    try {
+      const { error: dbError } = await supabase
+        .from('process_attachments')
+        .delete()
+        .eq('file_path', path)
+      if (dbError) throw dbError
+
+      const { error: storageError } = await supabase.storage
+        .from('process-attachments')
+        .remove([path])
+      if (storageError) throw storageError
+    } catch (err: any) {
+      setAttachments((prev) => [...prev, attachmentToRemove])
+      toast({
+        title: 'Erro ao remover anexo',
+        description: err.message || 'Falha desconhecida ao excluir arquivo.',
+        variant: 'destructive',
+      })
+    }
   }
 
   const toggleAgent = (agentId: string) => {
@@ -1028,7 +1057,11 @@ export default function GeradorMinutas() {
                       minute_type: minuteType || null,
                     })
                     .eq('id', currentMinuteId)
-                    .then()
+                    .then((res) => {
+                      if (res.error) {
+                        console.error(`[apply] save incremental falhou: ${res.error.message}`)
+                      }
+                    })
                 }
               }
             } catch (e: any) {

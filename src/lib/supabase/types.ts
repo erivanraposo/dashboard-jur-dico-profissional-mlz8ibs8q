@@ -105,6 +105,7 @@ export type Database = {
           estimated_cost: number
           id: string
           invocation_id: string
+          workspace_id: string
         }
         Insert: {
           cache_creation_input_tokens?: number | null
@@ -115,6 +116,7 @@ export type Database = {
           estimated_cost?: number
           id?: string
           invocation_id: string
+          workspace_id: string
         }
         Update: {
           cache_creation_input_tokens?: number | null
@@ -125,6 +127,7 @@ export type Database = {
           estimated_cost?: number
           id?: string
           invocation_id?: string
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -141,6 +144,13 @@ export type Database = {
             referencedRelation: 'vw_recent_invocations'
             referencedColumns: ['id']
           },
+          {
+            foreignKeyName: 'custos_workspace_id_fkey'
+            columns: ['workspace_id']
+            isOneToOne: false
+            referencedRelation: 'workspaces'
+            referencedColumns: ['id']
+          },
         ]
       }
       invocacoes: {
@@ -153,6 +163,7 @@ export type Database = {
           output_tokens: number
           process_id: string | null
           user_id: string
+          workspace_id: string
         }
         Insert: {
           agent_id: string
@@ -163,6 +174,7 @@ export type Database = {
           output_tokens?: number
           process_id?: string | null
           user_id: string
+          workspace_id: string
         }
         Update: {
           agent_id?: string
@@ -173,6 +185,7 @@ export type Database = {
           output_tokens?: number
           process_id?: string | null
           user_id?: string
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -187,6 +200,13 @@ export type Database = {
             columns: ['process_id']
             isOneToOne: false
             referencedRelation: 'processes'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'invocacoes_workspace_id_fkey'
+            columns: ['workspace_id']
+            isOneToOne: false
+            referencedRelation: 'workspaces'
             referencedColumns: ['id']
           },
         ]
@@ -373,6 +393,7 @@ export type Database = {
           file_type: string
           id: string
           process_id: string | null
+          workspace_id: string
         }
         Insert: {
           created_at?: string
@@ -382,6 +403,7 @@ export type Database = {
           file_type: string
           id?: string
           process_id?: string | null
+          workspace_id: string
         }
         Update: {
           created_at?: string
@@ -391,6 +413,7 @@ export type Database = {
           file_type?: string
           id?: string
           process_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
@@ -398,6 +421,13 @@ export type Database = {
             columns: ['process_id']
             isOneToOne: false
             referencedRelation: 'processes'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'process_attachments_workspace_id_fkey'
+            columns: ['workspace_id']
+            isOneToOne: false
+            referencedRelation: 'workspaces'
             referencedColumns: ['id']
           },
         ]
@@ -411,6 +441,7 @@ export type Database = {
           description: string | null
           id: string
           status: string
+          workspace_id: string
         }
         Insert: {
           area: string
@@ -420,6 +451,7 @@ export type Database = {
           description?: string | null
           id?: string
           status: string
+          workspace_id: string
         }
         Update: {
           area?: string
@@ -429,8 +461,17 @@ export type Database = {
           description?: string | null
           id?: string
           status?: string
+          workspace_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: 'processes_workspace_id_fkey'
+            columns: ['workspace_id']
+            isOneToOne: false
+            referencedRelation: 'workspaces'
+            referencedColumns: ['id']
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -438,21 +479,21 @@ export type Database = {
           full_name: string
           id: string
           role: string
-          workspace_id: string | null
+          workspace_id: string
         }
         Insert: {
           created_at?: string
           full_name: string
           id: string
           role?: string
-          workspace_id?: string | null
+          workspace_id: string
         }
         Update: {
           created_at?: string
           full_name?: string
           id?: string
           role?: string
-          workspace_id?: string | null
+          workspace_id?: string
         }
         Relationships: [
           {
