@@ -184,31 +184,12 @@ function convertNode(node: any): (Paragraph | Table)[] {
   if (HEADING_MAP[tag]) {
     const headingMeta: Record<
       string,
-      {
-        size: number
-        bold: boolean
-        italics?: boolean
-        color: string
-        align?: any
-        spacing: { before: number; after: number }
-      }
+      { size: number; bold: boolean; italics?: boolean; color: string; align?: any; spacing: { before: number; after: number } }
     > = {
-      h1: {
-        size: 32,
-        bold: true,
-        color: '000000',
-        align: AlignmentType.CENTER,
-        spacing: { before: 360, after: 240 },
-      },
+      h1: { size: 32, bold: true, color: '000000', align: AlignmentType.CENTER, spacing: { before: 360, after: 240 } },
       h2: { size: 28, bold: true, color: '000000', spacing: { before: 280, after: 180 } },
       h3: { size: 26, bold: true, color: '000000', spacing: { before: 200, after: 120 } },
-      h4: {
-        size: 24,
-        bold: true,
-        italics: true,
-        color: '000000',
-        spacing: { before: 160, after: 100 },
-      },
+      h4: { size: 24, bold: true, italics: true, color: '000000', spacing: { before: 160, after: 100 } },
       h5: { size: 24, bold: true, color: '333333', spacing: { before: 120, after: 80 } },
       h6: { size: 22, bold: true, color: '333333', spacing: { before: 100, after: 60 } },
     }
@@ -707,7 +688,8 @@ Deno.serve(async (req: Request) => {
     return new Response(body, {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'Content-Disposition': `attachment; filename="${safeTitle}.docx"`,
       },
     })

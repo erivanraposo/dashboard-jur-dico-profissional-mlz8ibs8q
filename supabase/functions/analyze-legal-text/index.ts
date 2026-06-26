@@ -123,98 +123,181 @@ function lcUrl(numero: string): string {
   return `https://www.lexml.gov.br/busca/search?keyword=Lei+Complementar+${numero}`
 }
 
+// Sanitização do HTML retornado pela IA no apply, antes de salvar no banco.
+// A IA é confiável (não é input direto de usuário externo) mas:
+//   - pode alucinar e gerar HTML malformado
+//   - pode incluir tags inesperadas que quebrem o editor TipTap
+//   - defesa em profundidade contra prompt injection que faça a IA gerar XSS
+// Remove tags perigosas, atributos on*, e protocolos javascript:/vbscript:/data:
+// (exceto data:image/ que é legítimo para logos inline).
+const DANGEROUS_TAGS = [
+  'script', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'textarea',
+  'select', 'option', 'link', 'meta', 'base', 'applet', 'frame', 'frameset',
+  'noframes', 'noscript', 'svg', 'math',
+]
+
+function sanitizeApplyHtml(html: string): string {
+  if (!html) return html
+  let s = html
+
+  // 1. Remove tags perigosas (par open/close + conteúdo)
+  for (const tag of DANGEROUS_TAGS) {
+    const reFull = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>`, 'gi')
+    s = s.replace(reFull, '')
+    const reSelf = new RegExp(`<${tag}\\b[^>]*/?>`, 'gi')
+    s = s.replace(reSelf, '')
+  }
+
+  // 2. Remove atributos de evento (on*=)
+  s = s.replace(/\s+on[a-z]+\s*=\s*"[^"]*"/gi, '')
+  s = s.replace(/\s+on[a-z]+\s*=\s*'[^']*'/gi, '')
+  s = s.replace(/\s+on[a-z]+\s*=\s*[^\s>]+/gi, '')
+
+  // 3. Remove protocolos perigosos em href/src
+  s = s.replace(/(\s+(?:href|src|action|formaction)\s*=\s*["']?)\s*javascript\s*:[^"'>\s]*/gi, '$1#')
+  s = s.replace(/(\s+(?:href|src|action|formaction)\s*=\s*["']?)\s*vbscript\s*:[^"'>\s]*/gi, '$1#')
+  // data: exceto data:image/ (usado para logos inline)
+  s = s.replace(/(\s+(?:href|src)\s*=\s*["']?)\s*data:(?!image\/)[^"'>\s]*/gi, '$1#')
+
+  // 4. Remove caracteres de controle invisíveis (exceto \t \n \r)
+  s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+
+  return s
+}
+
+// Refatoração 24/06/2026 — code review ChatGPT:
+// Antes: 8 chamadas a applyToTextOnly (8 splits de HTML por tags). Custo CPU linear
+// no tamanho do HTML por número de padrões — pior em apply (HTML grande).
+// Agora: 1 chamada a applyToTextOnly + estratégia de placeholders.
+// Cada match vira um marcador único CITATION_N (chars que jamais
+// aparecem em HTML real). Regex seguintes não casam em placeholders porque
+// não contêm palavras-chave. No fim, substitui placeholders pelos <a> reais.
 function addCitationLinks(text: string): string {
   if (!text) return text
-  let r = text
 
-  // CADA padrão é aplicado via applyToTextOnly (passa por cima de <a> já gerado).
-  // Isso evita <a> aninhado que quebra hrefs.
+  return applyToTextOnly(text, (segment) => {
+    const placeholders: string[] = []
+    const linkify = (label: string, url: string): string => {
+      const idx = placeholders.length
+      placeholders.push(buildCitationLink(url, label))
+      return `CITATION_${idx}`
+    }
 
-  // 1. Súmulas STJ
-  r = applyToTextOnly(r, (t) =>
-    t.replace(/\bSúmula\s+(\d+)\s+STJ\b/g, (m, num) =>
-      buildCitationLink(`https://scon.stj.jus.br/SCON/sumanot/toc.jsp?sumano=${num}`, m),
-    ),
-  )
+    let r = segment
 
-  // 2. Súmulas STF (vinculantes ou não)
-  r = applyToTextOnly(r, (t) =>
-    t.replace(/\bSúmula(?:\s+Vinculante)?\s+(\d+)\s+STF\b/g, (m, num) => {
-      const vinculante = /Vinculante/i.test(m)
+    // Expansão 24/06/2026 — code review ChatGPT:
+    // - Todas as regex agora são case-insensitive (flag i)
+    // - Números de artigo aceitam ordinal (º/ª): "art. 6º", "art. 1ª"
+    // - Códigos detectados em forma invertida ("art. 489 do CPC")
+    // - Lei aceita "de YYYY" além de "/YYYY"
+
+    // Helper: ARTIGO_NUM captura número com possível ordinal e parágrafo
+    // Ex.: "489", "489 § 1º VI", "6º", "1.011"
+    const ARTIGO = `(?:art(?:igo|\\.|s\\.?)?\\s*)`
+    const NUMERO_ART = `([\\d.]+)(?:[º°ª]|\\s*§\\s*\\d+(?:[º°ª])?(?:\\s+[IVX]+)?)?`
+
+    // 1. Súmulas STJ (case-insensitive)
+    r = r.replace(/\bs[úu]mula\s+(\d+)\s+stj\b/gi, (m, num) =>
+      linkify(m, `https://scon.stj.jus.br/SCON/sumanot/toc.jsp?sumano=${num}`),
+    )
+
+    // 2. Súmulas STF (vinculantes ou não, case-insensitive)
+    r = r.replace(/\bs[úu]mula(?:\s+vinculante)?\s+(\d+)\s+stf\b/gi, (m, num) => {
+      const vinculante = /vinculante/i.test(m)
       const url = vinculante
         ? `https://www.stf.jus.br/portal/jurisprudencia/listarJurisprudencia.asp?s1=%28SUMULA+VINCULANTE+${num}%29&base=baseSumulasVinculantes`
         : `https://www.stf.jus.br/portal/jurisprudencia/menuSumarioSumulas.asp?sumula=${num}`
-      return buildCitationLink(url, m)
-    }),
-  )
+      return linkify(m, url)
+    })
 
-  // 3. Temas (repetitivos/repercussão geral)
-  r = applyToTextOnly(r, (t) =>
-    t.replace(/\bTema\s+([\d.]+)\s+(STJ|STF)\b/g, (m, num, trib) => {
+    // 3. Temas (repetitivos/repercussão geral, case-insensitive)
+    r = r.replace(/\btema\s+([\d.]+)\s+(stj|stf)\b/gi, (m, num, trib) => {
       const cleanNum = num.replace(/\./g, '')
+      const tribUpper = trib.toUpperCase()
       const url =
-        trib === 'STJ'
+        tribUpper === 'STJ'
           ? `https://processo.stj.jus.br/repetitivos/temas_repetitivos/pesquisa.jsp?numero=${cleanNum}`
           : `https://portal.stf.jus.br/jurisprudenciaRepercussao/tema.asp?num=${cleanNum}`
-      return buildCitationLink(url, m)
-    }),
-  )
+      return linkify(m, url)
+    })
 
-  // 4. Acórdãos do STJ: REsp, AgInt, AREsp, RHC, RMS, EREsp, MS, HC
-  // Captura prefixo (AgInt/AgRg/EDcl no/nos), tipo, número e UF separados.
-  // Remove pontos do número antes de montar query (Oracle do SCON quebra com pontos).
-  // Captura tanto "REsp 1.234.567/SP" como "REsp 1.234.567-SP".
-  r = applyToTextOnly(r, (t) =>
-    t.replace(
+    // 4. Acórdãos do STJ: REsp, AgInt, AREsp, RHC, RMS, EREsp, MS, HC
+    // (case-sensitive porque siglas oficiais — evita falsos positivos em "MS" inglês etc.)
+    r = r.replace(
       /\b((?:AgInt\s+no\s+|AgRg\s+no\s+|EDcl\s+no\s+|EDcl\s+nos\s+)?)(AREsp|REsp|RHC|RMS|EREsp|MS|HC)\s+([\d.]+)(?:[\/\-]([A-Z]{2}))?/g,
       (full, _prefix, tipo, num) => {
         const cleanNum = num.replace(/\./g, '')
         const query = `${tipo} ${cleanNum}`
         const url = `https://scon.stj.jus.br/SCON/pesquisar.jsp?b=ACOR&livre=${encodeURIComponent(query)}`
-        return buildCitationLink(url, full)
+        return linkify(full, url)
       },
-    ),
-  )
+    )
 
-  // 5. Constituição Federal artigo
-  r = applyToTextOnly(r, (t) =>
-    t.replace(
-      /\b(?:CF|Constituição(?:\s+Federal)?)(?:\/88|\s+de\s+1988)?\s+art(?:igo|\.|s\.?)?\s*([\d.]+)/g,
+    // 5. Constituição Federal artigo (case-insensitive + ordinal + invertido)
+    // Direto: "CF art. 5º", "Constituição Federal art. 6"
+    r = r.replace(
+      new RegExp(
+        `\\b(?:CF|Constitui[çc][ãa]o(?:\\s+Federal)?)(?:\\/88|\\s+de\\s+1988)?\\s+${ARTIGO}${NUMERO_ART}`,
+        'gi',
+      ),
       (m, num) => {
         const cleanNum = num.replace(/\./g, '')
-        return buildCitationLink(
-          `https://www.planalto.gov.br/ccivil_03/Constituicao/Constituicao.htm#art${cleanNum}`,
+        return linkify(
           m,
+          `https://www.planalto.gov.br/ccivil_03/Constituicao/Constituicao.htm#art${cleanNum}`,
         )
       },
-    ),
-  )
-
-  // 6. Códigos (CC, CPC, CPP, CP, CTN, CDC, CLT, LINDB) + artigo
-  for (const [code, baseUrl] of Object.entries(CODE_MAP)) {
-    const re = new RegExp(`\\b${code}\\s+art(?:igo|\\.|s\\.?)?\\s*([\\d.]+)`, 'g')
-    r = applyToTextOnly(r, (t) =>
-      t.replace(re, (m, num) => {
-        const cleanNum = num.replace(/\./g, '')
-        return buildCitationLink(`${baseUrl}#art${cleanNum}`, m)
-      }),
     )
-  }
+    // Invertido: "art. 5º da CF", "artigo 6 da Constituição"
+    r = r.replace(
+      new RegExp(
+        `\\b${ARTIGO}${NUMERO_ART}\\s+(?:da|do)\\s+(?:CF|Constitui[çc][ãa]o(?:\\s+Federal)?)(?:\\/88|\\s+de\\s+1988)?`,
+        'gi',
+      ),
+      (m, num) => {
+        const cleanNum = num.replace(/\./g, '')
+        return linkify(
+          m,
+          `https://www.planalto.gov.br/ccivil_03/Constituicao/Constituicao.htm#art${cleanNum}`,
+        )
+      },
+    )
 
-  // 7. Lei Complementar (LC NNN/AAAA) — busca LexML (URLs Planalto inconsistentes)
-  r = applyToTextOnly(r, (t) =>
-    t.replace(/\bLC\s+(\d+)\/(\d{4})\b/g, (m, num) => buildCitationLink(lcUrl(num), m)),
-  )
+    // 6. Códigos (CC, CPC, CPP, CP, CTN, CDC, CLT, LINDB) — direto e invertido
+    for (const [code, baseUrl] of Object.entries(CODE_MAP)) {
+      // Direto: "CPC art. 489", "CC art. 50 § 1º"
+      const reDireto = new RegExp(`\\b${code}\\s+${ARTIGO}${NUMERO_ART}`, 'g')
+      r = r.replace(reDireto, (m, num) => {
+        const cleanNum = num.replace(/\./g, '')
+        return linkify(m, `${baseUrl}#art${cleanNum}`)
+      })
+      // Invertido: "art. 489 do CPC", "artigo 50 do CC"
+      const reInvertido = new RegExp(`\\b${ARTIGO}${NUMERO_ART}\\s+(?:do|da)\\s+${code}\\b`, 'g')
+      r = r.replace(reInvertido, (m, num) => {
+        const cleanNum = num.replace(/\./g, '')
+        return linkify(m, `${baseUrl}#art${cleanNum}`)
+      })
+    }
 
-  // 8. Lei ordinária (Lei NNNN/AAAA) — KNOWN_LAWS verificadas OU busca LexML como fallback
-  r = applyToTextOnly(r, (t) =>
-    t.replace(/\bLei\s+(?:nº\s+|n\.\s+|n°\s+)?([\d.]+)\/(\d{2,4})\b/g, (m, num, ano) => {
-      const fullAno = ano.length === 2 ? (parseInt(ano) > 50 ? `19${ano}` : `20${ano}`) : ano
-      return buildCitationLink(lawUrl(num, fullAno), m)
-    }),
-  )
+    // 7. Lei Complementar (LC NNN/AAAA, case-insensitive)
+    r = r.replace(/\blc\s+(\d+)\/(\d{4})\b/gi, (m, num) => linkify(m, lcUrl(num)))
 
-  return r
+    // 8. Lei ordinária (Lei NNNN/AAAA OU Lei NNNN de YYYY, case-insensitive)
+    r = r.replace(
+      /\blei\s+(?:n[ºo°°]?\s*\.?\s*)?([\d.]+)\s*(?:\/|\s+de\s+)\s*(\d{2,4})\b/gi,
+      (m, num, ano) => {
+        const fullAno = ano.length === 2 ? (parseInt(ano) > 50 ? `19${ano}` : `20${ano}`) : ano
+        return linkify(m, lawUrl(num, fullAno))
+      },
+    )
+
+    // Substitui placeholders pelos <a> reais
+    for (let i = 0; i < placeholders.length; i++) {
+      r = r.replace(`CITATION_${i}`, placeholders[i])
+    }
+
+    return r
+  })
 }
 
 // ============================================================================
@@ -589,8 +672,7 @@ Deno.serve(async (req: Request) => {
               'Você é um editor jurídico especializado em reescrita de documentos HTML. Sua única tarefa é reescrever o documento HTML fornecido aplicando estritamente as sugestões de melhoria que receber, mantendo a formatação HTML original e a estrutura do documento. Retorne EXCLUSIVAMENTE o código HTML revisado e completo, sem comentários explicativos, sem prefácios, sem texto adicional antes ou depois do HTML. Termine sempre com a tag <!-- END_OF_DOCUMENT --> para sinalizar conclusão.'
             // Sonnet 4.6 streaming aceita ate 64K. 32K cobre documentos longos
             // sem precisar de continue_required na maioria dos casos.
-            const maxTokens =
-              agent.max_tokens && agent.max_tokens > 16384 ? agent.max_tokens : 32000
+            const maxTokens = agent.max_tokens && agent.max_tokens > 16384 ? agent.max_tokens : 32000
 
             let activeMinuteId = minute_id
 
@@ -770,14 +852,17 @@ Deno.serve(async (req: Request) => {
 
               // Strip de markdown code fence (```html ... ```) caso o modelo
               // tenha envolvido a resposta apesar das instrucoes no prompt.
-              // Garante que o que vai pro DB e exports nao tenha lixo no inicio/fim.
               fullText = fullText
                 .replace(/^\s*```(?:html|HTML)?\s*\r?\n?/, '')
                 .replace(/\r?\n?\s*```\s*$/, '')
                 .trim()
 
-              // Citation grounding: converte citações jurídicas em hyperlinks no HTML.
-              // applyToTextOnly preserva tags HTML existentes (<p>, <strong>, etc).
+              // Sanitização do HTML — defesa em profundidade contra HTML malformado
+              // ou prompt injection que faça o modelo gerar XSS/scripts.
+              // Remove <script>, <iframe>, atributos on*, protocolos perigosos.
+              fullText = sanitizeApplyHtml(fullText)
+
+              // Citation grounding: converte citações jurídicas em hyperlinks
               fullText = addCitationLinks(fullText)
 
               if (activeMinuteId && charCountSinceLastSave > 0) {
@@ -815,9 +900,7 @@ Deno.serve(async (req: Request) => {
               // (unico caso onde retomar com content_so_far faz sentido).
               // Outras causas (refusal, pause_turn, etc.) nao sao retomaveis e
               // foram causando recursao indevida + "FALHA NA GERACAO" no front.
-              console.warn(
-                `>>>>> [APPLY END] stopReason=${stopReason} fullTextLen=${fullText.length} hasEndMarker=${fullText.includes('<!-- END_OF_DOCUMENT -->')} willContinue=${stopReason === 'max_tokens'} outputTokens=${outputTokens} invocation=${activeInvocationId}`,
-              )
+              console.warn(`>>>>> [APPLY END] stopReason=${stopReason} fullTextLen=${fullText.length} hasEndMarker=${fullText.includes('<!-- END_OF_DOCUMENT -->')} willContinue=${stopReason === 'max_tokens'} outputTokens=${outputTokens} invocation=${activeInvocationId}`)
               if (stopReason === 'max_tokens') {
                 sendEvent({ type: 'continue_required' })
               }
@@ -1240,17 +1323,19 @@ Deno.serve(async (req: Request) => {
               )
             else console.log(`DB Save Successful for invocacoes (ID: ${activeInvocationId})`)
 
-            const { error: costErr } = await supabase.from('custos').upsert(
-              {
-                invocation_id: activeInvocationId,
-                estimated_cost: totalEstimatedCost,
-                currency: 'USD',
-                cached_tokens: totalCachedTokens,
-                cache_creation_input_tokens: totalCacheWrite,
-                cache_read_input_tokens: totalCacheRead,
-              },
-              { onConflict: 'invocation_id', ignoreDuplicates: false },
-            )
+            const { error: costErr } = await supabase
+              .from('custos')
+              .upsert(
+                {
+                  invocation_id: activeInvocationId,
+                  estimated_cost: totalEstimatedCost,
+                  currency: 'USD',
+                  cached_tokens: totalCachedTokens,
+                  cache_creation_input_tokens: totalCacheWrite,
+                  cache_read_input_tokens: totalCacheRead,
+                },
+                { onConflict: 'invocation_id', ignoreDuplicates: false },
+              )
             if (costErr)
               console.error(
                 `DB Save Failed for custos (ID: ${activeInvocationId}):`,
