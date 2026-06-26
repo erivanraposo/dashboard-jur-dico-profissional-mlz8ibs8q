@@ -71,6 +71,7 @@ import { useCurrentUser } from '@/hooks/use-current-user'
 import pdfMake from 'pdfmake/build/pdfmake'
 import * as _pdfFonts from 'pdfmake/build/vfs_fonts'
 import htmlToPdfmake from 'html-to-pdfmake'
+import DOMPurify from 'dompurify'
 
 ;(pdfMake as any).vfs =
   (_pdfFonts as any).pdfMake?.vfs ||
@@ -177,6 +178,12 @@ const MINUTE_TYPES = [
   'Parecer Jurídico',
   'Outros',
 ]
+
+const SUGGESTION_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: ['a', 'strong', 'b', 'em', 'i', 'u', 'br', 'span', 'p'],
+  ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+  ALLOW_DATA_ATTR: false,
+}
 
 const sanitizeForDocx = (html: string): string => {
   if (!html) return ''
@@ -3391,7 +3398,9 @@ export default function GeradorMinutas() {
                               <div
                                 key={i}
                                 className="legal-suggestion bg-primary/5 border border-primary/10 p-3 rounded-md text-sm text-foreground/90 shadow-sm leading-relaxed"
-                                dangerouslySetInnerHTML={{ __html: s }}
+                                dangerouslySetInnerHTML={{
+                                  __html: DOMPurify.sanitize(s, SUGGESTION_SANITIZE_CONFIG),
+                                }}
                               />
                             ))}
                           </div>
