@@ -150,7 +150,7 @@ const extractMetadata = (min: any, proc: any, rawContent: string) => {
 
   const processRegex =
     /(?:Processo|Ação Penal|Execução(?:\s+Penal)?)[\s:n°ºNo.]*([\d]{4,7}[-.]?[\d]{1,2}[-.]?[\d]{4}[-.]?[\d][-.]?[\d]{2}[-.]?[\d]{4})/i
-  const clientRegex = /Cliente[\s:]+([^[<\n]+?)(?:\s+\(|\s+CPF|\s+Data|\s+LexControl|$)/i
+  const clientRegex = /Cliente[\s:]+([^[<\n]+?)(?:\s+\(|\s+CPF|\s+Data|\s+LexControl|\s+LexAxis|$)/i
 
   const procNumForCover =
     proc?.case_number ||
@@ -2628,7 +2628,7 @@ export default function GeradorMinutas() {
         <h2 style="color: #334155; font-size: 24px; margin-bottom: 10px;">${processStr}</h2>
         <h3 style="color: #64748b; font-size: 20px;">Cliente: ${clientStr}</h3>
         <div style="margin-top: 60px; padding-top: 20px; border-top: 2px solid #e2e8f0; display: inline-block; color: #94a3b8; font-weight: 500;">
-          LexControl - Inteligência Jurídica
+          LexAxis - Inteligência Jurídica
         </div>
       </div>
       <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
@@ -2924,7 +2924,7 @@ export default function GeradorMinutas() {
             <div className="flex items-center gap-3 text-sm text-blue-800">
               <LayoutTemplate className="w-5 h-5 text-blue-600" />
               <span>
-                <strong>Template LexControl:</strong> Recomendamos aplicar a formatação automática
+                <strong>Template LexAxis:</strong> Recomendamos aplicar a formatação automática
                 de capa e sumário para o seu Relatório.
               </span>
             </div>
@@ -2934,7 +2934,7 @@ export default function GeradorMinutas() {
               onClick={handleApplyTemplate}
               className="bg-white hover:bg-blue-50 text-blue-700 border border-blue-200"
             >
-              Aplicar Template LexControl
+              Aplicar Template LexAxis
             </Button>
           </div>
         )}

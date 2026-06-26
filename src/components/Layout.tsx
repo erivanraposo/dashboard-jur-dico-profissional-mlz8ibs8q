@@ -56,7 +56,7 @@ export default function Layout() {
             <div className="flex items-center gap-2 font-bold tracking-tight text-primary w-full overflow-hidden group-data-[collapsible=icon]:justify-center">
               <Scale className="h-6 w-6 shrink-0 text-primary" />
               <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-                <span className="truncate text-sm uppercase">LexControl</span>
+                <span className="truncate text-sm uppercase">LexAxis</span>
                 <span className="text-xs font-normal text-muted-foreground">Sistema Jurídico</span>
               </div>
             </div>

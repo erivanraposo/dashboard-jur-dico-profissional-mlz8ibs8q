@@ -36,7 +36,7 @@ export default function Auth() {
               <Scale className="h-10 w-10 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight">LexControl</CardTitle>
+          <CardTitle className="text-2xl font-bold tracking-tight">LexAxis</CardTitle>
           <CardDescription>Faça login para acessar o sistema.</CardDescription>
         </CardHeader>
         <CardContent>
