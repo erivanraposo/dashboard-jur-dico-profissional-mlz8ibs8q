@@ -4,7 +4,6 @@ import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Scale } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 
 export default function Auth() {
@@ -32,9 +31,11 @@ export default function Auth() {
       <Card className="w-full max-w-md shadow-lg border-border/50">
         <CardHeader className="text-center space-y-2 pb-8">
           <div className="flex justify-center mb-4">
-            <div className="p-4 bg-primary/10 rounded-full">
-              <Scale className="h-10 w-10 text-primary" />
-            </div>
+            <img
+              src="/brand/logo-symbol-256.png"
+              alt="LexAxis"
+              className="h-20 w-20 object-contain"
+            />
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight">LexAxis</CardTitle>
           <CardDescription className="text-sm">

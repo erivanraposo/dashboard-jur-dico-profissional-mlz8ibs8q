@@ -12,7 +12,6 @@ import {
   SidebarFooter,
 } from '@/components/ui/sidebar'
 import {
-  Scale,
   FileText,
   Search,
   Briefcase,
@@ -54,7 +53,7 @@ export default function Layout() {
         <Sidebar variant="sidebar" collapsible="icon" className="no-print">
           <SidebarHeader className="h-16 flex items-center justify-center border-b px-4">
             <div className="flex items-center gap-2 font-bold tracking-tight text-primary w-full overflow-hidden group-data-[collapsible=icon]:justify-center">
-              <Scale className="h-6 w-6 shrink-0 text-primary" />
+              <img src="/brand/logo-symbol-128.png" alt="LexAxis" className="h-7 w-7 shrink-0 object-contain" />
               <div className="flex flex-col group-data-[collapsible=icon]:hidden">
                 <span className="truncate text-sm uppercase">LexAxis</span>
                 <span className="text-xs font-normal text-muted-foreground">Sistema Jurídico</span>
