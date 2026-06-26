@@ -37,7 +37,10 @@ export default function Auth() {
             </div>
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight">LexAxis</CardTitle>
-          <CardDescription>Faça login para acessar o sistema.</CardDescription>
+          <CardDescription className="text-sm">
+            O eixo da sua gestão jurídica.
+            <span className="block mt-1 text-xs text-muted-foreground/70">Faça login para acessar.</span>
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
