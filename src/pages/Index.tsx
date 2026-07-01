@@ -70,6 +70,7 @@ function DashboardContent() {
   const [recentActivity, setRecentActivity] = useState<any[]>([])
   const [agentsRanking, setAgentsRanking] = useState<any[]>([])
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([])
+  const [revisionRequests, setRevisionRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const { user, loading: authLoading } = useAuth()
   const [profile, setProfile] = useState<any>(null)
@@ -115,6 +116,15 @@ function DashboardContent() {
                 .eq('approval_status', 'em_revisao')
                 .order('approval_requested_at', { ascending: true })
             : Promise.resolve({ data: [] }),
+          user
+            ? supabase
+                .from('minutes')
+                .select('id, title, minute_type, updated_at, revision_notes')
+                .eq('approval_status', 'rascunho')
+                .not('revision_notes', 'is', null)
+                .eq('approval_requested_by', user.id)
+                .order('updated_at', { ascending: false })
+            : Promise.resolve({ data: [] }),
         ]
 
         const results = await Promise.allSettled(promises)
@@ -138,6 +148,7 @@ function DashboardContent() {
         const agentRanking = getRes(6).data || []
         const profileData = getRes(7).data || null
         const pendingData = getRes(8).data || []
+        const revisionData = getRes(9).data || []
 
         if (profileData) {
           setProfile(profileData)
@@ -145,6 +156,10 @@ function DashboardContent() {
 
         if (pendingData && Array.isArray(pendingData)) {
           setPendingApprovals(pendingData)
+        }
+
+        if (revisionData && Array.isArray(revisionData)) {
+          setRevisionRequests(revisionData)
         }
 
         const totalCost = (Array.isArray(custosData) ? custosData : []).reduce(
@@ -367,6 +382,51 @@ function DashboardContent() {
           </CardContent>
         </Card>
       </div>
+
+      {(profile?.role === 'associado' || profile?.role === 'estagiario') && revisionRequests.length > 0 && (
+        <Card className="bg-orange-50/30 border-orange-300 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-orange-800 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-orange-600" />
+              Ajustes solicitados ({revisionRequests.length})
+            </CardTitle>
+            <CardDescription className="text-orange-700/80">
+              Minutas devolvidas pela revisão com nota do responsável.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {revisionRequests.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-start justify-between gap-3 border-b border-orange-200/50 pb-3 last:border-0 last:pb-0"
+                >
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-sm text-orange-900">{m.title}</h4>
+                    <p className="text-xs text-orange-700/80 mt-1">
+                      {m.minute_type || 'Sem tipo'} • Devolvida em:{' '}
+                      {new Date(m.updated_at).toLocaleDateString('pt-BR')}
+                    </p>
+                    {m.revision_notes && (
+                      <p className="text-xs text-orange-800 mt-2 italic line-clamp-2">
+                        "{m.revision_notes}"
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="border-orange-300 text-orange-700 hover:bg-orange-100 shadow-sm bg-white shrink-0"
+                  >
+                    <Link to={`/gerador-minutas?id=${m.id}`}>Ajustar</Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {(profile?.role === 'owner' || profile?.role === 'socio') && (
         <Card className="bg-yellow-50/30 border-yellow-300 shadow-sm">
