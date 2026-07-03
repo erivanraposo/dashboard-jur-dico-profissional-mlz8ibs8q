@@ -537,11 +537,10 @@ export default function GeradorMinutas() {
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
 
-        if (file.name.toLowerCase().endsWith('.pdf') && file.size > 50 * 1024 * 1024) {
+        if (file.name.toLowerCase().endsWith('.pdf') && file.size > 30 * 1024 * 1024) {
           toast({
-            title: 'Arquivo muito grande',
-            description:
-              'Arquivo muito grande. Por favor, divida o PDF em partes menores para análise.',
+            title: 'PDF acima do limite',
+            description: `"${file.name}" tem ${(file.size / 1024 / 1024).toFixed(1)} MB. O limite é 30 MB por PDF (Anthropic aceita até 32 MB, deixamos margem). Divida em partes menores.`,
             variant: 'destructive',
           })
           continue
@@ -571,10 +570,25 @@ export default function GeradorMinutas() {
       }
 
       setAttachments((prev) => [...prev, ...newAttachments])
-      toast({
-        title: 'Sucesso',
-        description: `${files.length} documento(s) anexado(s) com sucesso.`,
-      })
+      const uploaded = newAttachments.length
+      const totalTried = files.length
+      if (uploaded === 0) {
+        toast({
+          title: 'Nenhum arquivo anexado',
+          description: `Todos os ${totalTried} arquivo(s) foram rejeitados. Verifique tamanho e tipo.`,
+          variant: 'destructive',
+        })
+      } else if (uploaded < totalTried) {
+        toast({
+          title: 'Anexo parcial',
+          description: `${uploaded} de ${totalTried} arquivo(s) anexado(s). Alguns foram rejeitados por tamanho ou tipo.`,
+        })
+      } else {
+        toast({
+          title: 'Sucesso',
+          description: `${uploaded} documento(s) anexado(s) com sucesso.`,
+        })
+      }
     } catch (error: any) {
       toast({
         title: 'Erro ao anexar',
