@@ -607,6 +607,9 @@ export default function GeradorMinutas() {
 
       const newAttachments: { name: string; path: string; pages?: number }[] = []
       let rejectedCount = 0
+      // TOAST_LIMIT=1: toasts intermediários são substituídos pelo resumo final,
+      // então o resumo precisa carregar os motivos reais de cada rejeição.
+      const rejectionReasons: string[] = []
 
       // Orçamento de páginas PDF da análise: soma o que já está anexado.
       let pagesBudgetUsed = attachments.reduce((sum, a) => sum + (a.pages || 0), 0)
@@ -618,6 +621,7 @@ export default function GeradorMinutas() {
 
         if (file.size === 0) {
           rejectedCount++
+          rejectionReasons.push(`"${file.name}": arquivo vazio (0 bytes)`)
           toast({
             title: 'Arquivo vazio',
             description: `"${file.name}" tem 0 bytes e foi ignorado. Verifique se o arquivo não está corrompido.`,
@@ -631,6 +635,7 @@ export default function GeradorMinutas() {
           filesToUpload.some((f) => f.file.name === file.name)
         if (isDuplicate) {
           rejectedCount++
+          rejectionReasons.push(`"${file.name}": já está anexado`)
           toast({
             title: 'Arquivo duplicado',
             description: `"${file.name}" já está anexado e foi ignorado.`,
@@ -657,6 +662,7 @@ export default function GeradorMinutas() {
               continue
             }
             rejectedCount++
+            rejectionReasons.push(`"${file.name}": ${prepErr?.message || 'erro ao dividir'}`)
             toast({
               title: 'Não foi possível dividir o PDF',
               description: `"${file.name}": ${prepErr?.message || 'erro desconhecido'}. Divida manualmente e anexe as partes.`,
@@ -667,6 +673,9 @@ export default function GeradorMinutas() {
 
           if (pagesBudgetUsed + prepared.totalPages > MAX_TOTAL_PDF_PAGES) {
             rejectedCount++
+            rejectionReasons.push(
+              `"${file.name}": ${prepared.totalPages} páginas — passa do limite de ${MAX_TOTAL_PDF_PAGES} páginas por análise. Anexe as peças relevantes (inicial, contestação, decisões, laudos) em vez dos autos completos`,
+            )
             toast({
               title: 'Limite de páginas por análise',
               description: `"${file.name}" tem ${prepared.totalPages} páginas; com os anexos atuais o total passaria de ${MAX_TOTAL_PDF_PAGES} (capacidade do modelo por análise). Anexe as peças relevantes do processo (inicial, contestação, decisões, laudos) em vez dos autos completos.`,
@@ -718,13 +727,13 @@ export default function GeradorMinutas() {
       if (uploaded === 0) {
         toast({
           title: 'Nenhum arquivo anexado',
-          description: `Todos os arquivo(s) selecionados foram rejeitados. Verifique tamanho e tipo.`,
+          description: rejectionReasons.join(' • ') || 'Todos os arquivos selecionados foram rejeitados.',
           variant: 'destructive',
         })
       } else if (rejectedCount > 0) {
         toast({
           title: 'Anexo parcial',
-          description: `${uploaded} arquivo(s) anexado(s); ${rejectedCount} rejeitado(s) por tamanho, tipo ou duplicidade.`,
+          description: `${uploaded} arquivo(s) anexado(s). Rejeitados — ${rejectionReasons.join(' • ')}`,
         })
       } else {
         toast({
