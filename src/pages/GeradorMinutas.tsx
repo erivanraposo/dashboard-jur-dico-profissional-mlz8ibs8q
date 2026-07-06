@@ -72,6 +72,7 @@ import pdfMake from 'pdfmake/build/pdfmake'
 import * as _pdfFonts from 'pdfmake/build/vfs_fonts'
 import htmlToPdfmake from 'html-to-pdfmake'
 import DOMPurify from 'dompurify'
+import { PDFDocument } from 'pdf-lib'
 
 ;(pdfMake as any).vfs =
   (_pdfFonts as any).pdfMake?.vfs ||
@@ -109,6 +110,58 @@ const htmlToPlain = (html: string): string => {
     .replace(/&nbsp;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+// Limite duro por PDF: Anthropic Files API aceita 32 MB por arquivo; 30 MB deixa margem.
+const PDF_SIZE_LIMIT = 30 * 1024 * 1024
+// Alvo de cada parte gerada na divisão automática (folga sob o limite duro).
+const PDF_PART_TARGET = 25 * 1024 * 1024
+
+// Divide um PDF acima do limite em partes menores, cortando por páginas.
+// Estima páginas-por-parte pela densidade média e refaz com passo menor se
+// alguma parte salvar acima do limite duro (PDFs têm páginas de peso desigual).
+async function splitLargePdf(file: File): Promise<File[]> {
+  const srcBytes = await file.arrayBuffer()
+  const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true })
+  const totalPages = srcDoc.getPageCount()
+  if (totalPages < 2) {
+    throw new Error('o PDF tem página única acima do limite — não há como dividir por páginas')
+  }
+
+  const baseName = file.name.replace(/\.pdf$/i, '')
+  let pagesPerPart = Math.max(1, Math.floor(PDF_PART_TARGET / (file.size / totalPages)))
+
+  while (true) {
+    const numParts = Math.ceil(totalPages / pagesPerPart)
+    const parts: File[] = []
+    let oversized = false
+
+    for (let i = 0; i < numParts; i++) {
+      const start = i * pagesPerPart
+      const end = Math.min(totalPages, start + pagesPerPart)
+      const partDoc = await PDFDocument.create()
+      const indices: number[] = []
+      for (let p = start; p < end; p++) indices.push(p)
+      const copied = await partDoc.copyPages(srcDoc, indices)
+      copied.forEach((pg) => partDoc.addPage(pg))
+      const bytes = await partDoc.save()
+      if (bytes.length > PDF_SIZE_LIMIT) {
+        oversized = true
+        break
+      }
+      parts.push(
+        new File([bytes], `${baseName}_pt${i + 1}de${numParts}_pgs${start + 1}-${end}.pdf`, {
+          type: 'application/pdf',
+        }),
+      )
+    }
+
+    if (!oversized) return parts
+    if (pagesPerPart === 1) {
+      throw new Error('há uma página individual acima de 30 MB — reduza a resolução do PDF')
+    }
+    pagesPerPart = Math.max(1, Math.floor(pagesPerPart / 2))
+  }
 }
 
 const ACTION_VERBS = [
@@ -533,11 +586,15 @@ export default function GeradorMinutas() {
       if (!user) throw new Error('Usuário não autenticado.')
 
       const newAttachments = []
+      let rejectedCount = 0
 
+      // Expande a seleção: PDFs acima do limite são divididos automaticamente em partes.
+      const filesToUpload: File[] = []
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
 
         if (file.size === 0) {
+          rejectedCount++
           toast({
             title: 'Arquivo vazio',
             description: `"${file.name}" tem 0 bytes e foi ignorado. Verifique se o arquivo não está corrompido.`,
@@ -548,8 +605,9 @@ export default function GeradorMinutas() {
 
         const isDuplicate =
           attachments.some((a) => a.name === file.name) ||
-          newAttachments.some((a) => a.name === file.name)
+          filesToUpload.some((f) => f.name === file.name)
         if (isDuplicate) {
+          rejectedCount++
           toast({
             title: 'Arquivo duplicado',
             description: `"${file.name}" já está anexado e foi ignorado.`,
@@ -557,15 +615,33 @@ export default function GeradorMinutas() {
           continue
         }
 
-        if (file.name.toLowerCase().endsWith('.pdf') && file.size > 30 * 1024 * 1024) {
+        if (file.name.toLowerCase().endsWith('.pdf') && file.size > PDF_SIZE_LIMIT) {
           toast({
-            title: 'PDF acima do limite',
-            description: `"${file.name}" tem ${(file.size / 1024 / 1024).toFixed(1)} MB. O limite é 30 MB por PDF (Anthropic aceita até 32 MB, deixamos margem). Divida em partes menores.`,
-            variant: 'destructive',
+            title: 'Dividindo PDF grande',
+            description: `"${file.name}" tem ${(file.size / 1024 / 1024).toFixed(1)} MB (limite: 30 MB). Dividindo automaticamente em partes menores...`,
           })
+          try {
+            const parts = await splitLargePdf(file)
+            filesToUpload.push(...parts)
+            toast({
+              title: 'PDF dividido',
+              description: `"${file.name}" foi dividido em ${parts.length} partes. Todas serão analisadas em conjunto.`,
+            })
+          } catch (splitErr: any) {
+            rejectedCount++
+            toast({
+              title: 'Não foi possível dividir o PDF',
+              description: `"${file.name}": ${splitErr?.message || 'erro desconhecido'}. Divida manualmente e anexe as partes.`,
+              variant: 'destructive',
+            })
+          }
           continue
         }
 
+        filesToUpload.push(file)
+      }
+
+      for (const file of filesToUpload) {
         const filePath = `${user.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
 
         const { error: uploadError } = await supabase.storage
@@ -591,17 +667,16 @@ export default function GeradorMinutas() {
 
       setAttachments((prev) => [...prev, ...newAttachments])
       const uploaded = newAttachments.length
-      const totalTried = files.length
       if (uploaded === 0) {
         toast({
           title: 'Nenhum arquivo anexado',
-          description: `Todos os ${totalTried} arquivo(s) foram rejeitados. Verifique tamanho e tipo.`,
+          description: `Todos os arquivo(s) selecionados foram rejeitados. Verifique tamanho e tipo.`,
           variant: 'destructive',
         })
-      } else if (uploaded < totalTried) {
+      } else if (rejectedCount > 0) {
         toast({
           title: 'Anexo parcial',
-          description: `${uploaded} de ${totalTried} arquivo(s) anexado(s). Alguns foram rejeitados por tamanho ou tipo.`,
+          description: `${uploaded} arquivo(s) anexado(s); ${rejectedCount} rejeitado(s) por tamanho, tipo ou duplicidade.`,
         })
       } else {
         toast({
