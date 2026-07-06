@@ -116,24 +116,41 @@ const htmlToPlain = (html: string): string => {
 const PDF_SIZE_LIMIT = 30 * 1024 * 1024
 // Alvo de cada parte gerada na divisão automática (folga sob o limite duro).
 const PDF_PART_TARGET = 25 * 1024 * 1024
+// Páginas por parte, alinhado ao chunk do backend (Anthropic aceita 100; 80 dá folga).
+const PDF_PAGES_PER_PART = 80
+// Teto de páginas PDF somadas por análise: processo escaneado consome ~2.300
+// tokens/página na visão nativa → 400 pgs ≈ 900K do contexto de 1M do modelo.
+// Processos maiores exigem o modo de ingestão com digests (Fase B do roadmap).
+const MAX_TOTAL_PDF_PAGES = 400
 
-// Divide um PDF acima do limite em partes menores, cortando por páginas.
-// Estima páginas-por-parte pela densidade média e refaz com passo menor se
-// alguma parte salvar acima do limite duro (PDFs têm páginas de peso desigual).
-async function splitLargePdf(file: File): Promise<File[]> {
+type PreparedPdf = { files: { file: File; pages: number }[]; totalPages: number }
+
+// Carrega o PDF no navegador, conta páginas e divide quando necessário:
+// por páginas (>80) ou por tamanho (>30 MB). Partes saem com ≤80 pgs e ≤30 MB,
+// com o range de páginas no nome (_ptNdeM_pgsX-Y.pdf) — o backend lê esse range
+// e sobe a parte direto à Files API sem carregar pdf-lib (que estoura o limite
+// de CPU da Edge Function em arquivos grandes).
+async function preparePdf(file: File): Promise<PreparedPdf> {
   const srcBytes = await file.arrayBuffer()
   const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true })
   const totalPages = srcDoc.getPageCount()
+
+  const needsSplit = totalPages > PDF_PAGES_PER_PART || file.size > PDF_SIZE_LIMIT
+  if (!needsSplit) return { files: [{ file, pages: totalPages }], totalPages }
+
   if (totalPages < 2) {
     throw new Error('o PDF tem página única acima do limite — não há como dividir por páginas')
   }
 
   const baseName = file.name.replace(/\.pdf$/i, '')
-  let pagesPerPart = Math.max(1, Math.floor(PDF_PART_TARGET / (file.size / totalPages)))
+  let pagesPerPart = Math.min(
+    PDF_PAGES_PER_PART,
+    Math.max(1, Math.floor(PDF_PART_TARGET / (file.size / totalPages))),
+  )
 
   while (true) {
     const numParts = Math.ceil(totalPages / pagesPerPart)
-    const parts: File[] = []
+    const parts: { file: File; pages: number }[] = []
     let oversized = false
 
     for (let i = 0; i < numParts; i++) {
@@ -149,14 +166,15 @@ async function splitLargePdf(file: File): Promise<File[]> {
         oversized = true
         break
       }
-      parts.push(
-        new File([bytes], `${baseName}_pt${i + 1}de${numParts}_pgs${start + 1}-${end}.pdf`, {
+      parts.push({
+        file: new File([bytes], `${baseName}_pt${i + 1}de${numParts}_pgs${start + 1}-${end}.pdf`, {
           type: 'application/pdf',
         }),
-      )
+        pages: end - start,
+      })
     }
 
-    if (!oversized) return parts
+    if (!oversized) return { files: parts, totalPages }
     if (pagesPerPart === 1) {
       throw new Error('há uma página individual acima de 30 MB — reduza a resolução do PDF')
     }
@@ -317,7 +335,9 @@ export default function GeradorMinutas() {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
   const [selectedProcess, setSelectedProcess] = useState<string>('none')
   const [minuteType, setMinuteType] = useState<string>('')
-  const [attachments, setAttachments] = useState<{ name: string; path: string }[]>([])
+  const [attachments, setAttachments] = useState<
+    { name: string; path: string; pages?: number }[]
+  >([])
 
   const [clientName, setClientName] = useState('')
   const [comarca, setComarca] = useState('')
@@ -585,11 +605,14 @@ export default function GeradorMinutas() {
       } = await supabase.auth.getUser()
       if (!user) throw new Error('Usuário não autenticado.')
 
-      const newAttachments = []
+      const newAttachments: { name: string; path: string; pages?: number }[] = []
       let rejectedCount = 0
 
-      // Expande a seleção: PDFs acima do limite são divididos automaticamente em partes.
-      const filesToUpload: File[] = []
+      // Orçamento de páginas PDF da análise: soma o que já está anexado.
+      let pagesBudgetUsed = attachments.reduce((sum, a) => sum + (a.pages || 0), 0)
+
+      // Expande a seleção: PDFs com >80 páginas ou >30 MB são divididos em partes.
+      const filesToUpload: { file: File; pages?: number }[] = []
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
 
@@ -605,7 +628,7 @@ export default function GeradorMinutas() {
 
         const isDuplicate =
           attachments.some((a) => a.name === file.name) ||
-          filesToUpload.some((f) => f.name === file.name)
+          filesToUpload.some((f) => f.file.name === file.name)
         if (isDuplicate) {
           rejectedCount++
           toast({
@@ -615,33 +638,58 @@ export default function GeradorMinutas() {
           continue
         }
 
-        if (file.name.toLowerCase().endsWith('.pdf') && file.size > PDF_SIZE_LIMIT) {
-          toast({
-            title: 'Dividindo PDF grande',
-            description: `"${file.name}" tem ${(file.size / 1024 / 1024).toFixed(1)} MB (limite: 30 MB). Dividindo automaticamente em partes menores...`,
-          })
-          try {
-            const parts = await splitLargePdf(file)
-            filesToUpload.push(...parts)
+        if (file.name.toLowerCase().endsWith('.pdf')) {
+          if (file.size > PDF_SIZE_LIMIT) {
             toast({
-              title: 'PDF dividido',
-              description: `"${file.name}" foi dividido em ${parts.length} partes. Todas serão analisadas em conjunto.`,
+              title: 'Processando PDF grande',
+              description: `"${file.name}" tem ${(file.size / 1024 / 1024).toFixed(1)} MB. Contando páginas e dividindo em partes...`,
             })
-          } catch (splitErr: any) {
+          }
+
+          let prepared: PreparedPdf
+          try {
+            prepared = await preparePdf(file)
+          } catch (prepErr: any) {
+            if (file.size <= PDF_SIZE_LIMIT) {
+              // PDF que o pdf-lib do navegador não abre (ex.: criptografado),
+              // mas dentro do limite de tamanho: segue inteiro para o backend tentar.
+              filesToUpload.push({ file })
+              continue
+            }
             rejectedCount++
             toast({
               title: 'Não foi possível dividir o PDF',
-              description: `"${file.name}": ${splitErr?.message || 'erro desconhecido'}. Divida manualmente e anexe as partes.`,
+              description: `"${file.name}": ${prepErr?.message || 'erro desconhecido'}. Divida manualmente e anexe as partes.`,
               variant: 'destructive',
             })
+            continue
           }
+
+          if (pagesBudgetUsed + prepared.totalPages > MAX_TOTAL_PDF_PAGES) {
+            rejectedCount++
+            toast({
+              title: 'Limite de páginas por análise',
+              description: `"${file.name}" tem ${prepared.totalPages} páginas; com os anexos atuais o total passaria de ${MAX_TOTAL_PDF_PAGES} (capacidade do modelo por análise). Anexe as peças relevantes do processo (inicial, contestação, decisões, laudos) em vez dos autos completos.`,
+              variant: 'destructive',
+            })
+            continue
+          }
+          pagesBudgetUsed += prepared.totalPages
+
+          if (prepared.files.length > 1) {
+            toast({
+              title: 'PDF dividido',
+              description: `"${file.name}" (${prepared.totalPages} páginas) foi dividido em ${prepared.files.length} partes. Todas serão analisadas em conjunto.`,
+            })
+          }
+          prepared.files.forEach((p) => filesToUpload.push({ file: p.file, pages: p.pages }))
           continue
         }
 
-        filesToUpload.push(file)
+        filesToUpload.push({ file })
       }
 
-      for (const file of filesToUpload) {
+      for (const { file, pages } of filesToUpload) {
         const filePath = `${user.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
 
         const { error: uploadError } = await supabase.storage
@@ -662,7 +710,7 @@ export default function GeradorMinutas() {
           await supabase.storage.from('process-attachments').remove([filePath])
           throw new Error(`Falha ao registrar anexo no banco: ${dbError.message}`)
         }
-        newAttachments.push({ name: file.name, path: filePath })
+        newAttachments.push({ name: file.name, path: filePath, pages })
       }
 
       setAttachments((prev) => [...prev, ...newAttachments])
