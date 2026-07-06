@@ -336,8 +336,59 @@ export default function GeradorMinutas() {
   const [selectedProcess, setSelectedProcess] = useState<string>('none')
   const [minuteType, setMinuteType] = useState<string>('')
   const [attachments, setAttachments] = useState<
-    { name: string; path: string; pages?: number }[]
+    { name: string; path: string; pages?: number; digestStatus?: 'processing' | 'done' | 'error' }[]
   >([])
+
+  // FASE B: ingestão com digests. Cada parte de um processo grande é enviada
+  // à Edge Function ingest-document (1 parte por chamada), que gera um resumo
+  // estruturado persistido — pago 1x e reutilizado em todas as análises.
+  const runIngestionPool = async (items: { id: string; path: string; name: string }[]) => {
+    const CONCURRENCY = 3
+    let done = 0
+    let failed = 0
+    const queue = [...items]
+    const worker = async () => {
+      while (queue.length > 0) {
+        const item = queue.shift()
+        if (!item) break
+        try {
+          const { data, error } = await supabase.functions.invoke('ingest-document', {
+            body: { attachment_id: item.id },
+          })
+          if (error || data?.status === 'error') {
+            throw new Error(error?.message || data?.error || 'falha na ingestão')
+          }
+          done++
+          setAttachments((prev) =>
+            prev.map((a) => (a.path === item.path ? { ...a, digestStatus: 'done' as const } : a)),
+          )
+          toast({
+            title: 'Processando autos',
+            description: `Resumo estruturado ${done + failed}/${items.length} concluído...`,
+          })
+        } catch (e: any) {
+          failed++
+          console.error(`[ingest] falha em ${item.name}:`, e?.message)
+          setAttachments((prev) =>
+            prev.map((a) => (a.path === item.path ? { ...a, digestStatus: 'error' as const } : a)),
+          )
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker))
+    if (failed === 0) {
+      toast({
+        title: 'Autos processados',
+        description: `${done} parte(s) resumida(s) com sucesso. Pronto para análise.`,
+      })
+    } else {
+      toast({
+        title: 'Processamento parcial dos autos',
+        description: `${done} parte(s) ok, ${failed} com erro. Remova as partes com erro (✕) e anexe novamente.`,
+        variant: 'destructive',
+      })
+    }
+  }
 
   const [clientName, setClientName] = useState('')
   const [comarca, setComarca] = useState('')
@@ -611,11 +662,15 @@ export default function GeradorMinutas() {
       // então o resumo precisa carregar os motivos reais de cada rejeição.
       const rejectionReasons: string[] = []
 
-      // Orçamento de páginas PDF da análise: soma o que já está anexado.
-      let pagesBudgetUsed = attachments.reduce((sum, a) => sum + (a.pages || 0), 0)
+      // Orçamento de páginas PDF da análise integral (visão nativa).
+      // Anexos em modo digest não consomem o orçamento — entram como resumo.
+      let pagesBudgetUsed = attachments.reduce(
+        (sum, a) => sum + (a.digestStatus ? 0 : a.pages || 0),
+        0,
+      )
 
       // Expande a seleção: PDFs com >80 páginas ou >30 MB são divididos em partes.
-      const filesToUpload: { file: File; pages?: number }[] = []
+      const filesToUpload: { file: File; pages?: number; digestMode?: boolean }[] = []
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
 
@@ -671,34 +726,35 @@ export default function GeradorMinutas() {
             continue
           }
 
-          if (pagesBudgetUsed + prepared.totalPages > MAX_TOTAL_PDF_PAGES) {
-            rejectedCount++
-            rejectionReasons.push(
-              `"${file.name}": ${prepared.totalPages} páginas — passa do limite de ${MAX_TOTAL_PDF_PAGES} páginas por análise. Anexe as peças relevantes (inicial, contestação, decisões, laudos) em vez dos autos completos`,
-            )
+          // FASE B: acima do teto de análise integral → modo digest.
+          // As partes são resumidas 1x pela ingest-document; as análises
+          // usam os resumos (sem teto de páginas, custo ~20x menor).
+          const digestMode = pagesBudgetUsed + prepared.totalPages > MAX_TOTAL_PDF_PAGES
+          if (digestMode) {
             toast({
-              title: 'Limite de páginas por análise',
-              description: `"${file.name}" tem ${prepared.totalPages} páginas; com os anexos atuais o total passaria de ${MAX_TOTAL_PDF_PAGES} (capacidade do modelo por análise). Anexe as peças relevantes do processo (inicial, contestação, decisões, laudos) em vez dos autos completos.`,
-              variant: 'destructive',
+              title: 'Processo grande — modo resumo estruturado',
+              description: `"${file.name}" tem ${prepared.totalPages} páginas (acima de ${MAX_TOTAL_PDF_PAGES} para análise integral). As ${prepared.files.length} partes serão resumidas uma única vez (alguns minutos) e as análises usarão os resumos.`,
             })
-            continue
+          } else {
+            pagesBudgetUsed += prepared.totalPages
+            if (prepared.files.length > 1) {
+              toast({
+                title: 'PDF dividido',
+                description: `"${file.name}" (${prepared.totalPages} páginas) foi dividido em ${prepared.files.length} partes. Todas serão analisadas em conjunto.`,
+              })
+            }
           }
-          pagesBudgetUsed += prepared.totalPages
-
-          if (prepared.files.length > 1) {
-            toast({
-              title: 'PDF dividido',
-              description: `"${file.name}" (${prepared.totalPages} páginas) foi dividido em ${prepared.files.length} partes. Todas serão analisadas em conjunto.`,
-            })
-          }
-          prepared.files.forEach((p) => filesToUpload.push({ file: p.file, pages: p.pages }))
+          prepared.files.forEach((p) =>
+            filesToUpload.push({ file: p.file, pages: p.pages, digestMode }),
+          )
           continue
         }
 
         filesToUpload.push({ file })
       }
 
-      for (const { file, pages } of filesToUpload) {
+      const toIngest: { id: string; path: string; name: string }[] = []
+      for (const { file, pages, digestMode } of filesToUpload) {
         const filePath = `${user.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
 
         const { error: uploadError } = await supabase.storage
@@ -714,12 +770,24 @@ export default function GeradorMinutas() {
           process_id: selectedProcess !== 'none' ? selectedProcess : null,
         }
 
-        const { error: dbError } = await supabase.from('process_attachments').insert(attachmentData)
+        const { data: insData, error: dbError } = await supabase
+          .from('process_attachments')
+          .insert(attachmentData)
+          .select('id')
+          .single()
         if (dbError) {
           await supabase.storage.from('process-attachments').remove([filePath])
           throw new Error(`Falha ao registrar anexo no banco: ${dbError.message}`)
         }
-        newAttachments.push({ name: file.name, path: filePath, pages })
+        newAttachments.push({
+          name: file.name,
+          path: filePath,
+          pages,
+          digestStatus: digestMode ? ('processing' as const) : undefined,
+        })
+        if (digestMode && insData?.id) {
+          toIngest.push({ id: insData.id, path: filePath, name: file.name })
+        }
       }
 
       setAttachments((prev) => [...prev, ...newAttachments])
@@ -740,6 +808,16 @@ export default function GeradorMinutas() {
           title: 'Sucesso',
           description: `${uploaded} documento(s) anexado(s) com sucesso.`,
         })
+      }
+
+      // Dispara a ingestão dos anexos em modo digest (fire-and-forget: a UI
+      // fica livre; o status por parte é atualizado nos chips de anexo).
+      if (toIngest.length > 0) {
+        toast({
+          title: 'Processando autos',
+          description: `Gerando resumos estruturados de ${toIngest.length} parte(s) — pode levar alguns minutos. Você pode continuar editando.`,
+        })
+        void runIngestionPool(toIngest)
       }
     } catch (error: any) {
       toast({
@@ -796,6 +874,25 @@ export default function GeradorMinutas() {
   }
 
   const handleAnalyze = async () => {
+    // FASE B: autos em modo digest precisam terminar a ingestão antes da análise
+    // (sem isso as partes iriam por visão integral e estourariam o contexto).
+    if (attachments.some((a) => a.digestStatus === 'processing')) {
+      return toast({
+        title: 'Autos em processamento',
+        description:
+          'Aguarde a conclusão dos resumos estruturados (indicador nos anexos) antes de analisar.',
+        variant: 'destructive',
+      })
+    }
+    if (attachments.some((a) => a.digestStatus === 'error')) {
+      return toast({
+        title: 'Anexo com erro de processamento',
+        description:
+          'Uma ou mais partes falharam no resumo estruturado. Remova-as (✕) e anexe novamente antes de analisar.',
+        variant: 'destructive',
+      })
+    }
+
     const hasAttachments = attachments.length > 0
     const hasProcessContext = selectedProcess !== 'none'
     const hasContent = content && content.length >= 10 && content !== defaultContent
@@ -3487,6 +3584,15 @@ export default function GeradorMinutas() {
                                 className="flex items-center justify-between bg-muted/40 p-2 rounded text-sm border border-border/50"
                               >
                                 <span className="truncate flex-1 mr-2" title={file.name}>
+                                  {file.digestStatus === 'processing' && (
+                                    <Loader2 className="w-3 h-3 mr-1 inline animate-spin text-muted-foreground" />
+                                  )}
+                                  {file.digestStatus === 'done' && (
+                                    <Check className="w-3 h-3 mr-1 inline text-green-600" />
+                                  )}
+                                  {file.digestStatus === 'error' && (
+                                    <AlertCircle className="w-3 h-3 mr-1 inline text-destructive" />
+                                  )}
                                   {file.name}
                                 </span>
                                 <Button
