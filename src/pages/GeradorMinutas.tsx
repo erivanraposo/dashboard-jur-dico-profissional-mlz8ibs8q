@@ -537,6 +537,26 @@ export default function GeradorMinutas() {
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
 
+        if (file.size === 0) {
+          toast({
+            title: 'Arquivo vazio',
+            description: `"${file.name}" tem 0 bytes e foi ignorado. Verifique se o arquivo não está corrompido.`,
+            variant: 'destructive',
+          })
+          continue
+        }
+
+        const isDuplicate =
+          attachments.some((a) => a.name === file.name) ||
+          newAttachments.some((a) => a.name === file.name)
+        if (isDuplicate) {
+          toast({
+            title: 'Arquivo duplicado',
+            description: `"${file.name}" já está anexado e foi ignorado.`,
+          })
+          continue
+        }
+
         if (file.name.toLowerCase().endsWith('.pdf') && file.size > 30 * 1024 * 1024) {
           toast({
             title: 'PDF acima do limite',
