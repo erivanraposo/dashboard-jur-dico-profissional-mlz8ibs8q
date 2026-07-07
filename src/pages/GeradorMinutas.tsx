@@ -860,6 +860,48 @@ export default function GeradorMinutas() {
     }
   }
 
+  // Remove todos os anexos de uma vez (arquivos no Storage + registros no banco;
+  // os digests associados caem por ON DELETE CASCADE). Útil quando um processo
+  // grande foi dividido em 12+ partes e o usuário quer recomeçar.
+  const clearAllAttachments = async () => {
+    if (attachments.length === 0) return
+    if (
+      !window.confirm(
+        `Remover todos os ${attachments.length} anexo(s)? Os arquivos e seus resumos estruturados serão excluídos do sistema.`,
+      )
+    )
+      return
+
+    const toRemove = [...attachments]
+    setAttachments([])
+
+    try {
+      const paths = toRemove.map((a) => a.path)
+      const { error: dbError } = await supabase
+        .from('process_attachments')
+        .delete()
+        .in('file_path', paths)
+      if (dbError) throw dbError
+
+      const { error: storageError } = await supabase.storage
+        .from('process-attachments')
+        .remove(paths)
+      if (storageError) throw storageError
+
+      toast({
+        title: 'Anexos removidos',
+        description: `${toRemove.length} arquivo(s) excluído(s).`,
+      })
+    } catch (err: any) {
+      setAttachments(toRemove)
+      toast({
+        title: 'Erro ao remover anexos',
+        description: err.message || 'Falha desconhecida ao excluir arquivos.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   const toggleAgent = (agentId: string) => {
     setSelectedAgents((prev) =>
       prev.includes(agentId) ? prev.filter((id) => id !== agentId) : [...prev, agentId],
@@ -3578,6 +3620,20 @@ export default function GeradorMinutas() {
                         </div>
                         {attachments.length > 0 && (
                           <div className="flex flex-col gap-2 mt-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">
+                                {attachments.length} anexo(s)
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                                onClick={clearAllAttachments}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                Limpar todos
+                              </Button>
+                            </div>
                             {attachments.map((file, i) => (
                               <div
                                 key={i}
