@@ -247,6 +247,7 @@ const MINUTE_TYPES = [
   'Agravo de Instrumento',
   'Relatório de Caso',
   'Parecer Jurídico',
+  'Parecer Tributário',
   'Outros',
 ]
 
@@ -2927,7 +2928,65 @@ export default function GeradorMinutas() {
     const processStr = proc ? `Processo nº ${proc.case_number}` : 'Processo nº [NÚMERO]'
     const clientStr = clientName || (proc ? proc.client_name : '[NOME DO CLIENTE]')
 
-    const template = `
+    // Template específico: Parecer Tributário (estrutura consultiva completa,
+    // com legislação de regência incluindo a transição da Reforma Tributária)
+    const parecerTributarioTemplate = `
+      <div class="cover-page" style="text-align: center; margin-top: 100px; margin-bottom: 200px;">
+        <h1 style="color: #1E40AF; font-size: 36px; font-weight: bold; margin-bottom: 20px;">Parecer Técnico-Jurídico Tributário</h1>
+        <h2 style="color: #334155; font-size: 24px; margin-bottom: 10px;">Parecer nº [NÚMERO/ANO]</h2>
+        <h3 style="color: #64748b; font-size: 20px;">Consulente: ${clientStr}</h3>
+        <h3 style="color: #64748b; font-size: 18px; margin-top: 8px;">${processStr}</h3>
+        <div style="margin-top: 60px; padding-top: 20px; border-top: 2px solid #e2e8f0; display: inline-block; color: #94a3b8; font-weight: 500;">
+          LexAxis - Inteligência Jurídica
+        </div>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="table-of-contents" style="margin-bottom: 30px;">
+        <h2 style="color: #1E40AF; border-bottom: 2px solid #1E40AF; padding-bottom: 10px; margin-bottom: 20px; font-weight: bold;">Sumário</h2>
+        <ul style="list-style-type: none; padding-left: 0; line-height: 2; font-size: 18px; color: #334155;">
+          <li><span style="font-weight: bold;">1.</span> Ementa e Consulta</li>
+          <li><span style="font-weight: bold;">2.</span> Premissas Fáticas</li>
+          <li><span style="font-weight: bold;">3.</span> Legislação de Regência</li>
+          <li><span style="font-weight: bold;">4.</span> Análise Jurídico-Tributária</li>
+          <li><span style="font-weight: bold;">5.</span> Jurisprudência Aplicável</li>
+          <li><span style="font-weight: bold;">6.</span> Quantificação e Simulações</li>
+          <li><span style="font-weight: bold;">7.</span> Riscos e Limites</li>
+          <li><span style="font-weight: bold;">8.</span> Conclusão e Recomendações</li>
+          <li><span style="font-weight: bold;">9.</span> Referências</li>
+        </ul>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="report-content" style="font-family: inherit;">
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">1. Ementa e Consulta</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Ementa em 3-5 linhas (tributo, tese, conclusão sintética). Em seguida, a consulta formulada pelo consulente, nos seus termos.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">2. Premissas Fáticas</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Fatos e documentos em que o parecer se baseia (regime tributário do consulente, operações analisadas, períodos, autuações ou processos em curso). Registrar que a conclusão pressupõe a veracidade dessas premissas.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">3. Legislação de Regência</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Normas aplicáveis com artigo e parágrafo: CTN, leis do tributo em causa, regulamentos e atos infralegais. Quando pertinente, situar a operação na transição da Reforma Tributária do consumo (EC 132/2023, LC 214/2025, IBS/CBS — período de testes e cronograma 2026-2033) e na tributação de dividendos (Lei 15.270/2025).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">4. Análise Jurídico-Tributária</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Desenvolvimento por temas: enquadramento da operação, teses favoráveis e contrárias, distinção entre interpretação majoritária, minoritária e hipótese própria. Considerar as esferas administrativa (CARF, órgãos estaduais/municipais) e judicial.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">5. Jurisprudência Aplicável</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Precedentes com identificação completa (tribunal, classe, número, relator, data): temas de repercussão geral do STF, repetitivos e súmulas do STJ, jurisprudência administrativa do CARF. Indicar status de cada tese (vigente, superada, pendente de modulação).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">6. Quantificação e Simulações</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Impacto econômico das alternativas: valores envolvidos, atualização (Selic), multas e cenários comparativos, com memória de cálculo. Quando não houver dados suficientes, indicar as informações a solicitar.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">7. Riscos e Limites</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Riscos de autuação, contencioso e mudança de entendimento; limites da proteção jurídica (proteção relativa, nunca "blindagem"); alternativas conservadora, intermediária e agressiva com o risco de cada uma.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">8. Conclusão e Recomendações</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Resposta objetiva à consulta, recomendação fundamentada e próximos passos práticos (obrigações acessórias, prazos, documentação de suporte).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">9. Referências</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Legislação, jurisprudência e doutrina citadas (ABNT). Encerrar com cláusula de cautela: o parecer reflete a legislação e a jurisprudência vigentes nesta data e não constitui garantia de resultado.</p>
+      </div>
+    `
+
+    const template = minuteType === 'Parecer Tributário' ? parecerTributarioTemplate : `
       <div class="cover-page" style="text-align: center; margin-top: 100px; margin-bottom: 200px;">
         <h1 style="color: #1E40AF; font-size: 36px; font-weight: bold; margin-bottom: 20px;">Relatório de Caso Jurídico</h1>
         <h2 style="color: #334155; font-size: 24px; margin-bottom: 10px;">${processStr}</h2>
@@ -2988,7 +3047,7 @@ export default function GeradorMinutas() {
       localStorage.setItem('lexcontrol_gerador_draft', template)
       toast({
         title: 'Template Aplicado',
-        description: 'Template corporativo de Relatório de Caso gerado.',
+        description: `Template corporativo de ${minuteType === 'Parecer Tributário' ? 'Parecer Tributário' : 'Relatório de Caso'} gerado.`,
       })
     }
   }
