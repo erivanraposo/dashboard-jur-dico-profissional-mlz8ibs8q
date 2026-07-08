@@ -352,10 +352,12 @@ export default function GeradorMinutas() {
     let done = 0
     let failed = 0
     const queue = [...items]
-    const worker = async () => {
-      while (queue.length > 0) {
-        const item = queue.shift()
-        if (!item) break
+
+    // Invoca com 1 retry (backoff 2s): a primeira rajada concorrente após
+    // sessão ociosa pode falhar na renovação do token do supabase-js
+    // (falhas recorrentes observadas em 08/07 sempre na primeira leva).
+    const ingestOne = async (item: { id: string; path: string; name: string }) => {
+      for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           const { data, error } = await supabase.functions.invoke('ingest-document', {
             body: { attachment_id: item.id },
@@ -363,6 +365,21 @@ export default function GeradorMinutas() {
           if (error || data?.status === 'error') {
             throw new Error(error?.message || data?.error || 'falha na ingestão')
           }
+          return
+        } catch (e: any) {
+          if (attempt === 2) throw e
+          console.warn(`[ingest] tentativa ${attempt} falhou em ${item.name}, retry em 2s:`, e?.message)
+          await new Promise((r) => setTimeout(r, 2000))
+        }
+      }
+    }
+
+    const worker = async () => {
+      while (queue.length > 0) {
+        const item = queue.shift()
+        if (!item) break
+        try {
+          await ingestOne(item)
           done++
           setAttachments((prev) =>
             prev.map((a) => (a.path === item.path ? { ...a, digestStatus: 'done' as const } : a)),
@@ -380,7 +397,30 @@ export default function GeradorMinutas() {
         }
       }
     }
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker))
+
+    // Primeira parte SOZINHA (absorve renovação de token e aquece a rota);
+    // as demais seguem no pool concorrente.
+    const first = queue.shift()
+    if (first) {
+      try {
+        await ingestOne(first)
+        done++
+        setAttachments((prev) =>
+          prev.map((a) => (a.path === first.path ? { ...a, digestStatus: 'done' as const } : a)),
+        )
+        toast({
+          title: 'Processando autos',
+          description: `Resumo estruturado 1/${items.length} concluído...`,
+        })
+      } catch (e: any) {
+        failed++
+        console.error(`[ingest] falha em ${first.name}:`, e?.message)
+        setAttachments((prev) =>
+          prev.map((a) => (a.path === first.path ? { ...a, digestStatus: 'error' as const } : a)),
+        )
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker))
     if (failed === 0) {
       toast({
         title: 'Autos processados',
