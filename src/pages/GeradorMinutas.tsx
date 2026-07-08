@@ -3700,9 +3700,9 @@ export default function GeradorMinutas() {
                             {attachments.map((file, i) => (
                               <div
                                 key={i}
-                                className="flex items-center justify-between bg-muted/40 p-2 rounded text-sm border border-border/50"
+                                className="flex items-center justify-between bg-muted/40 p-2 rounded text-sm border border-border/50 min-w-0 w-full"
                               >
-                                <span className="truncate flex-1 mr-2" title={file.name}>
+                                <span className="truncate flex-1 min-w-0 mr-2" title={file.name}>
                                   {file.digestStatus === 'processing' && (
                                     <Loader2 className="w-3 h-3 mr-1 inline animate-spin text-muted-foreground" />
                                   )}
