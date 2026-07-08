@@ -55,6 +55,7 @@ import {
   AccordionContent,
 } from '@/components/ui/accordion'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Maximize2, Minimize2, PanelRightClose, PanelRightOpen, AlertCircle } from 'lucide-react'
 import {
@@ -336,6 +337,9 @@ export default function GeradorMinutas() {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
   const [selectedProcess, setSelectedProcess] = useState<string>('none')
   const [minuteType, setMinuteType] = useState<string>('')
+  // Instruções livres do usuário para orientar os agentes na análise
+  // (ex.: "correlacione os recibos com o relatório anexo", "verifique o ponto X")
+  const [analysisInstructions, setAnalysisInstructions] = useState<string>('')
   const [attachments, setAttachments] = useState<
     { name: string; path: string; pages?: number; digestStatus?: 'processing' | 'done' | 'error' }[]
   >([])
@@ -983,7 +987,7 @@ export default function GeradorMinutas() {
         minute_type: minuteType,
         attachment_paths: attachments.map((a) => a.path),
         metadata: { client: clientName, comarca, objeto, pedido },
-        model: 'claude-sonnet-4-6',
+        analysis_instructions: analysisInstructions.trim() || null,
       }
 
       if (selectedProcess !== 'none') {
@@ -1268,7 +1272,7 @@ export default function GeradorMinutas() {
         minute_type: minuteType,
         attachment_paths: attachments.map((a) => a.path),
         metadata: { client: clientName, comarca, objeto, pedido },
-        model: 'claude-sonnet-4-6',
+        analysis_instructions: analysisInstructions.trim() || null,
       }
 
       if (selectedProcess !== 'none') {
@@ -3725,7 +3729,20 @@ export default function GeradorMinutas() {
                       </div>
                     </div>
                   </ScrollArea>
-                  <div className="pt-4 border-t border-border/50 mt-auto">
+                  <div className="pt-4 border-t border-border/50 mt-auto space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="analysis-instructions" className="text-xs text-muted-foreground">
+                        Instruções para a análise (opcional)
+                      </Label>
+                      <Textarea
+                        id="analysis-instructions"
+                        value={analysisInstructions}
+                        onChange={(e) => setAnalysisInstructions(e.target.value)}
+                        placeholder="Ex.: correlacione os recibos anexos com o relatório; verifique a tese X; traga doutrina de linha diversa da adotada no texto..."
+                        className="min-h-[72px] text-sm resize-y"
+                        maxLength={4000}
+                      />
+                    </div>
                     <Button
                       onClick={handleAnalyze}
                       disabled={
