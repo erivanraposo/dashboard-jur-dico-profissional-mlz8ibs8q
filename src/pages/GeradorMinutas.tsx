@@ -631,6 +631,7 @@ export default function GeradorMinutas() {
     setComarca('')
     setObjeto('')
     setPedido('')
+    setAnalysisInstructions('')
     setApprovalStatus('rascunho')
     setRevisionNotes(null)
     localStorage.removeItem('lexcontrol_gerador_draft')
@@ -1009,6 +1010,13 @@ export default function GeradorMinutas() {
     setLoading(true)
     setProgressStatus('Iniciando análise com IA...')
     setSuggestions([])
+
+    if (analysisInstructions.trim()) {
+      toast({
+        title: 'Instruções incluídas',
+        description: `Suas instruções (${analysisInstructions.trim().length} caracteres) foram enviadas a todos os agentes desta análise.`,
+      })
+    }
 
     try {
       const invocation_id = crypto.randomUUID()
@@ -3779,9 +3787,15 @@ export default function GeradorMinutas() {
                         value={analysisInstructions}
                         onChange={(e) => setAnalysisInstructions(e.target.value)}
                         placeholder="Ex.: correlacione os recibos anexos com o relatório; verifique a tese X; traga doutrina de linha diversa da adotada no texto..."
-                        className="min-h-[72px] text-sm resize-y"
+                        className={`min-h-[72px] text-sm resize-y ${analysisInstructions.trim() ? 'border-green-500 focus-visible:ring-green-500' : ''}`}
                         maxLength={4000}
                       />
+                      {analysisInstructions.trim() && (
+                        <p className="text-xs text-green-600 flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Estas instruções serão enviadas a todos os
+                          agentes na próxima análise ({analysisInstructions.trim().length}/4000)
+                        </p>
+                      )}
                     </div>
                     <Button
                       onClick={handleAnalyze}
