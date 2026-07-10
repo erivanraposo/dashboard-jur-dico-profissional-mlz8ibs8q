@@ -341,7 +341,13 @@ export default function GeradorMinutas() {
   // (ex.: "correlacione os recibos com o relatório anexo", "verifique o ponto X")
   const [analysisInstructions, setAnalysisInstructions] = useState<string>('')
   const [attachments, setAttachments] = useState<
-    { name: string; path: string; pages?: number; digestStatus?: 'processing' | 'done' | 'error' }[]
+    {
+      name: string
+      path: string
+      pages?: number
+      digestStatus?: 'processing' | 'done' | 'error'
+      processId?: string | null
+    }[]
   >([])
 
   // FASE B: ingestão com digests. Cada parte de um processo grande é enviada
@@ -830,6 +836,7 @@ export default function GeradorMinutas() {
           path: filePath,
           pages,
           digestStatus: digestMode ? ('processing' as const) : undefined,
+          processId: selectedProcess !== 'none' ? selectedProcess : null,
         })
         if (digestMode && insData?.id) {
           toIngest.push({ id: insData.id, path: filePath, name: file.name })
@@ -979,6 +986,22 @@ export default function GeradorMinutas() {
           'Uma ou mais partes falharam no resumo estruturado. Remova-as (✕) e anexe novamente antes de analisar.',
         variant: 'destructive',
       })
+    }
+
+    // Escopo de caso (memorando grounding 10/07): anexo enviado sob OUTRO
+    // processo contamina a análise — exigir confirmação consciente.
+    if (selectedProcess !== 'none') {
+      const divergentes = attachments.filter((a) => a.processId && a.processId !== selectedProcess)
+      if (divergentes.length > 0) {
+        const nomes = divergentes.map((a) => a.name).join('\n• ')
+        if (
+          !window.confirm(
+            `ATENÇÃO — anexos de OUTRO processo na análise:\n\n• ${nomes}\n\nMisturar documentos de casos diferentes pode contaminar o resultado.\n\nOK = prosseguir mesmo assim | Cancelar = abortar para remover os anexos divergentes`,
+          )
+        ) {
+          return
+        }
+      }
     }
 
     const hasAttachments = attachments.length > 0
@@ -1511,6 +1534,59 @@ export default function GeradorMinutas() {
           description: 'Seu documento foi reescrito e salvo com sucesso.',
         })
       }
+
+      // Gate de aderência (memorando grounding 10/07): valida se o documento
+      // gerado corresponde ao tipo/caso/instruções antes de ser aceito.
+      try {
+        setProgressStatus('Validando aderência do documento gerado...')
+        const { data: gateResp } = await supabase.functions.invoke('analyze-legal-text', {
+          body: {
+            action: 'validate_output',
+            invocation_id,
+            content: revised_content,
+            minute_type: minuteType,
+            metadata: { client: clientName, comarca, objeto, pedido },
+            analysis_instructions: analysisInstructions.trim() || null,
+            attachment_names: attachments.map((a) => a.name),
+          },
+        })
+        const gate = gateResp?.gate
+        if (gate && gate.liberar === false) {
+          const desvios = Array.isArray(gate.desvios) ? gate.desvios.join('\n• ') : ''
+          const manter = window.confirm(
+            `A VALIDAÇÃO DE ADERÊNCIA REPROVOU O DOCUMENTO GERADO:\n\n• ${desvios}\n\nO texto pode não corresponder ao caso, ao tipo de minuta ou às suas instruções.\n\nOK = manter mesmo assim (com ressalvas) | Cancelar = descartar e restaurar o conteúdo anterior`,
+          )
+          if (!manter) {
+            setContent(originalContent)
+            localStorage.setItem('lexcontrol_gerador_draft', originalContent)
+            if (currentMinuteId) {
+              await supabase
+                .from('minutes')
+                .update({ content: originalContent, updated_at: new Date().toISOString() })
+                .eq('id', currentMinuteId)
+            }
+            toast({
+              title: 'Documento descartado',
+              description: 'O conteúdo anterior foi restaurado no editor e na minuta salva.',
+              variant: 'destructive',
+            })
+          } else {
+            toast({
+              title: 'Documento mantido com ressalvas',
+              description: 'A validação apontou desvios — revise com atenção antes de usar.',
+            })
+          }
+        } else if (gate?.gate_error) {
+          toast({
+            title: 'Validação automática indisponível',
+            description:
+              'O documento foi gerado, mas a checagem de aderência falhou — revisão humana recomendada.',
+          })
+        }
+      } catch (gateErr: any) {
+        console.warn('[gate] validação de aderência falhou:', gateErr?.message)
+      }
+
       setApplying(false)
       setProgressStatus('')
     } catch (err: any) {
