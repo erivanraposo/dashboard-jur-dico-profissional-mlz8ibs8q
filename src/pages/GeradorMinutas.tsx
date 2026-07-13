@@ -1031,7 +1031,18 @@ export default function GeradorMinutas() {
     }
 
     setLoading(true)
-    setProgressStatus('Iniciando análise com IA...')
+    const hasEditorText = content && content.length >= 10 && content !== defaultContent
+    const escopo = [
+      hasEditorText ? 'o texto do editor' : null,
+      attachments.length > 0
+        ? `${attachments.length} anexo(s)`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' + ')
+    setProgressStatus(
+      `Analisando ${escopo || 'o contexto do processo'} com ${selectedAgents.length} agente(s)...`,
+    )
     setSuggestions([])
 
     if (analysisInstructions.trim()) {
@@ -3183,9 +3194,9 @@ export default function GeradorMinutas() {
   useEffect(() => {
     if (minuteType && content.includes('class="cover-page"')) {
       toast({
-        title: 'Editor contém um template antigo',
+        title: `Tipo alterado para "${minuteType}" — e agora?`,
         description:
-          "O conteúdo no editor é de um tipo de minuta anterior. Clique em 'Limpar Editor' antes de gerar a nova minuta para evitar duplicação de capa.",
+          `O texto no editor continua sendo o documento anterior. Para GERAR um novo documento do tipo "${minuteType}": use "Nova Minuta" (recomeço limpo) ou "Limpar Editor" e depois "Aplicar Template LexAxis". Para apenas REANALISAR o texto atual sob a ótica de "${minuteType}", selecione os agentes e clique em Analisar — a capa e o título antigos serão preservados.`,
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
