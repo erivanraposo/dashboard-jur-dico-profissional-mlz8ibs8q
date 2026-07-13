@@ -1045,12 +1045,11 @@ export default function GeradorMinutas() {
     )
     setSuggestions([])
 
-    if (analysisInstructions.trim()) {
-      toast({
-        title: 'Instruções incluídas',
-        description: `Suas instruções (${analysisInstructions.trim().length} caracteres) foram enviadas a todos os agentes desta análise.`,
-      })
-    }
+    // Toast durável (o progressStatus é sobrescrito pelos status do servidor)
+    toast({
+      title: 'Análise iniciada',
+      description: `Escopo: ${escopo || 'contexto do processo'} · ${selectedAgents.length} agente(s) · tipo "${minuteType}"${analysisInstructions.trim() ? ` · com suas instruções (${analysisInstructions.trim().length} caracteres)` : ''}.`,
+    })
 
     try {
       const invocation_id = crypto.randomUUID()
@@ -1565,7 +1564,7 @@ export default function GeradorMinutas() {
         if (gate && gate.liberar === false) {
           const desvios = Array.isArray(gate.desvios) ? gate.desvios.join('\n• ') : ''
           const manter = window.confirm(
-            `A VALIDAÇÃO DE ADERÊNCIA REPROVOU O DOCUMENTO GERADO:\n\n• ${desvios}\n\nO texto pode não corresponder ao caso, ao tipo de minuta ou às suas instruções.\n\nOK = manter mesmo assim (com ressalvas) | Cancelar = descartar e restaurar o conteúdo anterior`,
+            `A VALIDAÇÃO REPROVOU O DOCUMENTO QUE ACABOU DE SER GERADO (esta avaliação é sobre o texto produzido, não sobre os seus anexos):\n\n• ${desvios}\n\nO texto gerado pode não corresponder ao tipo de minuta "${minuteType}", ao caso ou às suas instruções.\n\nOK = manter mesmo assim (com ressalvas) | Cancelar = descartar e restaurar o conteúdo anterior`,
           )
           if (!manter) {
             setContent(originalContent)
