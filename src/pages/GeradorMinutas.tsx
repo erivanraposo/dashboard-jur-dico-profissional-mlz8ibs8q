@@ -609,9 +609,14 @@ export default function GeradorMinutas() {
       localStorage.removeItem('lexcontrol_gerador_draft')
       setMinuteId(null)
       setSuggestions([])
+      // Recomeço de texto = seleção de agentes e instruções zeradas
+      // (anexos, tipo e metadados permanecem — pertencem ao caso).
+      setSelectedAgents([])
+      setAnalysisInstructions('')
       toast({
         title: 'Editor limpo',
-        description: 'Você pode começar uma nova minuta agora.',
+        description:
+          'Você pode começar uma nova minuta agora. Selecione os agentes para a próxima análise (anexos e tipo foram mantidos).',
       })
     }
   }
