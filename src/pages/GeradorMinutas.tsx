@@ -1565,6 +1565,27 @@ export default function GeradorMinutas() {
             attachment_names: attachments.map((a) => a.name),
           },
         })
+        // Proveniência fase 1: relatório + nota de conferência automática
+        const prov = gateResp?.proveniencia
+        if (prov && prov.total_citacoes > 0) {
+          toast({
+            title: 'Relatório de proveniência',
+            description: `${prov.total_citacoes} citações no documento — ${prov.jurisprudencia} de jurisprudência, ${prov.legislacao} de legislação, ${prov.doutrina} doutrinárias; ${prov.a_verificar} marcadas [A VERIFICAR]. Confira todas nos portais oficiais antes de uso externo.`,
+          })
+          if (!revised_content.includes('id="nota-proveniencia"')) {
+            const nota = `<div id="nota-proveniencia" style="margin-top: 40px; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #f8fafc;"><p style="font-size: 12px; color: #64748b; margin: 0; line-height: 1.5;"><strong>Nota de conferência de fontes</strong> — Este documento contém referências produzidas com auxílio de inteligência artificial: ${prov.jurisprudencia} de jurisprudência, ${prov.legislacao} de legislação e ${prov.doutrina} doutrinária(s), das quais ${prov.a_verificar} marcada(s) como [A VERIFICAR]. Antes de uso externo ou protocolo, todas as citações — inclusive as não marcadas — devem ser conferidas nas fontes oficiais (portais do STF, STJ, CARF e Planalto).</p></div>`
+            const contentComNota = `${revised_content}${nota}`
+            setContent(contentComNota)
+            localStorage.setItem('lexcontrol_gerador_draft', contentComNota)
+            if (currentMinuteId) {
+              await supabase
+                .from('minutes')
+                .update({ content: contentComNota, updated_at: new Date().toISOString() })
+                .eq('id', currentMinuteId)
+            }
+          }
+        }
+
         const gate = gateResp?.gate
         if (gate && gate.liberar === false) {
           const desvios = Array.isArray(gate.desvios) ? gate.desvios.join('\n• ') : ''
