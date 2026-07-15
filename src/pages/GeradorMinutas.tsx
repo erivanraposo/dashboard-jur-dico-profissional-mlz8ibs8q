@@ -249,6 +249,8 @@ const MINUTE_TYPES = [
   'Relatório de Caso',
   'Parecer Jurídico',
   'Parecer Tributário',
+  'Resposta à Acusação',
+  'Habeas Corpus',
   'Outros',
 ]
 
@@ -3150,7 +3152,118 @@ export default function GeradorMinutas() {
       </div>
     `
 
-    const template = minuteType === 'Parecer Tributário' ? parecerTributarioTemplate : `
+    // Template específico: Resposta à Acusação (CPP arts. 396-396-A; absolvição
+    // sumária art. 397). Minuta interna — o advogado transpõe ao protocolo.
+    const respostaAcusacaoTemplate = `
+      <div class="cover-page" style="text-align: center; margin-top: 100px; margin-bottom: 200px;">
+        <h1 style="color: #1E40AF; font-size: 36px; font-weight: bold; margin-bottom: 20px;">Resposta à Acusação</h1>
+        <h2 style="color: #334155; font-size: 24px; margin-bottom: 10px;">${processStr}</h2>
+        <h3 style="color: #64748b; font-size: 20px;">Acusado(a): ${clientStr}</h3>
+        <div style="margin-top: 60px; padding-top: 20px; border-top: 2px solid #e2e8f0; display: inline-block; color: #94a3b8; font-weight: 500;">
+          LexAxis - Inteligência Jurídica
+        </div>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="table-of-contents" style="margin-bottom: 30px;">
+        <h2 style="color: #1E40AF; border-bottom: 2px solid #1E40AF; padding-bottom: 10px; margin-bottom: 20px; font-weight: bold;">Sumário</h2>
+        <ul style="list-style-type: none; padding-left: 0; line-height: 2; font-size: 18px; color: #334155;">
+          <li><span style="font-weight: bold;">1.</span> Endereçamento e Qualificação</li>
+          <li><span style="font-weight: bold;">2.</span> Tempestividade e Cabimento</li>
+          <li><span style="font-weight: bold;">3.</span> Síntese da Acusação</li>
+          <li><span style="font-weight: bold;">4.</span> Preliminares</li>
+          <li><span style="font-weight: bold;">5.</span> Absolvição Sumária (CPP art. 397)</li>
+          <li><span style="font-weight: bold;">6.</span> Teses Defensivas de Mérito</li>
+          <li><span style="font-weight: bold;">7.</span> Provas e Rol de Testemunhas</li>
+          <li><span style="font-weight: bold;">8.</span> Pedidos</li>
+        </ul>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="report-content" style="font-family: inherit;">
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">1. Endereçamento e Qualificação</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Juízo destinatário ([VARA/COMARCA]), número dos autos, qualificação completa do(a) acusado(a) e identificação do defensor ([NOME DO ADVOGADO], [NÚMERO OAB]).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">2. Tempestividade e Cabimento</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Base legal (CPP arts. 396 e 396-A), data da citação e demonstração do prazo de 10 dias.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">3. Síntese da Acusação</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Resumo objetivo da denúncia: fatos imputados, capitulação legal e elementos de informação que a sustentam — sem antecipar concordância.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">4. Preliminares</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Vícios processuais: inépcia da denúncia (CPP art. 41), falta de justa causa, nulidades (citação, competência, provas ilícitas), questões de procedibilidade. Cada preliminar com fundamento e precedente.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">5. Absolvição Sumária (CPP art. 397)</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Hipóteses cabíveis: excludente de ilicitude (I), excludente de culpabilidade (II), atipicidade manifesta (III) ou extinção da punibilidade (IV) — inclusive causas específicas da legislação especial aplicáveis ao caso.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">6. Teses Defensivas de Mérito</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Teses a desenvolver na instrução (sem esgotar a defesa nesta fase): versão defensiva dos fatos, fragilidades da prova acusatória, teses subsidiárias (desclassificação, causas de diminuição).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">7. Provas e Rol de Testemunhas</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Provas a produzir (documental, pericial, testemunhal) com justificativa de pertinência; rol de testemunhas (máximo do rito aplicável) com qualificação ou [A COMPLETAR].</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">8. Pedidos</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Em ordem: acolhimento das preliminares; absolvição sumária; subsidiariamente, o prosseguimento com a produção das provas requeridas e a oitiva das testemunhas arroladas.</p>
+      </div>
+    `
+
+    // Template específico: Habeas Corpus (CF art. 5º LXVIII; CPP arts. 647-667).
+    const habeasCorpusTemplate = `
+      <div class="cover-page" style="text-align: center; margin-top: 100px; margin-bottom: 200px;">
+        <h1 style="color: #1E40AF; font-size: 36px; font-weight: bold; margin-bottom: 20px;">Habeas Corpus</h1>
+        <h2 style="color: #334155; font-size: 24px; margin-bottom: 10px;">${processStr}</h2>
+        <h3 style="color: #64748b; font-size: 20px;">Paciente: ${clientStr}</h3>
+        <div style="margin-top: 60px; padding-top: 20px; border-top: 2px solid #e2e8f0; display: inline-block; color: #94a3b8; font-weight: 500;">
+          LexAxis - Inteligência Jurídica
+        </div>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="table-of-contents" style="margin-bottom: 30px;">
+        <h2 style="color: #1E40AF; border-bottom: 2px solid #1E40AF; padding-bottom: 10px; margin-bottom: 20px; font-weight: bold;">Sumário</h2>
+        <ul style="list-style-type: none; padding-left: 0; line-height: 2; font-size: 18px; color: #334155;">
+          <li><span style="font-weight: bold;">1.</span> Endereçamento, Impetrante e Paciente</li>
+          <li><span style="font-weight: bold;">2.</span> Autoridade Coatora e Cabimento</li>
+          <li><span style="font-weight: bold;">3.</span> Síntese Fática</li>
+          <li><span style="font-weight: bold;">4.</span> Constrangimento Ilegal</li>
+          <li><span style="font-weight: bold;">5.</span> Direito — Fundamentos da Impetração</li>
+          <li><span style="font-weight: bold;">6.</span> Medida Liminar</li>
+          <li><span style="font-weight: bold;">7.</span> Pedidos</li>
+          <li><span style="font-weight: bold;">8.</span> Documentos que Instruem a Impetração</li>
+        </ul>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="report-content" style="font-family: inherit;">
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">1. Endereçamento, Impetrante e Paciente</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Tribunal ou juízo competente (conforme a autoridade coatora), identificação do impetrante ([NOME DO ADVOGADO], [NÚMERO OAB]) e qualificação do paciente. Registrar que o HC independe de capacidade postulatória (CPP art. 654).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">2. Autoridade Coatora e Cabimento</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Indicação precisa da autoridade coatora e do ato impugnado; base constitucional (CF art. 5º, LXVIII) e legal (CPP art. 647 e seguintes); competência do órgão destinatário.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">3. Síntese Fática</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Narrativa cronológica objetiva: investigação/processo de origem, ato coator, situação atual do paciente. Toda afirmação ancorada em documento que instrui a impetração (o HC não admite dilação probatória — prova pré-constituída).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">4. Constrangimento Ilegal</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Enquadramento nas hipóteses do CPP art. 648 (falta de justa causa, excesso de prazo, incompetência, cessação do motivo da coação, nulidade, extinção da punibilidade) ou na violação de direito de locomoção dela decorrente.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">5. Direito — Fundamentos da Impetração</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Desenvolvimento das teses com legislação (artigo e parágrafo), jurisprudência identificada (tribunal, classe, número, relator) e súmulas aplicáveis. Distinguir tese principal e teses subsidiárias.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">6. Medida Liminar</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Demonstração do fumus boni iuris e do periculum in mora (ou periculum libertatis); pedido liminar específico e delimitado, com a providência urgente requerida até o julgamento do mérito.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">7. Pedidos</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Concessão da liminar; notificação da autoridade coatora para informações; parecer do Ministério Público; no mérito, a concessão definitiva da ordem com a providência pleiteada (relaxamento, revogação, trancamento, salvo-conduto ou outra).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">8. Documentos que Instruem a Impetração</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Rol numerado da prova pré-constituída (decisão atacada, peças essenciais dos autos de origem, procuração se houver pedido em nome próprio do advogado); lacunas marcadas com [A COMPLETAR].</p>
+      </div>
+    `
+
+    const TEMPLATES_BY_TYPE: Record<string, string> = {
+      'Parecer Tributário': parecerTributarioTemplate,
+      'Resposta à Acusação': respostaAcusacaoTemplate,
+      'Habeas Corpus': habeasCorpusTemplate,
+    }
+
+    const template = TEMPLATES_BY_TYPE[minuteType] ?? `
       <div class="cover-page" style="text-align: center; margin-top: 100px; margin-bottom: 200px;">
         <h1 style="color: #1E40AF; font-size: 36px; font-weight: bold; margin-bottom: 20px;">Relatório de Caso Jurídico</h1>
         <h2 style="color: #334155; font-size: 24px; margin-bottom: 10px;">${processStr}</h2>
@@ -3211,7 +3324,7 @@ export default function GeradorMinutas() {
       localStorage.setItem('lexcontrol_gerador_draft', template)
       toast({
         title: 'Template Aplicado',
-        description: `Template corporativo de ${minuteType === 'Parecer Tributário' ? 'Parecer Tributário' : 'Relatório de Caso'} gerado.`,
+        description: `Template corporativo de ${TEMPLATES_BY_TYPE[minuteType] ? minuteType : 'Relatório de Caso'} gerado.`,
       })
     }
   }
