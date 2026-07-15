@@ -184,31 +184,12 @@ function convertNode(node: any): (Paragraph | Table)[] {
   if (HEADING_MAP[tag]) {
     const headingMeta: Record<
       string,
-      {
-        size: number
-        bold: boolean
-        italics?: boolean
-        color: string
-        align?: any
-        spacing: { before: number; after: number }
-      }
+      { size: number; bold: boolean; italics?: boolean; color: string; align?: any; spacing: { before: number; after: number } }
     > = {
-      h1: {
-        size: 32,
-        bold: true,
-        color: '000000',
-        align: AlignmentType.CENTER,
-        spacing: { before: 360, after: 240 },
-      },
+      h1: { size: 32, bold: true, color: '000000', align: AlignmentType.CENTER, spacing: { before: 360, after: 240 } },
       h2: { size: 28, bold: true, color: '000000', spacing: { before: 280, after: 180 } },
       h3: { size: 26, bold: true, color: '000000', spacing: { before: 200, after: 120 } },
-      h4: {
-        size: 24,
-        bold: true,
-        italics: true,
-        color: '000000',
-        spacing: { before: 160, after: 100 },
-      },
+      h4: { size: 24, bold: true, italics: true, color: '000000', spacing: { before: 160, after: 100 } },
       h5: { size: 24, bold: true, color: '333333', spacing: { before: 120, after: 80 } },
       h6: { size: 22, bold: true, color: '333333', spacing: { before: 100, after: 60 } },
     }
@@ -401,6 +382,69 @@ function detectImageType(logoPath: string): 'png' | 'jpg' | 'gif' | 'bmp' | 'svg
   return 'png'
 }
 
+// Lê as dimensões nativas da imagem para preservar aspect ratio no DOCX.
+// Suporta PNG (header IHDR), JPEG (markers SOFn) e GIF (Logical Screen Descriptor).
+// Retorna null se o formato não for suportado — o caller usa fallback quadrado.
+function getImageDimensions(
+  bytes: Uint8Array,
+  type: 'png' | 'jpg' | 'gif' | 'bmp' | 'svg',
+): { width: number; height: number } | null {
+  try {
+    if (type === 'png' && bytes.length >= 24) {
+      // PNG: signature 8 bytes + chunk length 4 + "IHDR" 4 + width 4 BE + height 4 BE
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      const width = view.getUint32(16, false)
+      const height = view.getUint32(20, false)
+      if (width > 0 && height > 0) return { width, height }
+    } else if (type === 'jpg' && bytes.length >= 4) {
+      // JPEG: procura SOFn marker (0xFFC0..0xFFCF exceto C4, C8, CC) e lê height/width depois
+      let i = 2 // pula SOI marker (FFD8)
+      while (i + 9 < bytes.length) {
+        if (bytes[i] !== 0xff) break
+        const marker = bytes[i + 1]
+        const segLen = (bytes[i + 2] << 8) | bytes[i + 3]
+        const isSOF = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc
+        if (isSOF) {
+          const height = (bytes[i + 5] << 8) | bytes[i + 6]
+          const width = (bytes[i + 7] << 8) | bytes[i + 8]
+          if (width > 0 && height > 0) return { width, height }
+          break
+        }
+        i += 2 + segLen
+      }
+    } else if (type === 'gif' && bytes.length >= 10) {
+      // GIF: signature 6 bytes + width 2 LE + height 2 LE
+      const width = bytes[6] | (bytes[7] << 8)
+      const height = bytes[8] | (bytes[9] << 8)
+      if (width > 0 && height > 0) return { width, height }
+    }
+  } catch (e) {
+    console.warn('[export-docx] getImageDimensions falhou:', e)
+  }
+  return null
+}
+
+// Calcula largura e altura para exibição preservando aspect ratio, dentro
+// de uma caixa máxima (default 150x60 pontos = ~3.8cm x 1.5cm).
+function fitToBox(
+  natural: { width: number; height: number } | null,
+  maxW = 150,
+  maxH = 60,
+): { width: number; height: number } {
+  if (!natural || natural.width <= 0 || natural.height <= 0) {
+    // Fallback: assume aspect ratio quadrado se não conseguir ler
+    return { width: maxH, height: maxH }
+  }
+  const aspect = natural.width / natural.height
+  let width = maxW
+  let height = Math.round(width / aspect)
+  if (height > maxH) {
+    height = maxH
+    width = Math.round(height * aspect)
+  }
+  return { width, height }
+}
+
 function buildDocxHeader(
   b: Branding,
   logoBytes: Uint8Array | null,
@@ -412,13 +456,15 @@ function buildDocxHeader(
 
   if (logoBytes) {
     try {
+      const natural = getImageDimensions(logoBytes, logoType)
+      const { width, height } = fitToBox(natural, 200, 100)
       children.push(
         new Paragraph({
           alignment: AlignmentType.CENTER,
           children: [
             new ImageRun({
               data: logoBytes,
-              transformation: { width: 100, height: 50 },
+              transformation: { width, height },
               type: logoType,
             } as any),
           ],
@@ -707,7 +753,8 @@ Deno.serve(async (req: Request) => {
     return new Response(body, {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'Content-Disposition': `attachment; filename="${safeTitle}.docx"`,
       },
     })

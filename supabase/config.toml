@@ -2,8 +2,8 @@ project_id = "fxyegswhzorotyklrgru"
 
 [functions.analyze-legal-text]
 verify_jwt = true
-timeout = 900
+# timeout = 900   # comentado porque o CLI 2.104.0 nao reconhece esta chave; o deploy do SKIP ja registrou 900s
 
 [functions.extract-document]
 verify_jwt = true
-timeout = 300
+# timeout = 300   # idem
