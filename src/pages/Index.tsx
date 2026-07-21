@@ -1,6 +1,7 @@
 import { useEffect, useState, Component, ErrorInfo, ReactNode } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { useAuth } from '@/hooks/use-auth'
+import PrazosProximos from '@/components/PrazosProximos'
 import {
   Table,
   TableBody,
@@ -284,6 +285,8 @@ function DashboardContent() {
           </Button>
         </div>
       </div>
+
+      <PrazosProximos />
 
       {/* Navigation Hub */}
       <div>

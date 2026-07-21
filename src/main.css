@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%; /* Slate 50 */
+    --background: 40 30% 97%; /* Off-white quente (marca, ~#faf8f3) */
     --foreground: 222.2 84% 4.9%;
 
     --card: 0 0% 100%;
@@ -15,8 +15,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    /* Navy Primary */
-    --primary: 215 28% 17%; /* Slate 800 */
+    /* Navy Primary (marca) */
+    --primary: 214 52% 24%; /* Navy #1e3a5f */
     --primary-foreground: 210 40% 98%;
 
     --secondary: 214 32% 91%; /* Slate 200 */
@@ -33,21 +33,21 @@
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 215 28% 17%;
+    --ring: 214 52% 24%;
 
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 215 28% 17%;
-    --sidebar-primary: 215 28% 17%;
+    --sidebar-primary: 214 52% 24%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 214 32% 91%;
-    --sidebar-accent-foreground: 215 28% 17%;
+    --sidebar-accent: 40 30% 94%;
+    --sidebar-accent-foreground: 214 52% 24%;
     --sidebar-border: 214.3 31.8% 91.4%;
-    --sidebar-ring: 215 28% 17%;
+    --sidebar-ring: 214 52% 24%;
 
-    --chart-1: 215 28% 17%; /* Navy */
-    --chart-2: 0 70% 35%; /* Crimson */
+    --chart-1: 214 52% 24%; /* Navy #1e3a5f */
+    --chart-2: 39 52% 57%; /* Dourado #c9a35a */
     --chart-3: 226 71% 40%; /* Blue */
     --chart-4: 214 32% 91%;
     --chart-5: 215.4 16.3% 46.9%;

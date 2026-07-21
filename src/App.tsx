@@ -14,10 +14,15 @@ import Jurisprudencia from './pages/Jurisprudencia'
 import GeradorMinutas from './pages/GeradorMinutas'
 import Processos from './pages/Processos'
 import Minutas from './pages/Minutas'
+import Prazos from './pages/Prazos'
 import Auditoria from './pages/Auditoria'
 import Configuracoes from './pages/Configuracoes'
 import NotFound from './pages/NotFound'
 import Auth from './pages/Auth'
+import Landing from './pages/Landing'
+import ResetPassword from './pages/ResetPassword'
+import ComoVerificamos from './pages/ComoVerificamos'
+import Ajuda from './pages/Ajuda'
 
 class GlobalErrorBoundary extends Component<
   { children: ReactNode },
@@ -75,7 +80,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/landing" replace />
   }
 
   return <>{children}</>
@@ -84,6 +89,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 const AppContent = () => (
   <Routes>
     <Route path="/login" element={<Auth />} />
+    <Route path="/landing" element={<Landing />} />
+    <Route path="/reset-password" element={<ResetPassword />} />
+    <Route path="/como-verificamos" element={<ComoVerificamos />} />
+    <Route path="/ajuda" element={<Ajuda />} />
     <Route
       element={
         <ProtectedRoute>
@@ -96,6 +105,7 @@ const AppContent = () => (
       <Route path="/gerador-minutas" element={<GeradorMinutas />} />
       <Route path="/processos" element={<Processos />} />
       <Route path="/minutas" element={<Minutas />} />
+      <Route path="/prazos" element={<Prazos />} />
       <Route path="/auditoria" element={<Auditoria />} />
       <Route path="/configuracoes" element={<Configuracoes />} />
     </Route>

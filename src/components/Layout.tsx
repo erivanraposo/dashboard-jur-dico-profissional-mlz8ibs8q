@@ -21,6 +21,7 @@ import {
   LogOut,
   Activity,
   FolderOpen,
+  Clock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,6 +34,7 @@ const navigation = [
   { name: 'Jurisprudência', path: '/jurisprudencia', icon: Search },
   { name: 'Gerador de Minutas', path: '/gerador-minutas', icon: FileText },
   { name: 'Minutas', path: '/minutas', icon: FolderOpen },
+  { name: 'Prazos', path: '/prazos', icon: Clock },
   { name: 'Auditoria', path: '/auditoria', icon: Activity },
   { name: 'Configurações', path: '/configuracoes', icon: Settings },
 ]
