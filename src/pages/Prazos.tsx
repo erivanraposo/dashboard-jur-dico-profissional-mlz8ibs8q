@@ -16,6 +16,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Clock, Plus, Check, Pencil, Trash2, RotateCcw, Calculator, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
+import HelpButton from '@/components/HelpButton'
 import { useToast } from '@/hooks/use-toast'
 import { calcularPrazo, TIPOS_PRAZO } from '@/lib/prazo'
 
@@ -151,7 +152,7 @@ export default function Prazos() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            <Clock className="h-6 w-6 text-primary" /> Prazos
+            <Clock className="h-6 w-6 text-primary" /> Prazos <HelpButton anchor="prazos" />
           </h1>
           <p className="text-sm text-muted-foreground">Controle de prazos e datas-limite dos seus processos.</p>
         </div>

@@ -30,6 +30,7 @@ import {
   MoreHorizontal,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
+import HelpButton from '@/components/HelpButton'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   DropdownMenu,
@@ -3384,8 +3385,8 @@ export default function GeradorMinutas() {
       >
         <div className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between gap-2 flex-wrap px-4 py-3 border-b mb-4 -mx-4 sm:mx-0 sm:rounded-t-lg shadow-sm">
           <div className="flex-1 min-w-[200px]">
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-primary">
-              Gerador de Minutas
+            <h1 className="flex items-center gap-2 text-2xl md:text-3xl font-bold tracking-tight text-primary">
+              Gerador de Minutas <HelpButton anchor="minutas" />
             </h1>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <p className="text-muted-foreground text-xs md:text-sm hidden sm:block">

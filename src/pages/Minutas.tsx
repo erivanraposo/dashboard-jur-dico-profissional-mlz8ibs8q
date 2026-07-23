@@ -31,6 +31,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { FolderOpen, FileEdit, Trash2, Search as SearchIcon } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
@@ -116,7 +117,7 @@ export default function Minutas() {
     <div className="space-y-6 max-w-7xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center gap-2">
-          <FolderOpen className="h-8 w-8" /> Minutas Salvas
+          <FolderOpen className="h-8 w-8" /> Minutas Salvas <HelpButton anchor="minutas" />
         </h1>
         <p className="text-muted-foreground mt-1">
           Gerencie e acesse seus rascunhos e peças geradas.

@@ -33,6 +33,7 @@ import {
   Loader2,
   Image as ImageIcon,
 } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 
 const DEFAULT_BRANDING = {
   nome_escritorio: '',
@@ -288,7 +289,7 @@ export default function Configuracoes() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center gap-2">
           <Settings className="h-8 w-8" />
-          Identidade e Configurações
+          Identidade e Configurações <HelpButton anchor="config" />
         </h1>
         <p className="text-muted-foreground mt-1">
           Gerencie a equipe e a identidade visual do escritório.

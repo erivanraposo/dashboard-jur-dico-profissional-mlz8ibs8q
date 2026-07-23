@@ -18,6 +18,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Briefcase, FileText, Upload, Download, Trash2, File as FileIcon, Plus, FileSearch } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -323,7 +324,7 @@ export default function Processos() {
     <div className="space-y-6 max-w-7xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center gap-2">
-          <Briefcase className="h-8 w-8" /> Processos
+          <Briefcase className="h-8 w-8" /> Processos <HelpButton anchor="processos" />
         </h1>
         <p className="text-muted-foreground mt-1">
           Gestão centralizada de casos ativos e arquivados.

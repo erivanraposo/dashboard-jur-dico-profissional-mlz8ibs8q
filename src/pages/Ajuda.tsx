@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Globe, ArrowRight, ShieldCheck, FileText, Clock, Users, Download, Bot } from 'lucide-react'
 import PublicShell from '@/components/PublicShell'
@@ -109,6 +110,23 @@ function Sec({ id, title, children }: { id: string; title: string; children: Rea
 }
 
 export default function Ajuda() {
+  // Em SPA, o navegador tenta rolar até a âncora antes de o React renderizar a seção.
+  // Rolamos manualmente após o render (e a cada mudança de hash).
+  useEffect(() => {
+    const scrollToHash = () => {
+      const id = window.location.hash.replace('#', '')
+      if (!id) return
+      const el = document.getElementById(id)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    const t = setTimeout(scrollToHash, 60)
+    window.addEventListener('hashchange', scrollToHash)
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener('hashchange', scrollToHash)
+    }
+  }, [])
+
   return (
     <PublicShell>
       {/* Hero */}
