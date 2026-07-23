@@ -28,6 +28,7 @@ import {
   Plus,
   Trash2,
   MoreHorizontal,
+  FileSearch,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import HelpButton from '@/components/HelpButton'
@@ -345,11 +346,13 @@ export default function GeradorMinutas() {
   const [analysisInstructions, setAnalysisInstructions] = useState<string>('')
   const [attachments, setAttachments] = useState<
     {
+      id?: string
       name: string
       path: string
       pages?: number
       digestStatus?: 'processing' | 'done' | 'error'
       processId?: string | null
+      persisted?: boolean
     }[]
   >([])
 
@@ -506,9 +509,33 @@ export default function GeradorMinutas() {
       if (data) {
         setSelectedProcess(data.id)
         setClientName(data.client_name || '')
+
+        // Reidrata os autos já anexados ao processo (marca persisted = já pertencem
+        // ao processo; removê-los da análise NÃO os apaga do sistema).
+        const { data: atts } = await supabase
+          .from('process_attachments')
+          .select('id, file_name, file_path, digest_status')
+          .eq('process_id', processId)
+          .order('created_at', { ascending: true })
+        if (atts && atts.length > 0) {
+          setAttachments(
+            atts.map((a: any) => ({
+              id: a.id,
+              name: a.file_name,
+              path: a.file_path,
+              digestStatus: (a.digest_status as 'processing' | 'done' | 'error') || undefined,
+              processId,
+              persisted: true,
+            })),
+          )
+        }
+
         toast({
           title: 'Processo vinculado',
-          description: `Nova minuta será associada ao processo ${data.case_number}. Anexe os autos abaixo para analisar.`,
+          description:
+            atts && atts.length > 0
+              ? `${atts.length} anexo(s) do processo ${data.case_number} carregado(s).`
+              : `Nova minuta será associada ao processo ${data.case_number}. Anexe os autos para analisar.`,
         })
       }
     } catch (err: any) {
@@ -848,6 +875,7 @@ export default function GeradorMinutas() {
           throw new Error(`Falha ao registrar anexo no banco: ${dbError.message}`)
         }
         newAttachments.push({
+          id: insData?.id,
           name: file.name,
           path: filePath,
           pages,
@@ -901,10 +929,17 @@ export default function GeradorMinutas() {
   }
 
   const removeAttachment = async (path: string) => {
-    if (!window.confirm('Remover este anexo? O arquivo será excluído do sistema.')) return
-
     const attachmentToRemove = attachments.find((a) => a.path === path)
     if (!attachmentToRemove) return
+
+    // Documento pré-existente do processo (reidratado): tira só desta análise,
+    // NÃO apaga do sistema — o arquivo continua pertencendo ao processo.
+    if (attachmentToRemove.persisted) {
+      setAttachments((prev) => prev.filter((a) => a.path !== path))
+      return
+    }
+
+    if (!window.confirm('Remover este anexo? O arquivo será excluído do sistema.')) return
 
     setAttachments((prev) => prev.filter((a) => a.path !== path))
 
@@ -934,18 +969,24 @@ export default function GeradorMinutas() {
   // grande foi dividido em 12+ partes e o usuário quer recomeçar.
   const clearAllAttachments = async () => {
     if (attachments.length === 0) return
-    if (
-      !window.confirm(
-        `Remover todos os ${attachments.length} anexo(s)? Os arquivos e seus resumos estruturados serão excluídos do sistema.`,
-      )
-    )
-      return
+    const toDelete = attachments.filter((a) => !a.persisted) // só uploads da sessão são excluídos
+    const persistedCount = attachments.length - toDelete.length
+    const msg =
+      toDelete.length > 0
+        ? `Limpar os ${attachments.length} anexo(s) desta análise?\n\n${toDelete.length} enviado(s) nesta sessão serão EXCLUÍDOS do sistema.` +
+          (persistedCount > 0
+            ? `\n${persistedCount} já pertencem ao processo e apenas saem desta análise (não são apagados).`
+            : '')
+        : `Tirar os ${attachments.length} anexo(s) desta análise? Eles pertencem ao processo e NÃO serão apagados — apenas saem desta análise.`
+    if (!window.confirm(msg)) return
 
     const toRemove = [...attachments]
     setAttachments([])
 
+    if (toDelete.length === 0) return // nada a excluir do sistema
+
     try {
-      const paths = toRemove.map((a) => a.path)
+      const paths = toDelete.map((a) => a.path)
       const { error: dbError } = await supabase
         .from('process_attachments')
         .delete()
@@ -958,8 +999,8 @@ export default function GeradorMinutas() {
       if (storageError) throw storageError
 
       toast({
-        title: 'Anexos removidos',
-        description: `${toRemove.length} arquivo(s) excluído(s).`,
+        title: 'Anexos limpos',
+        description: `${paths.length} arquivo(s) excluído(s)${persistedCount > 0 ? `; ${persistedCount} permanecem no processo` : ''}.`,
       })
     } catch (err: any) {
       setAttachments(toRemove)
@@ -969,6 +1010,36 @@ export default function GeradorMinutas() {
         variant: 'destructive',
       })
     }
+  }
+
+  // Indexa (gera digests) os PDFs ainda não indexados desta análise — deixa a
+  // análise mais barata e capaz de lidar com muitos documentos de uma vez.
+  const handleIndexAttachments = async () => {
+    const toIngest = attachments.filter(
+      (a) =>
+        a.id &&
+        a.digestStatus !== 'done' &&
+        a.digestStatus !== 'processing' &&
+        /\.pdf$/i.test(a.name),
+    )
+    if (toIngest.length === 0) {
+      return toast({
+        title: 'Nada a indexar',
+        description: 'Os PDFs já estão indexados (ou não há PDFs para indexar).',
+      })
+    }
+    if (
+      !window.confirm(
+        `Indexar ${toIngest.length} documento(s)?\n\nCada PDF gera um resumo estruturado (pago uma vez) que deixa a análise mais barata e capaz de lidar com muitos documentos de uma vez.`,
+      )
+    )
+      return
+    setAttachments((prev) =>
+      prev.map((a) =>
+        toIngest.some((t) => t.path === a.path) ? { ...a, digestStatus: 'processing' as const } : a,
+      ),
+    )
+    await runIngestionPool(toIngest.map((a) => ({ id: a.id as string, path: a.path, name: a.name })))
   }
 
   const toggleAgent = (agentId: string) => {
@@ -3990,15 +4061,35 @@ export default function GeradorMinutas() {
                               <span className="text-xs text-muted-foreground">
                                 {attachments.length} anexo(s)
                               </span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-                                onClick={clearAllAttachments}
-                              >
-                                <Trash2 className="w-3.5 h-3.5 mr-1" />
-                                Limpar todos
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                {attachments.some(
+                                  (a) =>
+                                    a.id &&
+                                    a.digestStatus !== 'done' &&
+                                    a.digestStatus !== 'processing' &&
+                                    /\.pdf$/i.test(a.name),
+                                ) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-xs text-primary hover:text-primary"
+                                    onClick={handleIndexAttachments}
+                                    title="Gerar resumos estruturados (digests) dos PDFs — deixa a análise mais barata e capaz de lidar com muitos documentos"
+                                  >
+                                    <FileSearch className="w-3.5 h-3.5 mr-1" />
+                                    Indexar autos
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                                  onClick={clearAllAttachments}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                  Limpar todos
+                                </Button>
+                              </div>
                             </div>
                             {attachments.map((file, i) => (
                               <div
