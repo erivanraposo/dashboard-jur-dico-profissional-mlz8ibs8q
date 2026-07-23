@@ -85,7 +85,7 @@ const ProcessMinutas = ({ processId, caseNumber }: { processId: string; caseNumb
               className="flex items-center justify-between p-3 hover:bg-muted/50 cursor-pointer transition-colors"
               onClick={() => navigate(`/gerador-minutas?id=${m.id}`)}
             >
-              <div className="flex flex-col gap-1 overflow-hidden">
+              <div className="flex flex-col gap-1 min-w-0 flex-1">
                 <span className="text-sm font-medium truncate" title={m.title}>
                   {m.title}
                 </span>
@@ -265,10 +265,10 @@ const ProcessDocuments = ({
         ) : (
           documents.map((doc) => (
             <div key={doc.id} className="flex items-center justify-between p-3">
-              <div className="flex items-center gap-3 overflow-hidden">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <FileIcon className="h-5 w-5 text-muted-foreground shrink-0" />
-                <div className="truncate">
-                  <p className="text-sm font-medium truncate">{doc.file_name}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate" title={doc.file_name}>{doc.file_name}</p>
                   <p className="text-xs text-muted-foreground">
                     {new Date(doc.created_at).toLocaleDateString()} •{' '}
                     {(doc.file_size / 1024 / 1024).toFixed(2)} MB
@@ -388,7 +388,7 @@ export default function Processos() {
                             Detalhes
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
+                        <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden grid-cols-[minmax(0,1fr)]">
                           <DialogHeader>
                             <DialogTitle>Detalhes do Processo</DialogTitle>
                           </DialogHeader>
