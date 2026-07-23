@@ -22,6 +22,7 @@ import {
   Activity,
   FolderOpen,
   Clock,
+  HelpCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -78,6 +79,14 @@ export default function Layout() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Ajuda">
+                  <a href="/ajuda" target="_blank" rel="noopener noreferrer">
+                    <HelpCircle className="h-5 w-5" />
+                    <span>Ajuda</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarContent>
           <SidebarFooter className="border-t p-4 space-y-3">

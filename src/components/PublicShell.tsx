@@ -1,15 +1,22 @@
 import { Link } from 'react-router-dom'
+import { useAuth } from '@/hooks/use-auth'
 
 /**
  * Casca comum das páginas públicas (Como verificamos fontes, Ajuda).
  * Header + footer no mesmo estilo da landing. Paleta: navy #1e3a5f, dourado #c9a35a.
+ * Ciente do login: se o usuário está autenticado (ex.: abriu /ajuda pelo menu do app),
+ * mostra "Voltar ao sistema" em vez de "Entrar" — evita a impressão de ter sido deslogado.
  */
 export default function PublicShell({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
+  const ctaTo = user ? '/' : '/login'
+  const ctaLabel = user ? 'Voltar ao sistema' : 'Entrar'
+
   return (
     <div className="min-h-screen bg-[#faf8f3] font-sans text-[#1a2230] antialiased">
       <header className="sticky top-0 z-30 border-b border-[#1e3a5f]/10 bg-[#faf8f3]/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <Link to="/" className="flex items-center gap-2.5">
+          <Link to={user ? '/' : '/'} className="flex items-center gap-2.5">
             <img src="/brand/logo-symbol-128.png" alt="" className="h-8 w-8 object-contain" />
             <span className="font-serif text-xl font-bold tracking-tight text-[#1e3a5f]">LexAxis</span>
           </Link>
@@ -18,10 +25,10 @@ export default function PublicShell({ children }: { children: React.ReactNode })
             <Link to="/ajuda" className="transition-colors hover:text-[#1e3a5f]">Ajuda</Link>
           </nav>
           <Link
-            to="/login"
+            to={ctaTo}
             className="rounded-md border border-[#1e3a5f]/25 px-4 py-2 text-sm font-semibold text-[#1e3a5f] transition-colors hover:bg-[#1e3a5f] hover:text-white"
           >
-            Entrar
+            {ctaLabel}
           </Link>
         </div>
       </header>
@@ -40,7 +47,7 @@ export default function PublicShell({ children }: { children: React.ReactNode })
           <div className="flex items-center gap-6 text-sm text-[#475569]">
             <Link to="/como-verificamos" className="transition-colors hover:text-[#1e3a5f]">Como verificamos</Link>
             <Link to="/ajuda" className="transition-colors hover:text-[#1e3a5f]">Ajuda</Link>
-            <Link to="/login" className="transition-colors hover:text-[#1e3a5f]">Entrar</Link>
+            <Link to={ctaTo} className="transition-colors hover:text-[#1e3a5f]">{ctaLabel}</Link>
           </div>
           <p className="text-xs text-[#475569]">© {new Date().getFullYear()} LexAxis</p>
         </div>

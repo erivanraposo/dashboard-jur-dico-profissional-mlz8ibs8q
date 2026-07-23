@@ -485,6 +485,14 @@ export default function GeradorMinutas() {
     }
   }, [searchParams])
 
+  // Pré-seleciona o tipo quando vier via ?tipo= (ex.: "Resumir/Indexar processo" → Relatório de Caso)
+  useEffect(() => {
+    const tipo = searchParams.get('tipo')
+    if (tipo && !searchParams.get('id') && MINUTE_TYPES.includes(tipo)) {
+      setMinuteType(tipo)
+    }
+  }, [searchParams])
+
   const loadProcessForNewMinute = async (processId: string) => {
     try {
       const { data, error } = await supabase
@@ -499,7 +507,7 @@ export default function GeradorMinutas() {
         setClientName(data.client_name || '')
         toast({
           title: 'Processo vinculado',
-          description: `Nova minuta será associada ao processo ${data.case_number}`,
+          description: `Nova minuta será associada ao processo ${data.case_number}. Anexe os autos abaixo para analisar.`,
         })
       }
     } catch (err: any) {
@@ -1011,6 +1019,22 @@ export default function GeradorMinutas() {
       }
     }
 
+    // Guard-rail: muitos documentos de visão (não indexados) estouram o tempo de
+    // processamento da Edge Function, que é morta antes de gerar resultado. Avisar.
+    const visionDocs = attachments.filter((a) => !a.digestStatus)
+    if (visionDocs.length > 8) {
+      if (
+        !window.confirm(
+          `Você está enviando ${visionDocs.length} documentos não indexados para a análise.\n\n` +
+            `Análises com muitos documentos pesados podem falhar por exceder o tempo de processamento — a análise é interrompida sem resultado.\n\n` +
+            `Recomendamos analisar até cerca de 8 por vez: remova alguns anexos (✕) e tente novamente.\n\n` +
+            `OK = tentar assim mesmo  |  Cancelar = voltar para remover anexos`,
+        )
+      ) {
+        return
+      }
+    }
+
     const hasAttachments = attachments.length > 0
     const hasProcessContext = selectedProcess !== 'none'
     const hasContent = content && content.length >= 10 && content !== defaultContent
@@ -1272,9 +1296,14 @@ export default function GeradorMinutas() {
         errorMsg.includes('EMPTY_RESPONSE') ||
         err.message?.includes('EMPTY_RESPONSE') ||
         errorMsg.includes('vazia ou malformada') ||
-        errorMsg.includes('A IA não retornou conteúdo')
+        errorMsg.includes('A IA não retornou conteúdo') ||
+        errorMsg.includes('não retornou sugestões')
       ) {
-        errorMsg = 'A IA não retornou conteúdo'
+        const visionCount = attachments.filter((a) => !a.digestStatus).length
+        errorMsg =
+          visionCount > 8
+            ? `A análise não retornou sugestões — provavelmente por excesso de documentos (${visionCount} não indexados): o processamento excede o tempo limite e é interrompido. Tente com menos documentos por vez (até cerca de 8), removendo alguns anexos (✕).`
+            : 'A IA não retornou conteúdo. Tente novamente; se persistir, reduza o número de anexos.'
       }
 
       const errorDesc = diagnosticLog ? `${errorMsg} \nDetalhes: ${diagnosticLog}` : errorMsg

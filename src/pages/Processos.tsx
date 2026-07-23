@@ -17,7 +17,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Briefcase, FileText, Upload, Download, Trash2, File as FileIcon, Plus } from 'lucide-react'
+import { Briefcase, FileText, Upload, Download, Trash2, File as FileIcon, Plus, FileSearch } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -45,16 +45,30 @@ const ProcessMinutas = ({ processId, caseNumber }: { processId: string; caseNumb
 
   return (
     <div className="space-y-4 pt-2">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-2">
         <h3 className="font-semibold text-sm">Minutas Vinculadas</h3>
-        <Button
-          size="sm"
-          onClick={() => navigate(`/gerador-minutas?process_id=${processId}`)}
-          className="gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Nova Minuta para este Processo
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            title="Gera um Relatório de Caso: o sistema lê os autos anexados e produz um resumo, indexando o conteúdo do processo (útil para processos aguardando decisão)."
+            onClick={() =>
+              navigate(`/gerador-minutas?process_id=${processId}&tipo=${encodeURIComponent('Relatório de Caso')}`)
+            }
+            className="gap-2"
+          >
+            <FileSearch className="h-4 w-4" />
+            Resumir / Indexar
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => navigate(`/gerador-minutas?process_id=${processId}`)}
+            className="gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Nova Minuta
+          </Button>
+        </div>
       </div>
 
       <div className="border rounded-md divide-y max-h-[300px] overflow-auto">
@@ -374,7 +388,7 @@ export default function Processos() {
                             Detalhes
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="sm:max-w-lg">
+                        <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
                           <DialogHeader>
                             <DialogTitle>Detalhes do Processo</DialogTitle>
                           </DialogHeader>
