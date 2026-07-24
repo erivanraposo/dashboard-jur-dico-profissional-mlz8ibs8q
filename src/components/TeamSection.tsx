@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { UserPlus, X, Trash2, Loader2 } from 'lucide-react'
+import { UserPlus, X, Trash2, Loader2, ShieldCheck } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { supabase } from '@/lib/supabase/client'
@@ -147,6 +147,30 @@ export default function TeamSection() {
     }
   }
 
+  const handlePromote = async (memberId: string, memberName: string) => {
+    if (
+      !window.confirm(
+        `Tornar ${memberName} administrador(a) do escritório?\n\nEle passará a gerenciar a equipe (convidar/remover membros) e as configurações — os mesmos poderes que você tem. Use apenas para sócios de confiança.`,
+      )
+    )
+      return
+    try {
+      const { error } = await supabase.rpc('admin_set_member_role', {
+        p_member: memberId,
+        p_role: 'owner',
+      })
+      if (error) throw error
+      toast({ title: 'Administrador definido', description: `${memberName} agora administra o escritório.` })
+      await loadTeam()
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível tornar administrador.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   const handleRemoveMember = async (memberId: string, memberName: string) => {
     if (
       !window.confirm(
@@ -199,33 +223,47 @@ export default function TeamSection() {
                       <TableCell className="font-medium">{member.full_name}</TableCell>
                       <TableCell>{new Date(member.created_at).toLocaleDateString('pt-BR')}</TableCell>
                       <TableCell>
-                        <Select
-                          value={member.role || 'associado'}
-                          onValueChange={(val) => handleRoleChange(member.id, val)}
-                          disabled={member.role === 'owner'}
-                        >
-                          <SelectTrigger className="w-[180px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="owner">Owner</SelectItem>
-                            <SelectItem value="socio">Sócio</SelectItem>
-                            <SelectItem value="associado">Associado</SelectItem>
-                            <SelectItem value="estagiario">Estagiário</SelectItem>
-                            <SelectItem value="financeiro">Financeiro</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        {member.role === 'owner' ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                            <ShieldCheck className="h-3.5 w-3.5" /> Administrador
+                          </span>
+                        ) : (
+                          <Select
+                            value={member.role || 'associado'}
+                            onValueChange={(val) => handleRoleChange(member.id, val)}
+                          >
+                            <SelectTrigger className="w-[180px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="socio">Sócio</SelectItem>
+                              <SelectItem value="associado">Associado</SelectItem>
+                              <SelectItem value="estagiario">Estagiário</SelectItem>
+                              <SelectItem value="financeiro">Financeiro</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         {member.role !== 'owner' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive"
-                            onClick={() => handleRemoveMember(member.id, member.full_name)}
-                          >
-                            <Trash2 className="mr-1 h-3.5 w-3.5" /> Remover
-                          </Button>
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-2 text-xs text-muted-foreground hover:text-primary"
+                              onClick={() => handlePromote(member.id, member.full_name)}
+                            >
+                              <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Tornar admin
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive"
+                              onClick={() => handleRemoveMember(member.id, member.full_name)}
+                            >
+                              <Trash2 className="mr-1 h-3.5 w-3.5" /> Remover
+                            </Button>
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>
