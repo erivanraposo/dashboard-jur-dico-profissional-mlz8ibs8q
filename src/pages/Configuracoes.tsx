@@ -289,14 +289,40 @@ export default function Configuracoes() {
 
   const handleRoleChange = async (memberId: string, newRole: string) => {
     try {
-      const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', memberId)
+      // RPC owner-gated: o RLS de profiles só permite auto-update, então a troca
+      // de papel de OUTRO membro precisa passar por função SECURITY DEFINER.
+      const { error } = await supabase.rpc('admin_set_member_role', {
+        p_member: memberId,
+        p_role: newRole,
+      })
       if (error) throw error
       setTeamMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m)))
       toast({ title: 'Sucesso', description: 'Papel atualizado com sucesso.' })
     } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Não foi possível atualizar o papel.',
+        description: error?.message || 'Não foi possível atualizar o papel.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleRemoveMember = async (memberId: string, memberName: string) => {
+    if (
+      !window.confirm(
+        `Remover ${memberName} da equipe?\n\nEle perde o acesso aos casos do escritório (a conta e o trabalho já feito são preservados). Isso libera a vaga de membro.`,
+      )
+    )
+      return
+    try {
+      const { error } = await supabase.rpc('admin_remove_member', { p_member: memberId })
+      if (error) throw error
+      toast({ title: 'Membro removido', description: `${memberName} não faz mais parte da equipe.` })
+      await loadData()
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível remover o membro.',
         variant: 'destructive',
       })
     }
@@ -385,6 +411,7 @@ export default function Configuracoes() {
                     <TableHead>Nome</TableHead>
                     <TableHead>Membro desde</TableHead>
                     <TableHead>Papel</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -411,6 +438,18 @@ export default function Configuracoes() {
                             <SelectItem value="financeiro">Financeiro</SelectItem>
                           </SelectContent>
                         </Select>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {member.role !== 'owner' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive"
+                            onClick={() => handleRemoveMember(member.id, member.full_name)}
+                          >
+                            <Trash2 className="mr-1 h-3.5 w-3.5" /> Remover
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -447,8 +486,9 @@ export default function Configuracoes() {
 
             {atMemberLimit ? (
               <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                Durante o beta, cada workspace pode ter <strong>1 membro convidado</strong>. Para
-                trocar, revogue o convite pendente ou remova o membro atual.
+                Durante os testes na versão beta, cada workspace do LexAxis pode ter apenas{' '}
+                <strong>1 membro convidado</strong>. Para trocar o membro convidado pelo administrador
+                do escritório, revogue o convite pendente ou remova o membro atual.
               </p>
             ) : (
               <form onSubmit={handleInvite} className="flex flex-col gap-3 sm:flex-row sm:items-end">
