@@ -43,6 +43,7 @@ const AGENTES = [
     itens: [
       ['Peticionador Cível', 'Peças e recursos da área cível.'],
       ['Contestação Cível', 'Defesas e preliminares processuais.'],
+      ['Contrarrazões', 'Resposta a recurso (apelação, agravo, REsp/RE, RO/RR, apelação criminal, RESE, agravo em execução): admissibilidade e preliminares de não conhecimento, refutação pontual do mérito e defesa da decisão recorrida. Indique o recurso no campo de instruções. Aparece ao escolher o tipo "Contrarrazões".'],
       ['Análise de Sentença', 'Analisa sentença/acórdão: fundamentos, vícios e cabimento recursal.'],
       ['ms-tributario', 'Mandado de segurança tributário: cabimento, prazo, autoridade, liminar.'],
       ['embargos-execucao-fiscal', 'Embargos à execução fiscal: garantia, prazo, CDA, prescrição.'],
@@ -200,8 +201,15 @@ export default function Ajuda() {
               Toda análise acontece no <strong>Gerador de Minutas</strong>. Escolha o <strong>tipo</strong>{' '}
               conforme o que você precisa: <em>Relatório de Caso</em> (analisa o processo inteiro),
               Petição Inicial, Contestação, Parecer Jurídico, Parecer Tributário, Recurso de Apelação,
-              Agravo, Resposta à Acusação, Habeas Corpus, entre outros. O tipo define o modelo e filtra
-              os agentes compatíveis.
+              Agravo, <em>Contrarrazões</em>, Resposta à Acusação, Habeas Corpus, entre outros. O tipo
+              define o modelo e filtra os agentes compatíveis.
+            </p>
+            <p className="rounded-lg border border-[#c9a35a]/40 bg-[#c9a35a]/10 px-4 py-3 text-sm text-[#1e3a5f]">
+              <strong>Respondendo a um recurso?</strong> Escolha o tipo <em>Contrarrazões</em>: aparece o
+              agente <strong>Contrarrazões</strong>, especialista em prazos, admissibilidade e nas súmulas
+              de cada recurso. No campo de <strong>instruções</strong>, diga qual recurso está respondendo
+              (ex.: <em>“contrarrazões à apelação da parte X”</em> ou <em>“ao recurso especial”</em>) para
+              ele ajustar a análise.
             </p>
             <ol className="mt-2 space-y-4">
               {PASSOS.map((p) => (
