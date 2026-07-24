@@ -23,12 +23,15 @@ import {
   FolderOpen,
   Clock,
   HelpCircle,
+  Users,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useAuth } from '@/hooks/use-auth'
+import { useCurrentUser } from '@/hooks/use-current-user'
 
+// ownerOnly: itens visíveis apenas para o administrador do escritório.
 const navigation = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
   { name: 'Processos', path: '/processos', icon: Briefcase },
@@ -37,13 +40,16 @@ const navigation = [
   { name: 'Minutas', path: '/minutas', icon: FolderOpen },
   { name: 'Prazos', path: '/prazos', icon: Clock },
   { name: 'Auditoria', path: '/auditoria', icon: Activity },
+  { name: 'Equipe', path: '/equipe', icon: Users, ownerOnly: true },
   { name: 'Configurações', path: '/configuracoes', icon: Settings },
 ]
 
 export default function Layout() {
   const location = useLocation()
   const { signOut, user } = useAuth()
+  const { isOwner } = useCurrentUser()
   const navigate = useNavigate()
+  const visibleNav = navigation.filter((item) => !item.ownerOnly || isOwner)
 
   const handleLogout = async () => {
     await signOut()
@@ -65,7 +71,7 @@ export default function Layout() {
           </SidebarHeader>
           <SidebarContent className="py-4">
             <SidebarMenu>
-              {navigation.map((item) => (
+              {visibleNav.map((item) => (
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     asChild

@@ -16,6 +16,7 @@ import Processos from './pages/Processos'
 import Minutas from './pages/Minutas'
 import Prazos from './pages/Prazos'
 import Auditoria from './pages/Auditoria'
+import Equipe from './pages/Equipe'
 import Configuracoes from './pages/Configuracoes'
 import NotFound from './pages/NotFound'
 import Auth from './pages/Auth'
@@ -107,6 +108,7 @@ const AppContent = () => (
       <Route path="/minutas" element={<Minutas />} />
       <Route path="/prazos" element={<Prazos />} />
       <Route path="/auditoria" element={<Auditoria />} />
+      <Route path="/equipe" element={<Equipe />} />
       <Route path="/configuracoes" element={<Configuracoes />} />
     </Route>
     <Route path="*" element={<NotFound />} />
