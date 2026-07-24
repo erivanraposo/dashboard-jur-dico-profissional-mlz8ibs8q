@@ -44,6 +44,7 @@ const MINUTE_TYPES = [
   'Alegações Finais',
   'Recurso de Apelação',
   'Agravo de Instrumento',
+  'Contrarrazões',
   'Relatório de Caso',
   'Parecer Jurídico',
   'Outros',

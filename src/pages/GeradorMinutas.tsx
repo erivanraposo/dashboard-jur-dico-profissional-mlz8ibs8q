@@ -248,6 +248,7 @@ const MINUTE_TYPES = [
   'Alegações Finais',
   'Recurso de Apelação',
   'Agravo de Instrumento',
+  'Contrarrazões',
   'Relatório de Caso',
   'Parecer Jurídico',
   'Parecer Tributário',
@@ -3358,10 +3359,61 @@ export default function GeradorMinutas() {
       </div>
     `
 
+    // Template específico: Contrarrazões (resposta ao recurso da parte adversa — CPC 1.010 § 1º,
+    // apelação; e demais recursos). Peça de RESISTÊNCIA: refuta os fundamentos do recorrente e
+    // pede a manutenção da decisão recorrida.
+    const contrarrazoesTemplate = `
+      <div class="cover-page" style="text-align: center; margin-top: 100px; margin-bottom: 200px;">
+        <h1 style="color: #1E40AF; font-size: 36px; font-weight: bold; margin-bottom: 20px;">Contrarrazões</h1>
+        <h2 style="color: #334155; font-size: 24px; margin-bottom: 10px;">${processStr}</h2>
+        <h3 style="color: #64748b; font-size: 20px;">Recorrido(a): ${clientStr}</h3>
+        <div style="margin-top: 60px; padding-top: 20px; border-top: 2px solid #e2e8f0; display: inline-block; color: #94a3b8; font-weight: 500;">
+          LexAxis - Inteligência Jurídica
+        </div>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="table-of-contents" style="margin-bottom: 30px;">
+        <h2 style="color: #1E40AF; border-bottom: 2px solid #1E40AF; padding-bottom: 10px; margin-bottom: 20px; font-weight: bold;">Sumário</h2>
+        <ul style="list-style-type: none; padding-left: 0; line-height: 2; font-size: 18px; color: #334155;">
+          <li><span style="font-weight: bold;">1.</span> Endereçamento e Qualificação</li>
+          <li><span style="font-weight: bold;">2.</span> Tempestividade da Resposta</li>
+          <li><span style="font-weight: bold;">3.</span> Síntese das Razões do Recurso</li>
+          <li><span style="font-weight: bold;">4.</span> Preliminares — Do Não Conhecimento</li>
+          <li><span style="font-weight: bold;">5.</span> Do Mérito — Refutação dos Fundamentos Recursais</li>
+          <li><span style="font-weight: bold;">6.</span> Da Manutenção da Decisão Recorrida</li>
+          <li><span style="font-weight: bold;">7.</span> Pedidos</li>
+        </ul>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="report-content" style="font-family: inherit;">
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">1. Endereçamento e Qualificação</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Contrarrazões dirigidas ao Tribunal competente, por intermédio do juízo a quo ([VARA/COMARCA]); número dos autos, identificação do recorrente e do recorrido e do subscritor ([NOME DO ADVOGADO], [NÚMERO OAB]).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">2. Tempestividade da Resposta</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Base legal do prazo de resposta (ex.: CPC art. 1.010 § 1º, 15 dias úteis para a apelação; prazo próprio de cada recurso), data da intimação e demonstração da tempestividade.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">3. Síntese das Razões do Recurso</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Exposição objetiva do que o recorrente pretende e dos fundamentos que invoca — sem antecipar concordância —, delimitando exatamente os pontos que serão rebatidos.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">4. Preliminares — Do Não Conhecimento</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Óbices ao conhecimento do recurso, quando presentes: intempestividade, deserção (falta de preparo — CPC art. 1.007), ausência de dialeticidade / impugnação específica dos fundamentos da decisão (Súmula 283 do STF), falta de interesse ou de legitimidade recursal, preclusão.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">5. Do Mérito — Refutação dos Fundamentos Recursais</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Enfrentamento de CADA fundamento do recurso, na mesma ordem em que deduzidos: demonstração do acerto da decisão recorrida, com legislação (artigo e parágrafo), jurisprudência identificada (tribunal, classe, número, relator) e súmulas aplicáveis. Toda afirmação ancorada nos autos; lacunas marcadas com [A VERIFICAR].</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">6. Da Manutenção da Decisão Recorrida</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Consolidação da tese de resistência: por que a sentença/acórdão deve ser integralmente mantido; eventual pedido de majoração dos honorários em grau recursal (CPC art. 85 § 11).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">7. Pedidos</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Em ordem: o não conhecimento do recurso (acolhidas as preliminares); subsidiariamente, no mérito, o seu desprovimento, com a manutenção da decisão recorrida e a fixação de honorários recursais.</p>
+      </div>
+    `
+
     const TEMPLATES_BY_TYPE: Record<string, string> = {
       'Parecer Tributário': parecerTributarioTemplate,
       'Resposta à Acusação': respostaAcusacaoTemplate,
       'Habeas Corpus': habeasCorpusTemplate,
+      Contrarrazões: contrarrazoesTemplate,
     }
 
     const template = TEMPLATES_BY_TYPE[minuteType] ?? `
