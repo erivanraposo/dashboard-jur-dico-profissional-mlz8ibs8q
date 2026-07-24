@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { UserPlus, X, Trash2, Loader2, ShieldCheck } from 'lucide-react'
+import { UserPlus, X, Trash2, Loader2, ShieldCheck, ShieldOff } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { supabase } from '@/lib/supabase/client'
@@ -49,6 +49,7 @@ export default function TeamSection() {
   const [inviteRole, setInviteRole] = useState('estagiario')
   const [inviting, setInviting] = useState(false)
 
+  const currentUserId = user?.id
   const nonOwnerMembers = teamMembers.filter((m) => m.role !== 'owner').length
   const atMemberLimit = nonOwnerMembers + invitations.length >= 1
 
@@ -171,6 +172,30 @@ export default function TeamSection() {
     }
   }
 
+  const handleDemote = async (memberId: string, memberName: string) => {
+    if (
+      !window.confirm(
+        `Revogar o acesso de administrador de ${memberName}?\n\nEle continua na equipe, mas volta a ser um membro comum (Associado) — deixa de gerenciar equipe e configurações. Depois você pode ajustar o papel dele.`,
+      )
+    )
+      return
+    try {
+      const { error } = await supabase.rpc('admin_set_member_role', {
+        p_member: memberId,
+        p_role: 'associado',
+      })
+      if (error) throw error
+      toast({ title: 'Administrador revogado', description: `${memberName} voltou a ser membro comum.` })
+      await loadTeam()
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível revogar o administrador.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   const handleRemoveMember = async (memberId: string, memberName: string) => {
     if (
       !window.confirm(
@@ -245,26 +270,47 @@ export default function TeamSection() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        {member.role !== 'owner' && (
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 px-2 text-xs text-muted-foreground hover:text-primary"
-                              onClick={() => handlePromote(member.id, member.full_name)}
-                            >
-                              <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Tornar admin
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive"
-                              onClick={() => handleRemoveMember(member.id, member.full_name)}
-                            >
-                              <Trash2 className="mr-1 h-3.5 w-3.5" /> Remover
-                            </Button>
-                          </div>
-                        )}
+                        {member.role === 'owner'
+                          ? member.id !== currentUserId && (
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 px-2 text-xs text-muted-foreground hover:text-primary"
+                                  onClick={() => handleDemote(member.id, member.full_name)}
+                                >
+                                  <ShieldOff className="mr-1 h-3.5 w-3.5" /> Revogar admin
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive"
+                                  onClick={() => handleRemoveMember(member.id, member.full_name)}
+                                >
+                                  <Trash2 className="mr-1 h-3.5 w-3.5" /> Remover
+                                </Button>
+                              </div>
+                            )
+                          : (
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 px-2 text-xs text-muted-foreground hover:text-primary"
+                                  onClick={() => handlePromote(member.id, member.full_name)}
+                                >
+                                  <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Tornar admin
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive"
+                                  onClick={() => handleRemoveMember(member.id, member.full_name)}
+                                >
+                                  <Trash2 className="mr-1 h-3.5 w-3.5" /> Remover
+                                </Button>
+                              </div>
+                            )}
                       </TableCell>
                     </TableRow>
                   ))}
