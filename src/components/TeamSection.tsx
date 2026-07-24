@@ -50,6 +50,9 @@ export default function TeamSection() {
   const [inviting, setInviting] = useState(false)
 
   const currentUserId = user?.id
+  // Fundador = owner mais antigo (a lista vem ordenada por created_at asc).
+  const founderId = teamMembers.find((m) => m.role === 'owner')?.id
+  const isFounder = !!currentUserId && currentUserId === founderId
   const nonOwnerMembers = teamMembers.filter((m) => m.role !== 'owner').length
   const atMemberLimit = nonOwnerMembers + invitations.length >= 1
 
@@ -271,7 +274,9 @@ export default function TeamSection() {
                       </TableCell>
                       <TableCell className="text-right">
                         {member.role === 'owner'
-                          ? member.id !== currentUserId && (
+                          ? // Ações sobre um ADMINISTRADOR: só o fundador, e nunca no próprio fundador.
+                            isFounder &&
+                            member.id !== founderId && (
                               <div className="flex justify-end gap-1">
                                 <Button
                                   variant="ghost"
@@ -293,14 +298,17 @@ export default function TeamSection() {
                             )
                           : (
                               <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 px-2 text-xs text-muted-foreground hover:text-primary"
-                                  onClick={() => handlePromote(member.id, member.full_name)}
-                                >
-                                  <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Tornar admin
-                                </Button>
+                                {/* Promover a admin: só o fundador. */}
+                                {isFounder && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 px-2 text-xs text-muted-foreground hover:text-primary"
+                                    onClick={() => handlePromote(member.id, member.full_name)}
+                                  >
+                                    <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Tornar admin
+                                  </Button>
+                                )}
                                 <Button
                                   variant="ghost"
                                   size="sm"
