@@ -8,11 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { useToast } from '@/hooks/use-toast'
 
 /**
- * Tela de definição de nova senha.
- * Funciona em dois cenários:
+ * Tela de definição de senha.
+ * Funciona em três cenários:
  *  - usuário logado (sessão normal) que quer trocar a senha;
- *  - link de recuperação do e-mail (o Supabase cria uma sessão de recovery ao abrir o link).
- * Em ambos, chama supabase.auth.updateUser({ password }), que altera a senha da conta.
+ *  - link de recuperação do e-mail (o Supabase cria uma sessão de recovery ao abrir o link);
+ *  - link de CONVITE de equipe (type=invite): o membro define a primeira senha e já entra
+ *    no workspace do escritório para o qual foi convidado.
+ * Em todos, chama supabase.auth.updateUser({ password }), que grava a senha da conta.
  */
 export default function ResetPassword() {
   const [password, setPassword] = useState('')
@@ -21,6 +23,10 @@ export default function ResetPassword() {
   const { user } = useAuth()
   const { toast } = useToast()
   const navigate = useNavigate()
+
+  // Convite de equipe? O Supabase devolve type=invite no fragmento da URL.
+  const isInvite =
+    typeof window !== 'undefined' && /type=invite/.test(window.location.hash || '')
 
   const [hasSession, setHasSession] = useState<boolean | null>(null)
   useEffect(() => {
@@ -43,7 +49,12 @@ export default function ResetPassword() {
     if (error) {
       toast({ title: 'Não foi possível alterar', description: error.message, variant: 'destructive' })
     } else {
-      toast({ title: 'Senha alterada com sucesso', description: 'Use a nova senha nos próximos acessos.' })
+      toast({
+        title: isInvite ? 'Bem-vindo(a) ao LexAxis' : 'Senha alterada com sucesso',
+        description: isInvite
+          ? 'Senha definida. Você já está no workspace do escritório.'
+          : 'Use a nova senha nos próximos acessos.',
+      })
       navigate('/')
     }
   }
@@ -55,15 +66,21 @@ export default function ResetPassword() {
           <div className="flex justify-center mb-4">
             <img src="/brand/logo-symbol-256.png" alt="LexAxis" className="h-16 w-16 object-contain" />
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight">Definir nova senha</CardTitle>
-          <CardDescription className="text-sm">Escolha uma senha forte — ela não fica salva em nenhum código.</CardDescription>
+          <CardTitle className="text-2xl font-bold tracking-tight">
+            {isInvite ? 'Defina sua senha de acesso' : 'Definir nova senha'}
+          </CardTitle>
+          <CardDescription className="text-sm">
+            {isInvite
+              ? 'Você foi convidado(a) para um escritório no LexAxis. Escolha uma senha para entrar.'
+              : 'Escolha uma senha forte — ela não fica salva em nenhum código.'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {hasSession === false ? (
             <div className="space-y-4 text-center">
               <p className="text-sm text-muted-foreground">
-                Você precisa estar autenticado para trocar a senha. Faça login (ou abra o link do
-                e-mail de recuperação) e volte a esta página.
+                Este link expirou ou já foi usado. Abra o link mais recente do e-mail (de convite ou
+                de recuperação), ou faça login e volte a esta página.
               </p>
               <Button className="w-full h-11" onClick={() => navigate('/login')}>
                 Ir para o login

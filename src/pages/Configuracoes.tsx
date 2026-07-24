@@ -32,6 +32,8 @@ import {
   RefreshCcw,
   Loader2,
   Image as ImageIcon,
+  UserPlus,
+  X,
 } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 
@@ -54,6 +56,14 @@ const DEFAULT_BRANDING = {
   logo_path: '',
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  owner: 'Owner',
+  socio: 'Sócio',
+  associado: 'Associado',
+  estagiario: 'Estagiário',
+  financeiro: 'Financeiro',
+}
+
 export default function Configuracoes() {
   const { user, isOwner } = useCurrentUser()
   const { toast } = useToast()
@@ -65,8 +75,16 @@ export default function Configuracoes() {
   const [formData, setFormData] = useState(DEFAULT_BRANDING)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [teamMembers, setTeamMembers] = useState<any[]>([])
+  const [invitations, setInvitations] = useState<any[]>([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState('estagiario')
+  const [inviting, setInviting] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Teto do beta: 1 membro não-owner OU 1 convite pendente por workspace.
+  const nonOwnerMembers = teamMembers.filter((m) => m.role !== 'owner').length
+  const atMemberLimit = nonOwnerMembers + invitations.length >= 1
 
   useEffect(() => {
     if (user) {
@@ -109,6 +127,14 @@ export default function Configuracoes() {
           .eq('workspace_id', user.workspace_id)
           .order('created_at', { ascending: true })
         if (members) setTeamMembers(members)
+
+        const { data: invites } = await supabase
+          .from('workspace_invitations')
+          .select('id, email, role, created_at')
+          .eq('workspace_id', user.workspace_id)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true })
+        setInvitations(invites || [])
       }
     } catch (error: any) {
       toast({
@@ -276,6 +302,55 @@ export default function Configuracoes() {
     }
   }
 
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const email = inviteEmail.trim().toLowerCase()
+    if (!email) return
+    try {
+      setInviting(true)
+      const { data, error } = await supabase.functions.invoke('invite-member', {
+        body: { email, role: inviteRole },
+      })
+      if (error) throw error
+      if (data?.status !== 'ok') {
+        throw new Error(data?.message || 'Não foi possível enviar o convite.')
+      }
+      toast({
+        title: 'Convite enviado',
+        description: `Enviamos um e-mail para ${email} definir a senha e acessar o workspace.`,
+      })
+      setInviteEmail('')
+      setInviteRole('estagiario')
+      await loadData()
+    } catch (error: any) {
+      toast({
+        title: 'Não foi possível convidar',
+        description: error?.message || 'Erro ao enviar o convite.',
+        variant: 'destructive',
+      })
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  const handleRevoke = async (inviteId: string) => {
+    try {
+      const { error } = await supabase
+        .from('workspace_invitations')
+        .update({ status: 'revoked' })
+        .eq('id', inviteId)
+      if (error) throw error
+      setInvitations((prev) => prev.filter((i) => i.id !== inviteId))
+      toast({ title: 'Convite revogado', description: 'O convite pendente foi cancelado.' })
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível revogar o convite.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -342,6 +417,76 @@ export default function Configuracoes() {
                 </TableBody>
               </Table>
             </div>
+
+            <Separator className="my-6" />
+
+            {invitations.length > 0 && (
+              <div className="mb-4 space-y-2">
+                <p className="text-sm font-semibold text-foreground">Convites pendentes</p>
+                {invitations.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium">{inv.email}</span>
+                      <span className="text-muted-foreground"> · {ROLE_LABELS[inv.role] || inv.role}</span>
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                      onClick={() => handleRevoke(inv.id)}
+                    >
+                      <X className="mr-1 h-3.5 w-3.5" /> Revogar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {atMemberLimit ? (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Durante o beta, cada workspace pode ter <strong>1 membro convidado</strong>. Para
+                trocar, revogue o convite pendente ou remova o membro atual.
+              </p>
+            ) : (
+              <form onSubmit={handleInvite} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="flex-1 space-y-1.5">
+                  <Label htmlFor="invite-email">Convidar membro por e-mail</Label>
+                  <Input
+                    id="invite-email"
+                    type="email"
+                    placeholder="estagiario@escritorio.com.br"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Papel</Label>
+                  <Select value={inviteRole} onValueChange={setInviteRole}>
+                    <SelectTrigger className="w-full sm:w-[160px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="estagiario">Estagiário</SelectItem>
+                      <SelectItem value="associado">Associado</SelectItem>
+                      <SelectItem value="socio">Sócio</SelectItem>
+                      <SelectItem value="financeiro">Financeiro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button type="submit" disabled={inviting}>
+                  {inviting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="mr-2 h-4 w-4" />
+                  )}
+                  Convidar
+                </Button>
+              </form>
+            )}
           </CardContent>
         </Card>
       )}
