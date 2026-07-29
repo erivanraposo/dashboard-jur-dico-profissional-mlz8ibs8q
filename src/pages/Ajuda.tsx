@@ -47,6 +47,7 @@ const AGENTES = [
       ['Análise de Sentença', 'Analisa sentença/acórdão: fundamentos, vícios e cabimento recursal.'],
       ['ms-tributario', 'Mandado de segurança tributário: cabimento, prazo, autoridade, liminar.'],
       ['embargos-execucao-fiscal', 'Embargos à execução fiscal: garantia, prazo, CDA, prescrição.'],
+      ['defesa-fiscal-carf', 'Especialista pré-selecionado do tipo Defesa Fiscal (CARF). Contencioso administrativo fiscal (Decreto 70.235/72, RICARF): impugnação, manifestação de inconformidade, recurso voluntário, contrarrazões, recurso especial à CSRF e embargos — indique a peça no campo de instruções. Confere prazos e admissibilidade, súmulas CARF (inclusive as obrigatórias), precedentes de reprodução obrigatória (RICARF art. 62), nulidades do lançamento e os requisitos do pedido de perícia (quesitos + perito, sob pena de preclusão).'],
       ['Preparação de Audiências', 'Roteiro oral, perguntas e checklist para a audiência.'],
     ],
   },
@@ -200,9 +201,10 @@ export default function Ajuda() {
             <p>
               Toda análise acontece no <strong>Gerador de Minutas</strong>. Escolha o <strong>tipo</strong>{' '}
               conforme o que você precisa: <em>Relatório de Caso</em> (analisa o processo inteiro),
-              Petição Inicial, Contestação, Parecer Jurídico, Parecer Tributário, Recurso de Apelação,
-              Agravo, <em>Contrarrazões</em>, Resposta à Acusação, Habeas Corpus, entre outros. O tipo
-              define o modelo e filtra os agentes compatíveis.
+              Petição Inicial, Contestação, Parecer Jurídico, Parecer Tributário,{' '}
+              <em>Defesa Fiscal (CARF)</em>, Recurso de Apelação, Agravo, <em>Contrarrazões</em>,
+              Resposta à Acusação, Habeas Corpus, entre outros. O tipo define o modelo e filtra os
+              agentes compatíveis.
             </p>
             <p className="rounded-lg border border-[#c9a35a]/40 bg-[#c9a35a]/10 px-4 py-3 text-sm text-[#1e3a5f]">
               <strong>Respondendo a um recurso?</strong> Escolha o tipo <em>Contrarrazões</em>: aparece o
@@ -222,6 +224,17 @@ export default function Ajuda() {
               60). O agente <strong>Peticionador Cível</strong> aplica as regras do rito indicado e alerta{' '}
               <em>[CABIMENTO]</em> se o valor ou a matéria não couberem no Juizado. Documentos sem
               contexto geram petição vaga — as instruções fazem diferença.
+            </p>
+            <p className="rounded-lg border border-[#c9a35a]/40 bg-[#c9a35a]/10 px-4 py-3 text-sm text-[#1e3a5f]">
+              <strong>Defendendo no CARF ou na DRJ?</strong> Escolha o tipo{' '}
+              <em>Defesa Fiscal (CARF)</em>: o agente <strong>defesa-fiscal-carf</strong> entra
+              pré-selecionado e cobre todo o processo administrativo fiscal. No campo de{' '}
+              <strong>instruções</strong>, diga qual peça está preparando —{' '}
+              <em>“impugnação ao auto de infração”</em>, <em>“manifestação de inconformidade”</em>,{' '}
+              <em>“recurso voluntário”</em>, <em>“recurso especial à CSRF”</em> ou{' '}
+              <em>“embargos de declaração”</em> — e ele aplica os prazos, a admissibilidade e as
+              súmulas próprias de cada uma. Citações de acórdãos e súmulas do CARF passam pela mesma
+              verificação em fonte oficial das demais.
             </p>
             <ol className="mt-2 space-y-4">
               {PASSOS.map((p) => (

@@ -252,6 +252,7 @@ const MINUTE_TYPES = [
   'Relatório de Caso',
   'Parecer Jurídico',
   'Parecer Tributário',
+  'Defesa Fiscal (CARF)',
   'Resposta à Acusação',
   'Habeas Corpus',
   'Outros',
@@ -265,6 +266,7 @@ const TYPES_WITH_DEDICATED_TEMPLATE = [
   'Habeas Corpus',
   'Contrarrazões',
   'Petição Inicial',
+  'Defesa Fiscal (CARF)',
 ]
 
 // Agente "dono do gênero" por tipo de minuta — pré-selecionado ao escolher o
@@ -283,6 +285,7 @@ const GENRE_OWNER_AGENT: Record<string, string> = {
   'Parecer Tributário': 'parecer-juridico',
   'Resposta à Acusação': 'resposta-acusacao',
   'Habeas Corpus': 'habeas-corpus',
+  'Defesa Fiscal (CARF)': 'defesa-fiscal-carf',
 }
 
 const SUGGESTION_SANITIZE_CONFIG = {
@@ -3506,12 +3509,68 @@ export default function GeradorMinutas() {
       </div>
     `
 
+    // Template específico: Defesa Fiscal (CARF) — contencioso administrativo
+    // fiscal (Decreto 70.235/72, RICARF). A peça (impugnação, manifestação de
+    // inconformidade, recurso voluntário, contrarrazões, REsp à CSRF ou
+    // embargos) é indicada no campo de instruções.
+    const defesaFiscalCarfTemplate = `
+      <div class="cover-page" style="text-align: center; margin-top: 100px; margin-bottom: 200px;">
+        <h1 style="color: #1E40AF; font-size: 36px; font-weight: bold; margin-bottom: 20px;">Defesa Administrativa Fiscal</h1>
+        <h2 style="color: #334155; font-size: 24px; margin-bottom: 10px;">Processo Administrativo nº [NÚMERO]</h2>
+        <h3 style="color: #64748b; font-size: 20px;">Contribuinte: ${clientStr}</h3>
+        <div style="margin-top: 60px; padding-top: 20px; border-top: 2px solid #e2e8f0; display: inline-block; color: #94a3b8; font-weight: 500;">
+          LexAxis - Inteligência Jurídica
+        </div>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="table-of-contents" style="margin-bottom: 30px;">
+        <h2 style="color: #1E40AF; border-bottom: 2px solid #1E40AF; padding-bottom: 10px; margin-bottom: 20px; font-weight: bold;">Sumário</h2>
+        <ul style="list-style-type: none; padding-left: 0; line-height: 2; font-size: 18px; color: #334155;">
+          <li><span style="font-weight: bold;">1.</span> Endereçamento e Qualificação</li>
+          <li><span style="font-weight: bold;">2.</span> Tempestividade e Cabimento</li>
+          <li><span style="font-weight: bold;">3.</span> Síntese do Lançamento ou da Decisão Recorrida</li>
+          <li><span style="font-weight: bold;">4.</span> Preliminares e Nulidades</li>
+          <li><span style="font-weight: bold;">5.</span> Mérito</li>
+          <li><span style="font-weight: bold;">6.</span> Súmulas CARF e Precedentes de Reprodução Obrigatória</li>
+          <li><span style="font-weight: bold;">7.</span> Provas, Perícia e Diligências</li>
+          <li><span style="font-weight: bold;">8.</span> Pedidos</li>
+        </ul>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="report-content" style="font-family: inherit;">
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">1. Endereçamento e Qualificação</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Órgão destinatário conforme a peça — Delegacia de Julgamento (impugnação/manifestação de inconformidade), Conselho Administrativo de Recursos Fiscais (recurso voluntário/embargos) ou Câmara Superior de Recursos Fiscais (recurso especial). Qualificação do contribuinte (${clientStr}, CNPJ/CPF), número do processo administrativo e do auto de infração/despacho decisório. Indique a peça no campo "Instruções para a análise".</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">2. Tempestividade e Cabimento</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Base legal e prazo da peça (impugnação e recurso voluntário: 30 dias — Decreto 70.235/72, arts. 15 e 33; manifestação de inconformidade: 30 dias — Lei 9.430/96, art. 74, § 9º; recurso especial: 15 dias, com demonstração analítica de divergência; embargos: 5 dias), com a data da ciência e a demonstração da tempestividade. Registrar o efeito suspensivo da exigibilidade (CTN, art. 151, III).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">3. Síntese do Lançamento ou da Decisão Recorrida</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Resumo objetivo do auto de infração (enquadramento, períodos, valores, multa aplicada) ou dos fundamentos da decisão recorrida — delimitando exatamente o que será atacado.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">4. Preliminares e Nulidades</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Vícios do lançamento ou do julgamento (Decreto 70.235/72, arts. 59-60): incompetência, preterição do direito de defesa, motivação deficiente do auto (art. 10), decadência (CTN, arts. 150, § 4º, e 173). Na impugnação, concentrar TODA a matéria de defesa — o não impugnado preclui (art. 17).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">5. Mérito</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Desenvolvimento das teses por tema: legalidade do lançamento, base de cálculo, qualificação da multa (dolo/fraude exigem prova da fiscalização), responsabilidade de terceiros. Teses constitucionais: formular com a consciência da Súmula CARF nº 2 (incompetência para afastar lei por inconstitucionalidade), registrando-as para a via judicial.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">6. Súmulas CARF e Precedentes de Reprodução Obrigatória</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Súmulas CARF aplicáveis (pelo número, com status de obrigatoriedade) e decisões definitivas do STF/STJ em repercussão geral ou repetitivos — de reprodução obrigatória pelos conselheiros (RICARF, art. 62) — com a URL oficial de conferência.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">7. Provas, Perícia e Diligências</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Documentos que instruem a defesa; pedido de perícia/diligência APENAS com quesitos formulados e perito indicado (Decreto 70.235/72, art. 16, IV — sob pena de o pedido ser considerado não formulado). Juntada posterior: apenas nas hipóteses do art. 16, § 4º.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">8. Pedidos</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Em ordem: acolhimento das preliminares/nulidades; no mérito, a improcedência do lançamento (ou provimento do recurso), com o cancelamento do crédito tributário e, subsidiariamente, o afastamento/redução da multa e dos encargos; produção das provas requeridas.</p>
+      </div>
+    `
+
     const TEMPLATES_BY_TYPE: Record<string, string> = {
       'Parecer Tributário': parecerTributarioTemplate,
       'Resposta à Acusação': respostaAcusacaoTemplate,
       'Habeas Corpus': habeasCorpusTemplate,
       Contrarrazões: contrarrazoesTemplate,
       'Petição Inicial': peticaoInicialTemplate,
+      'Defesa Fiscal (CARF)': defesaFiscalCarfTemplate,
     }
 
     const template = TEMPLATES_BY_TYPE[minuteType] ?? `
