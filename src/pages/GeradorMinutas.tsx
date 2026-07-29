@@ -3409,11 +3409,66 @@ export default function GeradorMinutas() {
       </div>
     `
 
+    // Template específico: Petição Inicial (CPC arts. 319 e seguintes). Serve aos
+    // três ritos — comum, JEC (Lei 9.099/95) e JEF (Lei 10.259/2001); o usuário
+    // indica o rito no campo de instruções e o agente aplica a ramificação.
+    const peticaoInicialTemplate = `
+      <div class="cover-page" style="text-align: center; margin-top: 100px; margin-bottom: 200px;">
+        <h1 style="color: #1E40AF; font-size: 36px; font-weight: bold; margin-bottom: 20px;">Petição Inicial</h1>
+        <h2 style="color: #334155; font-size: 24px; margin-bottom: 10px;">${processStr}</h2>
+        <h3 style="color: #64748b; font-size: 20px;">Autor(a): ${clientStr}</h3>
+        <div style="margin-top: 60px; padding-top: 20px; border-top: 2px solid #e2e8f0; display: inline-block; color: #94a3b8; font-weight: 500;">
+          LexAxis - Inteligência Jurídica
+        </div>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="table-of-contents" style="margin-bottom: 30px;">
+        <h2 style="color: #1E40AF; border-bottom: 2px solid #1E40AF; padding-bottom: 10px; margin-bottom: 20px; font-weight: bold;">Sumário</h2>
+        <ul style="list-style-type: none; padding-left: 0; line-height: 2; font-size: 18px; color: #334155;">
+          <li><span style="font-weight: bold;">1.</span> Endereçamento</li>
+          <li><span style="font-weight: bold;">2.</span> Qualificação das Partes</li>
+          <li><span style="font-weight: bold;">3.</span> Dos Fatos</li>
+          <li><span style="font-weight: bold;">4.</span> Dos Fundamentos Jurídicos</li>
+          <li><span style="font-weight: bold;">5.</span> Da Tutela Provisória (se cabível)</li>
+          <li><span style="font-weight: bold;">6.</span> Dos Pedidos</li>
+          <li><span style="font-weight: bold;">7.</span> Do Valor da Causa</li>
+          <li><span style="font-weight: bold;">8.</span> Das Provas e da Audiência de Conciliação</li>
+        </ul>
+      </div>
+      <div class="page-break" style="page-break-after: always; display: block; height: 0; clear: both;"></div>
+      <div class="report-content" style="font-family: inherit;">
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">1. Endereçamento</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Juízo competente ([VARA/COMARCA]). No rito dos Juizados: Juizado Especial Cível de [COMARCA] (Lei 9.099/95) ou Juizado Especial Federal de [SEÇÃO/SUBSEÇÃO] (Lei 10.259/2001). Indique o rito desejado no campo "Instruções para a análise".</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">2. Qualificação das Partes</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Autor(a): ${clientStr}, [nacionalidade, estado civil, profissão], CPF/CNPJ [—], endereço [—], e-mail [—]. Réu(ré): [NOME], [qualificação disponível] (CPC art. 319, II). No rito dos Juizados, qualificação em forma simples (Lei 9.099/95, art. 14, § 1º).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">3. Dos Fatos</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Narrativa cronológica e objetiva do ocorrido, ancorada nos documentos anexados — cada afirmação relevante com o documento que a comprova; lacunas marcadas com [A VERIFICAR].</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">4. Dos Fundamentos Jurídicos</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Direito aplicável aos fatos, com dispositivos (artigo e parágrafo) e jurisprudência verificada. No rito dos Juizados: fundamentação essencial e direta, sem transcrições longas (princípios da Lei 9.099/95, art. 2º).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">5. Da Tutela Provisória (se cabível)</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Urgência (CPC art. 300: probabilidade do direito + perigo de dano) ou evidência (CPC art. 311), com pedido liminar específico. Remover esta seção se não houver pedido de tutela.</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">6. Dos Pedidos</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Rol certo e determinado (CPC arts. 322-324): citação do réu; procedência com as condenações pretendidas; [demais pedidos]; condenação em custas e honorários — no rito dos Juizados, sem custas nem honorários em 1º grau (Lei 9.099/95, arts. 54-55).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">7. Do Valor da Causa</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Valor atribuído conforme CPC arts. 291-292. Nos Juizados, observar o teto do rito: 40 salários mínimos (JEC) ou 60 (JEF).</p>
+
+        <h2 style="color: #1E40AF; margin-top: 20px; font-weight: bold;">8. Das Provas e da Audiência de Conciliação</h2>
+        <p style="margin-bottom: 20px; color: #334155; line-height: 1.6;">Provas que se pretende produzir (CPC art. 319, VI) e opção pela audiência de conciliação (art. 319, VII). No rito dos Juizados, SUPRIMIR a opção formal — a sessão de conciliação é etapa automática do rito (Lei 9.099/95, arts. 16 e 21-22) — e manter apenas a indicação sucinta de provas.</p>
+      </div>
+    `
+
     const TEMPLATES_BY_TYPE: Record<string, string> = {
       'Parecer Tributário': parecerTributarioTemplate,
       'Resposta à Acusação': respostaAcusacaoTemplate,
       'Habeas Corpus': habeasCorpusTemplate,
       Contrarrazões: contrarrazoesTemplate,
+      'Petição Inicial': peticaoInicialTemplate,
     }
 
     const template = TEMPLATES_BY_TYPE[minuteType] ?? `
@@ -4184,7 +4239,7 @@ export default function GeradorMinutas() {
                         id="analysis-instructions"
                         value={analysisInstructions}
                         onChange={(e) => setAnalysisInstructions(e.target.value)}
-                        placeholder="Ex.: correlacione os recibos anexos com o relatório; verifique a tese X; traga doutrina de linha diversa da adotada no texto..."
+                        placeholder="Ex.: correlacione os recibos anexos com o relatório; verifique a tese X; em petição inicial, indique o rito (comum / juizado especial cível / juizado especial federal) e os pedidos; em contrarrazões, indique o recurso respondido..."
                         className={`min-h-[72px] text-sm resize-y ${analysisInstructions.trim() ? 'border-green-500 focus-visible:ring-green-500' : ''}`}
                         maxLength={4000}
                       />

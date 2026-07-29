@@ -41,7 +41,7 @@ const AGENTES = [
     cat: 'Contencioso',
     intro: 'Técnica processual das peças e do andamento do caso.',
     itens: [
-      ['Peticionador Cível', 'Peças e recursos da área cível.'],
+      ['Peticionador Cível', 'Peças e recursos da área cível, inclusive petição inicial nos três ritos (comum, juizado especial cível e juizado especial federal) — indique o rito no campo de instruções; o agente confere cabimento, teto e forma.'],
       ['Contestação Cível', 'Defesas e preliminares processuais.'],
       ['Contrarrazões', 'Resposta a recurso (apelação, agravo, REsp/RE, RO/RR, apelação criminal, RESE, agravo em execução): admissibilidade e preliminares de não conhecimento, refutação pontual do mérito e defesa da decisão recorrida. Indique o recurso no campo de instruções. Aparece ao escolher o tipo "Contrarrazões".'],
       ['Análise de Sentença', 'Analisa sentença/acórdão: fundamentos, vícios e cabimento recursal.'],
@@ -210,6 +210,18 @@ export default function Ajuda() {
               de cada recurso. No campo de <strong>instruções</strong>, diga qual recurso está respondendo
               (ex.: <em>“contrarrazões à apelação da parte X”</em> ou <em>“ao recurso especial”</em>) para
               ele ajustar a análise.
+            </p>
+            <p className="rounded-lg border border-[#c9a35a]/40 bg-[#c9a35a]/10 px-4 py-3 text-sm text-[#1e3a5f]">
+              <strong>Abrindo um processo (Petição Inicial)?</strong> O melhor resultado vem de três
+              entradas juntas: <strong>(1) os metadados</strong> preenchidos (Cliente, Comarca, Objeto,
+              Pedido — alimentam os agentes e a auditoria final); <strong>(2) os documentos</strong>{' '}
+              anexados (contrato, provas, procuração); e <strong>(3) as instruções</strong> com o que não
+              está nos papéis: a narrativa do problema, os pedidos desejados e o <strong>rito</strong> —{' '}
+              <em>“rito comum”</em>, <em>“juizado especial cível”</em> (Lei 9.099/95, até 40 salários
+              mínimos, peça curta e direta) ou <em>“juizado especial federal”</em> (Lei 10.259/2001, até
+              60). O agente <strong>Peticionador Cível</strong> aplica as regras do rito indicado e alerta{' '}
+              <em>[CABIMENTO]</em> se o valor ou a matéria não couberem no Juizado. Documentos sem
+              contexto geram petição vaga — as instruções fazem diferença.
             </p>
             <ol className="mt-2 space-y-4">
               {PASSOS.map((p) => (
