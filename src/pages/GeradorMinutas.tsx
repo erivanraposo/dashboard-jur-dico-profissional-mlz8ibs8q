@@ -257,6 +257,16 @@ const MINUTE_TYPES = [
   'Outros',
 ]
 
+// Tipos com modelo estruturado próprio em TEMPLATES_BY_TYPE (handleApplyTemplate).
+// Manter em sincronia ao adicionar novos templates.
+const TYPES_WITH_DEDICATED_TEMPLATE = [
+  'Parecer Tributário',
+  'Resposta à Acusação',
+  'Habeas Corpus',
+  'Contrarrazões',
+  'Petição Inicial',
+]
+
 const SUGGESTION_SANITIZE_CONFIG = {
   ALLOWED_TAGS: ['a', 'strong', 'b', 'em', 'i', 'u', 'br', 'span', 'p'],
   ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
@@ -3768,13 +3778,15 @@ export default function GeradorMinutas() {
           </div>
         )}
 
-        {minuteType === 'Relatório de Caso' && (
+        {minuteType && (
           <div className="mb-4 p-3 bg-blue-50/50 border border-blue-100 rounded-md flex items-center justify-between">
             <div className="flex items-center gap-3 text-sm text-blue-800">
               <LayoutTemplate className="w-5 h-5 text-blue-600" />
               <span>
-                <strong>Template LexAxis:</strong> Recomendamos aplicar a formatação automática
-                de capa e sumário para o seu Relatório.
+                <strong>Template LexAxis:</strong>{' '}
+                {TYPES_WITH_DEDICATED_TEMPLATE.includes(minuteType)
+                  ? `Aplique o modelo estruturado de ${minuteType} — capa, sumário e as seções próprias do gênero.`
+                  : 'Recomendamos aplicar a formatação automática de capa e sumário para o seu documento.'}
               </span>
             </div>
             <Button
