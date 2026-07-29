@@ -31,8 +31,8 @@ const AGENTES = [
     cat: 'Pesquisa',
     intro: 'Trazem e conferem o material jurídico externo — jurisprudência, doutrina e legislação.',
     itens: [
-      ['Analista de Jurisprudência', 'Alinha as teses da peça com precedentes qualificados.'],
-      ['pesquisa-stj-stf', 'Teses e precedentes do STJ e STF.'],
+      ['Analista de Jurisprudência', 'Alinha as teses da peça com precedentes qualificados e confirma as citações centrais em portais oficiais durante a análise: precedente confirmado vem com a URL do tribunal ao lado; não confirmado sai marcado [A VERIFICAR].'],
+      ['pesquisa-stj-stf', 'Teses e precedentes dos tribunais superiores — temas repetitivos, repercussão geral e súmulas do STJ e do STF —, com verificação na fonte oficial e indicação do status da tese.'],
       ['doutrina', 'Fundamentação doutrinária (ABNT), majoritária × minoritária.'],
       ['Análise de Legislação', 'Analisa uma norma: vigência, alterações, conflitos, regulamentação.'],
     ],
@@ -41,9 +41,9 @@ const AGENTES = [
     cat: 'Contencioso',
     intro: 'Técnica processual das peças e do andamento do caso.',
     itens: [
-      ['Peticionador Cível', 'Peças e recursos da área cível, inclusive petição inicial nos três ritos (comum, juizado especial cível e juizado especial federal) — indique o rito no campo de instruções; o agente confere cabimento, teto e forma.'],
-      ['Contestação Cível', 'Defesas e preliminares processuais.'],
-      ['Contrarrazões', 'Resposta a recurso (apelação, agravo, REsp/RE, RO/RR, apelação criminal, RESE, agravo em execução): admissibilidade e preliminares de não conhecimento, refutação pontual do mérito e defesa da decisão recorrida. Indique o recurso no campo de instruções. Aparece ao escolher o tipo "Contrarrazões".'],
+      ['Peticionador Cível', 'Especialista pré-selecionado nos tipos Petição Inicial, Réplica, Alegações Finais, Apelação e Agravo. Na petição inicial, domina os três ritos (comum, juizado especial cível e juizado especial federal) — indique o rito no campo de instruções; confere cabimento, teto, matérias vedadas e forma, e alerta [CABIMENTO] quando o caso não couber no rito.'],
+      ['Contestação Cível', 'Especialista pré-selecionado do tipo Contestação: preliminares (CPC art. 337), impugnação específica dos fatos, ônus da prova e construção das teses de defesa.'],
+      ['Contrarrazões', 'Especialista pré-selecionado do tipo Contrarrazões. Resposta a recurso (apelação, agravo, REsp/RE, RO/RR, apelação criminal, RESE, agravo em execução): admissibilidade e preliminares de não conhecimento, refutação pontual do mérito e defesa da decisão recorrida. Indique o recurso no campo de instruções.'],
       ['Análise de Sentença', 'Analisa sentença/acórdão: fundamentos, vícios e cabimento recursal.'],
       ['ms-tributario', 'Mandado de segurança tributário: cabimento, prazo, autoridade, liminar.'],
       ['embargos-execucao-fiscal', 'Embargos à execução fiscal: garantia, prazo, CDA, prescrição.'],
@@ -54,16 +54,16 @@ const AGENTES = [
     cat: 'Criminal',
     intro: 'Defesa e garantias penais.',
     itens: [
-      ['Revisor Penal', 'Defesas e garantias penais.'],
-      ['resposta-acusacao', 'Resposta à acusação: preliminares, absolvição sumária, rol de testemunhas.'],
-      ['habeas-corpus', 'Habeas corpus: cabimento, autoridade coatora, prova pré-constituída.'],
+      ['Revisor Penal', 'Revisão de mérito penal em qualquer peça: tipicidade, garantias processuais, nulidades e coerência da tese defensiva.'],
+      ['resposta-acusacao', 'Especialista pré-selecionado do tipo Resposta à Acusação: tempestividade (CPP art. 396), preliminares (inépcia da denúncia, falta de justa causa), hipóteses de absolvição sumária (art. 397), estratégia do que sustentar já ou reservar à instrução, e rol de testemunhas — que preclui se não vier na resposta.'],
+      ['habeas-corpus', 'Especialista pré-selecionado do tipo Habeas Corpus: cabimento e adequação da via, autoridade coatora e competência (evita supressão de instância), hipóteses de constrangimento ilegal (CPP art. 648), prova pré-constituída — aponta afirmação sem documento no rol — e fundamentação da liminar.'],
     ],
   },
   {
     cat: 'Consultivo',
     intro: 'Pareceres, contratos e compliance.',
     itens: [
-      ['parecer-juridico', 'Elaboração de pareceres jurídicos fundamentados.'],
+      ['parecer-juridico', 'Especialista pré-selecionado dos tipos Parecer Jurídico e Parecer Tributário: estrutura consultiva completa (ementa, premissas fáticas, análise por temas, riscos e limites, conclusão), distinguindo interpretação majoritária, minoritária e hipótese própria — sem promessa de resultado.'],
       ['Revisão de Contratos', 'Risco por cláusula (CRÍTICO/ATENÇÃO/ADEQUADA) + score 0-100.'],
       ['comparacao-contratos', 'Compara versões de um contrato e classifica o impacto das mudanças.'],
       ['due-diligence', 'Red flags e contingências de due diligence em 8 frentes.'],
@@ -83,7 +83,7 @@ const AGENTES = [
     cat: 'Transversais e outros',
     intro: 'Apoio a qualquer tipo de trabalho.',
     itens: [
-      ['resumo-processo', 'Sintetiza andamentos e despachos do processo.'],
+      ['resumo-processo', 'Especialista pré-selecionado do tipo Relatório de Caso: sintetiza andamentos, despachos e o estado atual do processo em visão executiva.'],
       ['Gestão de Prazos Processuais', 'Mapeia e calcula prazos (dias úteis, recesso, prazo em dobro).'],
       ['calculo', 'Estimativas e conferência de cálculos (atualização, juros, verbas).'],
       ['Analista de Documentos Estrangeiros', 'Contratos e normas em inglês adaptados ao direito brasileiro.'],
