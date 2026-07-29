@@ -1,9 +1,12 @@
 <!-- HTML template for the frontend react app: https://developer.mozilla.org/en-US/docs/Web/HTML -->
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR" translate="no">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Tradutores automáticos (Google Translate etc.) reescrevem o DOM por
+         fora do React e causam crashes de removeChild — app é pt-BR nativo. -->
+    <meta name="google" content="notranslate" />
     <title>LexAxis — o eixo da sua gestão jurídica</title>
     <meta name="description" content="LexAxis — o eixo da sua gestão jurídica. Plataforma SaaS com inteligência artificial para escritórios de advocacia: análise de minutas, gestão de processos, fluxo de aprovação hierárquica." />
     <meta name="author" content="LexAxis" />
