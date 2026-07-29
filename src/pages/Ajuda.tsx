@@ -255,6 +255,17 @@ export default function Ajuda() {
               Cada agente é um revisor especializado. Selecione os pertinentes ao caso — não precisa
               usar todos. Abaixo, o que cada um faz, por categoria.
             </p>
+            <p className="rounded-lg border border-[#c9a35a]/40 bg-[#c9a35a]/10 px-4 py-3 text-sm text-[#1e3a5f]">
+              <strong>Pré-seleção automática do especialista.</strong> Ao escolher o tipo de peça, o
+              LexAxis já seleciona o agente <em>dono daquele gênero</em> — por exemplo,{' '}
+              <strong>Peticionador Cível</strong> na Petição Inicial (é ele quem aplica as regras do
+              rito, inclusive dos Juizados Especiais), <strong>Contrarrazões</strong> nas
+              Contrarrazões, <strong>habeas-corpus</strong> no Habeas Corpus. Você pode removê-lo e
+              montar a seleção que preferir — mas, sem o especialista do gênero, a análise perde as
+              verificações técnicas próprias daquela peça (cabimento, prazos do rito, estrutura).
+              Complete a seleção com 2 a 3 agentes de apoio (jurisprudência, cálculo, red-team) —
+              para a maioria dos casos, 3 a 4 agentes são o ponto ideal.
+            </p>
             <div className="mt-4 space-y-6">
               {AGENTES.map((g) => (
                 <div key={g.cat}>

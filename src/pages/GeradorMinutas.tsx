@@ -267,6 +267,24 @@ const TYPES_WITH_DEDICATED_TEMPLATE = [
   'Petição Inicial',
 ]
 
+// Agente "dono do gênero" por tipo de minuta — pré-selecionado ao escolher o
+// tipo (especificação do produto, documentada em /ajuda). Nome deve bater com
+// agentes.name no banco. Tipos sem dono ('Outros') ficam de fora.
+const GENRE_OWNER_AGENT: Record<string, string> = {
+  'Petição Inicial': 'Peticionador Cível',
+  Contestação: 'Contestação Cível',
+  Réplica: 'Peticionador Cível',
+  'Alegações Finais': 'Peticionador Cível',
+  'Recurso de Apelação': 'Peticionador Cível',
+  'Agravo de Instrumento': 'Peticionador Cível',
+  Contrarrazões: 'Contrarrazões',
+  'Relatório de Caso': 'resumo-processo',
+  'Parecer Jurídico': 'parecer-juridico',
+  'Parecer Tributário': 'parecer-juridico',
+  'Resposta à Acusação': 'resposta-acusacao',
+  'Habeas Corpus': 'habeas-corpus',
+}
+
 const SUGGESTION_SANITIZE_CONFIG = {
   ALLOWED_TAGS: ['a', 'strong', 'b', 'em', 'i', 'u', 'br', 'span', 'p'],
   ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
@@ -743,6 +761,21 @@ export default function GeradorMinutas() {
           return true
         return agent.compatible_minute_types.includes(minuteType)
       })
+
+      // Pré-seleção do agente "dono do gênero": ao escolher o tipo, o
+      // especialista da peça entra automaticamente na seleção (o usuário
+      // pode removê-lo; a remoção não é revertida até nova troca de tipo).
+      const ownerName = GENRE_OWNER_AGENT[minuteType]
+      if (ownerName) {
+        const owner = agents.find((a) => a.name === ownerName)
+        if (owner && !validSelected.includes(owner.id) && validSelected.length < 8) {
+          toast({
+            title: `Agente ${owner.name} pré-selecionado`,
+            description: `É o especialista do tipo "${minuteType}". Você pode removê-lo na lista de agentes.`,
+          })
+          return [...validSelected, owner.id]
+        }
+      }
 
       if (validSelected.length !== prev.length) {
         return validSelected
