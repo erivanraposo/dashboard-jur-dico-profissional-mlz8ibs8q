@@ -750,10 +750,17 @@ export default function GeradorMinutas() {
     })
   }, [agents, minuteType])
 
+  // Espelho da seleção para efeitos que reagem só à troca de tipo (evita
+  // incluir selectedAgents nas deps e disparar loops de atualização).
+  const selectedAgentsRef = useRef<string[]>([])
+  useEffect(() => {
+    selectedAgentsRef.current = selectedAgents
+  }, [selectedAgents])
+
   useEffect(() => {
     if (!minuteType || agents.length === 0) return
-
-    setSelectedAgents((prev) => {
+    try {
+      const prev = selectedAgentsRef.current
       const validSelected = prev.filter((id) => {
         const agent = agents.find((a) => a.id === id)
         if (!agent) return false
@@ -769,22 +776,24 @@ export default function GeradorMinutas() {
       // especialista da peça entra automaticamente na seleção (o usuário
       // pode removê-lo; a remoção não é revertida até nova troca de tipo).
       const ownerName = GENRE_OWNER_AGENT[minuteType]
-      if (ownerName) {
-        const owner = agents.find((a) => a.name === ownerName)
-        if (owner && !validSelected.includes(owner.id) && validSelected.length < 8) {
-          toast({
-            title: `Agente ${owner.name} pré-selecionado`,
-            description: `É o especialista do tipo "${minuteType}". Você pode removê-lo na lista de agentes.`,
-          })
-          return [...validSelected, owner.id]
-        }
-      }
+      const owner = ownerName ? agents.find((a) => a.name === ownerName) : undefined
+      const shouldAddOwner =
+        !!owner && !validSelected.includes(owner.id) && validSelected.length < 8
+      const next = shouldAddOwner && owner ? [...validSelected, owner.id] : validSelected
 
-      if (validSelected.length !== prev.length) {
-        return validSelected
+      const changed = next.length !== prev.length || next.some((id, i) => id !== prev[i])
+      if (changed) setSelectedAgents(next)
+
+      if (shouldAddOwner && owner) {
+        toast({
+          title: `Agente ${owner.name} pré-selecionado`,
+          description: `É o especialista do tipo "${minuteType}". Você pode removê-lo na lista de agentes.`,
+        })
       }
-      return prev
-    })
+    } catch (err) {
+      // Pré-seleção é conveniência — nunca pode derrubar a tela.
+      console.error('[pre-selecao dono do genero]', err)
+    }
   }, [minuteType, agents])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
