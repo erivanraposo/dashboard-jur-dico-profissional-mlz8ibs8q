@@ -48,12 +48,40 @@ type Estado =
 interface Item {
   citacao: string
   tipo: 'sumula' | 'sumula_vinculante' | 'tema' | 'acordao'
+  tribunal: string | null
   estado: Estado
   url_oficial: string | null
+  url_busca: string | null // busca no portal do tribunal, sempre presente
+  url_lexml: string | null // segunda via estável
   o_que_decide: string | null
   observacao: string | null
   resolucao: 'deterministica' | 'busca'
 }
+
+// Host EXIGIDO por tribunal. Correção de 30/07/2026: validar só "domínio oficial"
+// deixou passar um acórdão do TRF3 como fonte de um HC do STF — link oficial,
+// porém do tribunal errado. Fonte de outro tribunal que apenas MENCIONA o julgado
+// não é fonte do julgado.
+const HOST_DO_TRIBUNAL: Record<string, string> = {
+  STF: 'stf.jus.br',
+  STJ: 'stj.jus.br',
+  TST: 'tst.jus.br',
+  TSE: 'tse.jus.br',
+  STM: 'stm.jus.br',
+}
+
+// Buscas por parâmetro — estáveis. Deep links para .asp legado do STF apodrecem
+// (duas URLs de súmula usadas em produção respondiam 404 em 30/07/2026).
+function urlBusca(tribunal: string | null, termo: string): string | null {
+  const q = encodeURIComponent(termo.slice(0, 120))
+  if (tribunal === 'STF') return `https://jurisprudencia.stf.jus.br/pages/search?base=acordaos&pesquisa_inicial=${q}`
+  if (tribunal === 'STJ') return `https://scon.stj.jus.br/SCON/pesquisar.jsp?b=ACOR&livre=${q}`
+  if (tribunal === 'TST') return `https://jurisprudencia.tst.jus.br/#/pesquisa?query=${q}`
+  return null
+}
+
+const urlLexml = (termo: string) =>
+  `https://www.lexml.gov.br/busca/search?keyword=${encodeURIComponent(termo.slice(0, 120))}`
 
 // ---------------------------------------------------------------------------
 // 1. RESOLUÇÃO DETERMINÍSTICA — súmulas e temas têm URL previsível.
@@ -75,15 +103,21 @@ function resolveDeterministico(texto: string): { itens: Item[]; resto: string } 
     })
   }
 
-  // Súmula vinculante do STF
+  // Súmula vinculante do STF — sem deep link: o .asp legado não resolve por número
+  // (menuSumario.asp?sumula=N devolve a página genérica de súmulas, 404 no navegador).
   consome(/\bs[úu]mula\s+vinculante\s+(?:n[ºo.]?\s*)?(\d+)(?:\s+d[oe]\s+stf)?\b/gi, (m) => ({
     citacao: m[0].trim(),
     tipo: 'sumula_vinculante',
+    tribunal: 'STF',
     estado: 'CONFIRMADO_METADADOS',
-    url_oficial: `https://portal.stf.jus.br/jurisprudencia/menuSumario.asp?sumula=${m[1]}`,
+    url_oficial: null,
+    url_busca: `https://jurisprudencia.stf.jus.br/pages/search?base=sumulas&pesquisa_inicial=${encodeURIComponent(
+      `sumula vinculante ${m[1]}`,
+    )}`,
+    url_lexml: urlLexml(`súmula vinculante ${m[1]}`),
     o_que_decide: null,
     observacao:
-      'Enunciado localizado por resolução direta no portal do STF. Confira o teor na página oficial — o texto da súmula não foi lido pelo sistema.',
+      'Enunciado identificado sem consulta de IA. O sistema NÃO leu o texto da súmula — abra a busca oficial do STF para conferir o teor.',
     resolucao: 'deterministica',
   }))
 
@@ -93,31 +127,40 @@ function resolveDeterministico(texto: string): { itens: Item[]; resto: string } 
     return {
       citacao: m[0].trim(),
       tipo: 'sumula',
+      tribunal: trib,
       estado: 'CONFIRMADO_METADADOS',
-      url_oficial:
+      url_oficial: null,
+      url_busca:
         trib === 'STJ'
           ? `https://scon.stj.jus.br/SCON/sumanot/toc.jsp?sumano=${m[1]}`
-          : `https://www.stf.jus.br/portal/jurisprudencia/menuSumarioSumulas.asp?sumula=${m[1]}`,
+          : `https://jurisprudencia.stf.jus.br/pages/search?base=sumulas&pesquisa_inicial=${encodeURIComponent(
+              `sumula ${m[1]}`,
+            )}`,
+      url_lexml: urlLexml(`súmula ${m[1]} ${trib}`),
       o_que_decide: null,
-      observacao: `Enunciado localizado por resolução direta no portal do ${trib}. Confira o teor na página oficial.`,
+      observacao: `Enunciado identificado sem consulta de IA. O sistema NÃO leu o texto — confira o teor no portal do ${trib}.`,
       resolucao: 'deterministica',
     }
   })
 
-  // Tema de repercussão geral (STF) ou repetitivo (STJ)
+  // Tema de repercussão geral (STF) ou repetitivo (STJ) — deep links verificados
+  // (respondiam 200 em 30/07/2026).
   consome(/\btema\s+(?:n[ºo.]?\s*)?([\d.]+)\s+d[oe]\s+(stf|stj)\b/gi, (m) => {
     const num = m[1].replace(/\./g, '')
     const trib = m[2].toUpperCase()
     return {
       citacao: m[0].trim(),
       tipo: 'tema',
+      tribunal: trib,
       estado: 'CONFIRMADO_METADADOS',
       url_oficial:
         trib === 'STJ'
           ? `https://processo.stj.jus.br/repetitivos/temas_repetitivos/pesquisa.jsp?numero=${num}`
           : `https://portal.stf.jus.br/jurisprudenciaRepercussao/tema.asp?num=${num}`,
+      url_busca: null,
+      url_lexml: urlLexml(`tema ${num} ${trib}`),
       o_que_decide: null,
-      observacao: `Tema localizado por resolução direta no portal do ${trib}. Confira a tese firmada na página oficial.`,
+      observacao: `Tema identificado sem consulta de IA. O sistema NÃO leu a tese firmada — confira na página do ${trib}.`,
       resolucao: 'deterministica',
     }
   })
@@ -134,12 +177,13 @@ FERRAMENTA: você tem busca web restrita a domínios oficiais (${DOMINIOS_OFICIA
 
 Para CADA citação recebida, devolva um objeto com:
 - "citacao": a citação como o usuário a escreveu
+- "tribunal": a sigla do tribunal a que a citação se refere (STF, STJ, TST, TSE, STM...). Deduza pela classe processual, pelo ministro citado ou pelo contexto. null se não der para saber.
 - "estado": um de
   * CONFIRMADO_INTEIRO_TEOR — você localizou o julgado em fonte oficial E leu conteúdo suficiente para dizer o que ele decide
   * CONFIRMADO_METADADOS — o processo existe (número/classe/órgão/data batem), mas o inteiro teor não estava acessível
   * DIVERGENTE — o julgado existe, porém algum dado da citação não confere (relator, data, órgão, classe) OU ele não decide o que a tese alegada afirma
   * NAO_LOCALIZADO — não encontrado nos portais consultados
-- "url_oficial": URL em domínio oficial. OBRIGATÓRIA quando o estado não for NAO_LOCALIZADO. Sem URL, o estado é NAO_LOCALIZADO — nunca invente endereço.
+- "url_oficial": URL **no domínio do próprio tribunal citado** (citação do STF ⇒ endereço em stf.jus.br; do STJ ⇒ stj.jus.br). OBRIGATÓRIA quando o estado não for NAO_LOCALIZADO. Nunca invente endereço, e nunca ofereça como fonte a decisão de OUTRO tribunal que apenas menciona o julgado: um acórdão de TRF ou de TJ que cita um HC do STF não é fonte daquele HC. Se você só encontrou menção em outro tribunal, o estado é NAO_LOCALIZADO e você diz isso na observação.
 - "o_que_decide": em uma ou duas frases, o que o julgado efetivamente decide, conforme a fonte lida. null se não leu.
 - "observacao": o que exatamente diverge, ou o que não foi possível conferir. Seja específico: "o relator é o min. X, não o min. Y" vale; "dados divergentes" não vale.
 
@@ -211,36 +255,62 @@ async function verificaPorBusca(
   return { itens, uso: data.usage ?? {} }
 }
 
-// Regra de produto aplicada no servidor, não confiada ao modelo:
-// sem URL oficial, nenhum estado de confirmação sobrevive.
+// Regras de produto aplicadas NO SERVIDOR, nunca confiadas ao modelo:
+//   (a) sem URL oficial, nenhum estado de confirmação sobrevive;
+//   (b) a URL tem de ser do TRIBUNAL CITADO — domínio oficial não basta.
+// (b) nasceu da falha de 30/07/2026: o modelo devolveu um acórdão do TRF3 como
+// fonte de um HC do STF. Link oficial, tribunal errado, selo de confirmado.
+function hostDe(url: string): string | null {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return null
+  }
+}
+
 function normaliza(i: any): Item {
-  const url = typeof i.url_oficial === 'string' && /^https?:\/\//i.test(i.url_oficial)
-    ? i.url_oficial
-    : null
-  const oficial =
-    url && DOMINIOS_OFICIAIS.some((d) => {
-      try {
-        return new URL(url).hostname.endsWith(d)
-      } catch {
-        return false
-      }
-    })
+  const citacao = String(i.citacao ?? '').slice(0, 300)
+  const tribunal =
+    typeof i.tribunal === 'string' && i.tribunal.trim() ? i.tribunal.trim().toUpperCase() : null
+  const bruta =
+    typeof i.url_oficial === 'string' && /^https?:\/\//i.test(i.url_oficial) ? i.url_oficial : null
+  const host = bruta ? hostDe(bruta) : null
+
+  const emDominioOficial = !!host && DOMINIOS_OFICIAIS.some((d) => host.endsWith(d))
+  const exigido = tribunal ? HOST_DO_TRIBUNAL[tribunal] : undefined
+  const doTribunalCerto = !exigido || (!!host && host.endsWith(exigido))
+
   let estado: Estado = ['CONFIRMADO_INTEIRO_TEOR', 'CONFIRMADO_METADADOS', 'DIVERGENTE'].includes(
     i.estado,
   )
     ? i.estado
     : 'NAO_LOCALIZADO'
-  let observacao = i.observacao ?? null
-  if (!oficial && estado !== 'NAO_LOCALIZADO') {
+  let observacao: string | null = i.observacao ?? null
+  let url: string | null = emDominioOficial ? bruta : null
+
+  if (estado !== 'NAO_LOCALIZADO' && !emDominioOficial) {
+    estado = 'NAO_LOCALIZADO'
+    url = null
+    observacao =
+      'O sistema não obteve URL em domínio oficial para esta citação. Sem fonte verificável não confirmamos — o que não significa que a citação seja falsa.'
+  } else if (estado !== 'NAO_LOCALIZADO' && !doTribunalCerto) {
+    // fonte é oficial, mas de outro tribunal: não serve para atestar este julgado
     estado = 'NAO_LOCALIZADO'
     observacao =
-      'O sistema não obteve URL em domínio oficial para esta citação. Sem fonte verificável, não confirmamos — o que não significa que a citação seja falsa.'
+      `A única fonte encontrada (${host}) não é do tribunal citado (${tribunal}). ` +
+      'Documento de outro tribunal que menciona o julgado não serve para atestá-lo. ' +
+      'Não confirmamos — o que não significa que a citação seja falsa. Use a busca oficial abaixo para conferir.'
+    url = null
   }
+
   return {
-    citacao: String(i.citacao ?? '').slice(0, 300),
+    citacao,
     tipo: 'acordao',
+    tribunal,
     estado,
-    url_oficial: oficial ? url : null,
+    url_oficial: url,
+    url_busca: urlBusca(tribunal, citacao),
+    url_lexml: urlLexml(citacao),
     o_que_decide: i.o_que_decide ?? null,
     observacao,
     resolucao: 'busca',

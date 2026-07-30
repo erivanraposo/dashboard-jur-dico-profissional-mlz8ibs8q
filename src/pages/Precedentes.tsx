@@ -26,8 +26,11 @@ type Estado =
 type Item = {
   citacao: string
   tipo: string
+  tribunal: string | null
   estado: Estado
   url_oficial: string | null
+  url_busca: string | null
+  url_lexml: string | null
   o_que_decide: string | null
   observacao: string | null
   resolucao: 'deterministica' | 'busca'
@@ -104,10 +107,25 @@ export default function Precedentes() {
     }
   }
 
+  // Copia o achado inteiro — citação, veredito, o que o julgado decide, ressalva e
+  // fonte. Copiar só a citação induzia a achar que a explicação tinha ido junto.
   const copiar = (i: Item) => {
-    const txt = i.url_oficial ? `${i.citacao} — ${i.url_oficial}` : i.citacao
-    navigator.clipboard.writeText(txt)
-    toast({ title: 'Citação copiada', description: i.url_oficial ? 'Com a URL da fonte oficial.' : 'Sem URL: não confirmada.' })
+    const meta = ESTADOS[i.estado] ?? ESTADOS.NAO_LOCALIZADO
+    const linhas = [
+      i.citacao,
+      `[${meta.rotulo}]`,
+      i.o_que_decide ? `O que decide: ${i.o_que_decide}` : null,
+      i.observacao ? `Ressalva: ${i.observacao}` : null,
+      i.url_oficial ? `Fonte oficial: ${i.url_oficial}` : null,
+      i.url_busca ? `Busca no portal: ${i.url_busca}` : null,
+      i.url_lexml ? `LexML: ${i.url_lexml}` : null,
+      'Verificado pelo LexAxis — confira na fonte antes de protocolar.',
+    ].filter(Boolean)
+    navigator.clipboard.writeText(linhas.join('\n'))
+    toast({
+      title: 'Achado copiado',
+      description: 'Citação, veredito, o que o julgado decide e os links de conferência.',
+    })
   }
 
   const resumo = itens
@@ -233,26 +251,44 @@ export default function Precedentes() {
                 )}
 
                 <div className="flex flex-wrap items-center gap-2 pt-1">
-                  {i.url_oficial ? (
+                  {i.url_oficial && (
                     <Button asChild variant="outline" size="sm" className="gap-1.5">
                       <a href={i.url_oficial} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-3.5 w-3.5" /> Abrir fonte oficial
+                        <ExternalLink className="h-3.5 w-3.5" /> Documento no portal
+                        {i.tribunal ? ` do ${i.tribunal}` : ''}
                       </a>
                     </Button>
-                  ) : (
-                    <span className="text-xs text-muted-foreground italic">
-                      Sem URL oficial — nada é exibido como confirmado sem fonte.
-                    </span>
+                  )}
+                  {i.url_busca && (
+                    <Button asChild variant="outline" size="sm" className="gap-1.5">
+                      <a href={i.url_busca} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-3.5 w-3.5" /> Buscar
+                        {i.tribunal ? ` no ${i.tribunal}` : ' no portal'}
+                      </a>
+                    </Button>
+                  )}
+                  {i.url_lexml && (
+                    <Button asChild variant="ghost" size="sm" className="gap-1.5">
+                      <a href={i.url_lexml} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-3.5 w-3.5" /> LexML
+                      </a>
+                    </Button>
                   )}
                   <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => copiar(i)}>
-                    <Copy className="h-3.5 w-3.5" /> Copiar citação
+                    <Copy className="h-3.5 w-3.5" /> Copiar achado
                   </Button>
                   {i.resolucao === 'deterministica' && (
                     <span className="text-xs text-muted-foreground">
-                      Resolvido diretamente no portal, sem consulta de IA.
+                      Identificado sem consulta de IA.
                     </span>
                   )}
                 </div>
+                {!i.url_oficial && (
+                  <p className="text-xs text-muted-foreground italic">
+                    Sem link direto para o documento — nada é exibido como confirmado sem fonte do
+                    próprio tribunal. Os botões acima abrem a busca oficial já preenchida.
+                  </p>
+                )}
               </CardContent>
             </Card>
           )
