@@ -44,6 +44,7 @@ type Estado =
   | 'CONFIRMADO_METADADOS'
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
+  | 'IDENTIFICADO' // reconhecido por padrão, sem consulta a fonte alguma
 
 interface Item {
   citacao: string
@@ -109,7 +110,7 @@ function resolveDeterministico(texto: string): { itens: Item[]; resto: string } 
     citacao: m[0].trim(),
     tipo: 'sumula_vinculante',
     tribunal: 'STF',
-    estado: 'CONFIRMADO_METADADOS',
+    estado: 'IDENTIFICADO',
     url_oficial: null,
     url_busca: `https://jurisprudencia.stf.jus.br/pages/search?base=sumulas&pesquisa_inicial=${encodeURIComponent(
       `sumula vinculante ${m[1]}`,
@@ -128,7 +129,7 @@ function resolveDeterministico(texto: string): { itens: Item[]; resto: string } 
       citacao: m[0].trim(),
       tipo: 'sumula',
       tribunal: trib,
-      estado: 'CONFIRMADO_METADADOS',
+      estado: 'IDENTIFICADO',
       url_oficial: null,
       url_busca:
         trib === 'STJ'
@@ -152,7 +153,7 @@ function resolveDeterministico(texto: string): { itens: Item[]; resto: string } 
       citacao: m[0].trim(),
       tipo: 'tema',
       tribunal: trib,
-      estado: 'CONFIRMADO_METADADOS',
+      estado: 'IDENTIFICADO',
       url_oficial:
         trib === 'STJ'
           ? `https://processo.stj.jus.br/repetitivos/temas_repetitivos/pesquisa.jsp?numero=${num}`
@@ -187,12 +188,21 @@ Para CADA citação recebida, devolva um objeto com:
 - "o_que_decide": em uma ou duas frases, o que o julgado efetivamente decide, conforme a fonte lida. null se não leu.
 - "observacao": o que exatamente diverge, ou o que não foi possível conferir. Seja específico: "o relator é o min. X, não o min. Y" vale; "dados divergentes" não vale.
 
+ASSIMETRIA DA PROVA — leia com atenção, é a regra que mais erra
+Fonte SECUNDÁRIA é qualquer documento que não seja do tribunal citado: acórdão de TRF ou de TJ que menciona um julgado do STF, repositório particular, notícia, artigo.
+
+- Fonte secundária **NUNCA** sustenta confirmação, nem de metadados. Se você só encontrou menções em decisões de outros tribunais, o estado é NAO_LOCALIZADO, ainda que dez fontes repitam os mesmos dados. Repetição não é verificação: todas podem descender da mesma citação errada.
+- Fonte secundária **PODE** sustentar DIVERGENTE quando **contradiz** a citação apresentada. Evidência de discrepância é alerta útil ao advogado; evidência de existência vinda de terceiro não é prova. Nesse caso diga na observação que o indício é de fonte secundária e precisa ser conferido no portal do tribunal.
+
+Em resumo: para confirmar, a fonte tem de ser do próprio tribunal. Para levantar suspeita, não.
+
 REGRAS INEGOCIÁVEIS
 1. NAO_LOCALIZADO significa "não encontrei nos portais consultados", NUNCA "não existe" e NUNCA "é falso". Diga isso na observação.
 2. Se a tese alegada pelo usuário não corresponder ao que o julgado decide, o estado é DIVERGENTE mesmo que todos os metadados estejam corretos. Esse é o caso mais importante: aponte a diferença explicitamente.
 3. Não avalie se o precedente serve ao caso do usuário. Isso é juízo do advogado.
 4. Na dúvida entre CONFIRMADO_INTEIRO_TEOR e CONFIRMADO_METADADOS, escolha o segundo. Superestimar o grau de confirmação é o pior erro possível aqui.
 5. Não prometa resultado nem opine sobre chance de êxito.
+6. Página de BUSCA não é documento. Se o que você tem é um endereço de pesquisa (pages/search, pesquisar.jsp, ?queryString=), isso não é a fonte do julgado — deixe "url_oficial" nula e explique que não alcançou o documento. O sistema já oferece o link de busca por conta própria.
 
 Responda SOMENTE com JSON válido: {"itens":[...]}. Sem markdown, sem comentário.`
 
@@ -279,6 +289,11 @@ function normaliza(i: any): Item {
   const emDominioOficial = !!host && DOMINIOS_OFICIAIS.some((d) => host.endsWith(d))
   const exigido = tribunal ? HOST_DO_TRIBUNAL[tribunal] : undefined
   const doTribunalCerto = !exigido || (!!host && host.endsWith(exigido))
+  // Página de busca não é documento. O modelo devolveu, em 30/07, uma URL de
+  // pesquisa do STF como se fosse a fonte do acórdão — passava no teste de host
+  // e sustentava um selo de confirmado sem documento nenhum por trás.
+  const ehBusca =
+    !!bruta && /(pages\/search|pesquisar\.jsp|\?queryString=|\bbusca\b|search\?)/i.test(bruta)
 
   let estado: Estado = ['CONFIRMADO_INTEIRO_TEOR', 'CONFIRMADO_METADADOS', 'DIVERGENTE'].includes(
     i.estado,
@@ -286,9 +301,15 @@ function normaliza(i: any): Item {
     ? i.estado
     : 'NAO_LOCALIZADO'
   let observacao: string | null = i.observacao ?? null
-  let url: string | null = emDominioOficial ? bruta : null
+  let url: string | null = emDominioOficial && !ehBusca ? bruta : null
 
-  if (estado !== 'NAO_LOCALIZADO' && !emDominioOficial) {
+  if (estado.startsWith('CONFIRMADO') && ehBusca) {
+    estado = 'NAO_LOCALIZADO'
+    observacao =
+      'A única referência obtida foi uma página de BUSCA do portal, não o documento do julgado. ' +
+      'Página de pesquisa não atesta nada — não confirmamos, o que não significa que a citação seja falsa. ' +
+      (observacao ? `Registro do que o sistema apurou: ${observacao}` : '')
+  } else if (estado !== 'NAO_LOCALIZADO' && !emDominioOficial) {
     estado = 'NAO_LOCALIZADO'
     url = null
     observacao =

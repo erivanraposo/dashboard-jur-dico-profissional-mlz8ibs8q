@@ -22,6 +22,7 @@ type Estado =
   | 'CONFIRMADO_METADADOS'
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
+  | 'IDENTIFICADO'
 
 type Item = {
   citacao: string
@@ -48,7 +49,14 @@ const ESTADOS: Record<Estado, { rotulo: string; cls: string; Icone: any; ajuda: 
     cls: 'bg-[#c9a35a]/20 text-[#8a6d2f] border-[#c9a35a]/50',
     Icone: ShieldQuestion,
     ajuda:
-      'O processo existe no portal oficial, mas o inteiro teor não estava acessível. Confira o conteúdo na fonte.',
+      'Número, classe, relator e data foram conferidos em fonte do próprio tribunal, mas o inteiro teor não estava acessível — não sabemos o que o julgado decide.',
+  },
+  IDENTIFICADO: {
+    rotulo: 'Identificado — não conferido',
+    cls: 'bg-slate-100 text-slate-700 border-slate-300',
+    Icone: ShieldQuestion,
+    ajuda:
+      'Reconhecemos a citação pelo formato e abrimos a busca oficial. Nenhuma fonte foi consultada e o teor não foi lido — isto não é uma confirmação.',
   },
   DIVERGENTE: {
     rotulo: 'Divergente',
@@ -133,6 +141,7 @@ export default function Precedentes() {
         conf: itens.filter((i) => i.estado.startsWith('CONFIRMADO')).length,
         div: itens.filter((i) => i.estado === 'DIVERGENTE').length,
         nao: itens.filter((i) => i.estado === 'NAO_LOCALIZADO').length,
+        ide: itens.filter((i) => i.estado === 'IDENTIFICADO').length,
       }
     : null
 
@@ -209,6 +218,7 @@ export default function Precedentes() {
           <Badge className={ESTADOS.CONFIRMADO_INTEIRO_TEOR.cls}>{resumo.conf} confirmada(s)</Badge>
           {resumo.div > 0 && <Badge className={ESTADOS.DIVERGENTE.cls}>{resumo.div} divergente(s)</Badge>}
           {resumo.nao > 0 && <Badge className={ESTADOS.NAO_LOCALIZADO.cls}>{resumo.nao} não localizada(s)</Badge>}
+          {resumo.ide > 0 && <Badge className={ESTADOS.IDENTIFICADO.cls}>{resumo.ide} identificada(s)</Badge>}
         </div>
       )}
 
