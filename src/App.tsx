@@ -10,7 +10,11 @@ import './print.css'
 
 import Layout from './components/Layout'
 import Index from './pages/Index'
-import Jurisprudencia from './pages/Jurisprudencia'
+// Jurisprudência: rota desativada em 30/07/2026. A página era scaffolding do SKIP
+// (3 seeds de demonstração, busca ilike na própria tabela, relator/ano fixos no
+// código, "Clipar" sem destino). Será substituída pelo Verificador de Precedentes,
+// construído sobre a máquina de proveniência da analyze-legal-text.
+// Arquivo mantido em src/pages/Jurisprudencia.tsx apenas como referência.
 import GeradorMinutas from './pages/GeradorMinutas'
 import Processos from './pages/Processos'
 import Minutas from './pages/Minutas'
@@ -102,7 +106,6 @@ const AppContent = () => (
       }
     >
       <Route path="/" element={<Index />} />
-      <Route path="/jurisprudencia" element={<Jurisprudencia />} />
       <Route path="/gerador-minutas" element={<GeradorMinutas />} />
       <Route path="/processos" element={<Processos />} />
       <Route path="/minutas" element={<Minutas />} />

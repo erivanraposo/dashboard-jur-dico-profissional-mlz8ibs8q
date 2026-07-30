@@ -21,7 +21,6 @@ import {
   FileEdit,
   AlertCircle,
   Search,
-  Scale,
   FileText,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -294,7 +293,7 @@ function DashboardContent() {
       {/* Navigation Hub */}
       <div>
         <h2 className="text-lg font-semibold tracking-tight mb-4">Acesso Rápido</h2>
-        <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
           <Link to="/gerador-minutas" className="block focus:outline-none">
             <Card className="hover:border-primary cursor-pointer transition-colors h-full group">
               <CardHeader>
@@ -314,17 +313,6 @@ function DashboardContent() {
                   Processos
                 </CardTitle>
                 <CardDescription>Gerencie seus casos e acompanhe andamentos</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-          <Link to="/jurisprudencia" className="block focus:outline-none">
-            <Card className="hover:border-primary cursor-pointer transition-colors h-full group">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 group-hover:text-primary transition-colors">
-                  <Scale className="h-5 w-5 text-primary" />
-                  Jurisprudência
-                </CardTitle>
-                <CardDescription>Pesquise decisões e monte seu acervo</CardDescription>
               </CardHeader>
             </Card>
           </Link>
