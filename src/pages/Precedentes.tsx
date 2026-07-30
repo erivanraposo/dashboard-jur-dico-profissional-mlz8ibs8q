@@ -1,0 +1,273 @@
+import { useState } from 'react'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import {
+  ShieldCheck, ShieldAlert, ShieldQuestion, SearchX, ExternalLink, Copy, Loader2,
+} from 'lucide-react'
+import { supabase } from '@/lib/supabase/client'
+import HelpButton from '@/components/HelpButton'
+import { useToast } from '@/hooks/use-toast'
+
+// ---------------------------------------------------------------------------
+// VERIFICADOR DE PRECEDENTES — Fase 1
+// O advogado cola citações que já tem; o sistema atesta se existem e se dizem
+// o que se afirma. Quatro estados declarados, nunca um "verificado" binário.
+// ---------------------------------------------------------------------------
+
+type Estado =
+  | 'CONFIRMADO_INTEIRO_TEOR'
+  | 'CONFIRMADO_METADADOS'
+  | 'DIVERGENTE'
+  | 'NAO_LOCALIZADO'
+
+type Item = {
+  citacao: string
+  tipo: string
+  estado: Estado
+  url_oficial: string | null
+  o_que_decide: string | null
+  observacao: string | null
+  resolucao: 'deterministica' | 'busca'
+}
+
+const ESTADOS: Record<Estado, { rotulo: string; cls: string; Icone: any; ajuda: string }> = {
+  CONFIRMADO_INTEIRO_TEOR: {
+    rotulo: 'Confirmado — inteiro teor',
+    cls: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    Icone: ShieldCheck,
+    ajuda: 'O julgado foi localizado em fonte oficial e o conteúdo foi lido.',
+  },
+  CONFIRMADO_METADADOS: {
+    rotulo: 'Confirmado — metadados',
+    cls: 'bg-[#c9a35a]/20 text-[#8a6d2f] border-[#c9a35a]/50',
+    Icone: ShieldQuestion,
+    ajuda:
+      'O processo existe no portal oficial, mas o inteiro teor não estava acessível. Confira o conteúdo na fonte.',
+  },
+  DIVERGENTE: {
+    rotulo: 'Divergente',
+    cls: 'bg-red-100 text-red-800 border-red-300',
+    Icone: ShieldAlert,
+    ajuda:
+      'O julgado existe, mas algum dado não confere ou ele não decide o que a citação afirma. Leia a observação.',
+  },
+  NAO_LOCALIZADO: {
+    rotulo: 'Não localizado',
+    cls: 'bg-slate-100 text-slate-700 border-slate-300',
+    Icone: SearchX,
+    ajuda:
+      'Não encontrado nos portais consultados. Isso não é prova de que a citação seja falsa — pode ser limite de cobertura.',
+  },
+}
+
+const EXEMPLO = `HC 103.118, rel. min. Luiz Fux, j. 20-3-2012, 1ª Turma
+Súmula Vinculante 11
+Tema 121 do STF`
+
+export default function Precedentes() {
+  const [texto, setTexto] = useState('')
+  const [tese, setTese] = useState('')
+  const [carregando, setCarregando] = useState(false)
+  const [itens, setItens] = useState<Item[] | null>(null)
+  const [consumo, setConsumo] = useState<{ hoje: number; teto: number } | null>(null)
+  const [dominios, setDominios] = useState<string[]>([])
+  const { toast } = useToast()
+
+  const verificar = async () => {
+    if (texto.trim().length < 4) {
+      toast({ title: 'Cole ao menos uma citação', variant: 'destructive' })
+      return
+    }
+    setCarregando(true)
+    setItens(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('verify-precedent', {
+        body: { texto, tese },
+      })
+      if (error) throw error
+      if (data?.status === 'error') {
+        toast({ title: 'Não foi possível verificar', description: data.message, variant: 'destructive' })
+        if (data.consumo_hoje != null) setConsumo({ hoje: data.consumo_hoje, teto: data.teto_diario })
+        return
+      }
+      setItens(data.itens ?? [])
+      setDominios(data.dominios_consultados ?? [])
+      if (data.consumo_hoje != null) setConsumo({ hoje: data.consumo_hoje, teto: data.teto_diario })
+      if (data.aviso) toast({ title: 'Nada reconhecido', description: data.aviso })
+    } catch (e: any) {
+      toast({ title: 'Erro na verificação', description: e.message, variant: 'destructive' })
+    } finally {
+      setCarregando(false)
+    }
+  }
+
+  const copiar = (i: Item) => {
+    const txt = i.url_oficial ? `${i.citacao} — ${i.url_oficial}` : i.citacao
+    navigator.clipboard.writeText(txt)
+    toast({ title: 'Citação copiada', description: i.url_oficial ? 'Com a URL da fonte oficial.' : 'Sem URL: não confirmada.' })
+  }
+
+  const resumo = itens
+    ? {
+        conf: itens.filter((i) => i.estado.startsWith('CONFIRMADO')).length,
+        div: itens.filter((i) => i.estado === 'DIVERGENTE').length,
+        nao: itens.filter((i) => i.estado === 'NAO_LOCALIZADO').length,
+      }
+    : null
+
+  return (
+    <div className="space-y-6 max-w-5xl mx-auto">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center gap-2">
+            <ShieldCheck className="h-8 w-8" />
+            Verificador de Precedentes
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Cole citações de qualquer origem — peça da parte contrária, minuta de estagiário, saída
+            de outra IA, sua própria peça antes do protocolo. Conferimos em portais oficiais.
+          </p>
+        </div>
+        <HelpButton anchor="verificador-precedentes" />
+      </div>
+
+      <Card className="border-border/50 shadow-sm">
+        <CardContent className="p-6 space-y-4">
+          <div>
+            <Label htmlFor="citacoes">Citações</Label>
+            <Textarea
+              id="citacoes"
+              className="mt-1.5 min-h-[130px] font-mono text-sm"
+              placeholder={EXEMPLO}
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Uma por linha, ou cole o parágrafo inteiro da peça. Até 10 por vez.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="tese">
+              Tese alegada <span className="text-muted-foreground font-normal">(opcional, mas é o que torna a conferência forte)</span>
+            </Label>
+            <Textarea
+              id="tese"
+              className="mt-1.5 min-h-[70px]"
+              placeholder="O que você está afirmando que esses julgados sustentam. Ex.: que o STF admite a modulação de efeitos em declaração de não recepção."
+              value={tese}
+              onChange={(e) => setTese(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Sem a tese, conferimos existência e metadados. Com ela, conferimos também se o julgado
+              decide mesmo o que se afirma — que é onde mora a citação inventada.
+            </p>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <Button onClick={verificar} disabled={carregando} className="h-11 px-8 gap-2">
+              {carregando ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Consultando portais oficiais...
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="h-4 w-4" /> Verificar
+                </>
+              )}
+            </Button>
+            {consumo && (
+              <span className="text-xs text-muted-foreground">
+                {consumo.hoje} de {consumo.teto} verificações hoje
+              </span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {resumo && itens && itens.length > 0 && (
+        <div className="flex flex-wrap gap-2 text-sm">
+          <Badge className={ESTADOS.CONFIRMADO_INTEIRO_TEOR.cls}>{resumo.conf} confirmada(s)</Badge>
+          {resumo.div > 0 && <Badge className={ESTADOS.DIVERGENTE.cls}>{resumo.div} divergente(s)</Badge>}
+          {resumo.nao > 0 && <Badge className={ESTADOS.NAO_LOCALIZADO.cls}>{resumo.nao} não localizada(s)</Badge>}
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {itens?.map((i, n) => {
+          const meta = ESTADOS[i.estado] ?? ESTADOS.NAO_LOCALIZADO
+          const { Icone } = meta
+          return (
+            <Card key={n} className="border-border/50 shadow-sm overflow-hidden">
+              <CardContent className="p-5 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-serif text-base leading-relaxed">{i.citacao}</p>
+                  <Badge className={`${meta.cls} shrink-0 gap-1`}>
+                    <Icone className="h-3.5 w-3.5" />
+                    {meta.rotulo}
+                  </Badge>
+                </div>
+
+                <p className="text-xs text-muted-foreground">{meta.ajuda}</p>
+
+                {i.o_que_decide && (
+                  <div className="text-sm">
+                    <span className="font-semibold text-muted-foreground uppercase text-xs tracking-wider">
+                      O que o julgado decide
+                    </span>
+                    <p className="mt-1 text-slate-700">{i.o_que_decide}</p>
+                  </div>
+                )}
+
+                {i.observacao && (
+                  <div
+                    className={`text-sm rounded-md p-3 ${
+                      i.estado === 'DIVERGENTE'
+                        ? 'bg-red-50 text-red-900'
+                        : 'bg-muted/50 text-slate-700'
+                    }`}
+                  >
+                    {i.observacao}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {i.url_oficial ? (
+                    <Button asChild variant="outline" size="sm" className="gap-1.5">
+                      <a href={i.url_oficial} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-3.5 w-3.5" /> Abrir fonte oficial
+                      </a>
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">
+                      Sem URL oficial — nada é exibido como confirmado sem fonte.
+                    </span>
+                  )}
+                  <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => copiar(i)}>
+                    <Copy className="h-3.5 w-3.5" /> Copiar citação
+                  </Button>
+                  {i.resolucao === 'deterministica' && (
+                    <span className="text-xs text-muted-foreground">
+                      Resolvido diretamente no portal, sem consulta de IA.
+                    </span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
+
+      {itens && itens.length > 0 && (
+        <p className="text-xs text-muted-foreground border-t pt-4 leading-relaxed">
+          Consultamos exclusivamente domínios oficiais
+          {dominios.length > 0 && <> ({dominios.join(', ')})</>}. Ausência nos portais consultados
+          não é prova de inexistência. O sistema atesta existência e teor —{' '}
+          <strong>não avalia se o precedente serve ao seu caso</strong>, o que é juízo do advogado.
+          Confira sempre na fonte antes de protocolar.
+        </p>
+      )}
+    </div>
+  )
+}

@@ -24,6 +24,7 @@ import {
   Clock,
   HelpCircle,
   Users,
+  ShieldCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,6 +39,7 @@ const navigation = [
   { name: 'Gerador de Minutas', path: '/gerador-minutas', icon: FileText },
   { name: 'Minutas', path: '/minutas', icon: FolderOpen },
   { name: 'Prazos', path: '/prazos', icon: Clock },
+  { name: 'Precedentes', path: '/precedentes', icon: ShieldCheck },
   { name: 'Auditoria', path: '/auditoria', icon: Activity },
   { name: 'Equipe', path: '/equipe', icon: Users, ownerOnly: true },
   { name: 'Configurações', path: '/configuracoes', icon: Settings },

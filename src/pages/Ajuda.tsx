@@ -11,6 +11,7 @@ const TOC = [
   { id: 'analisar', label: 'Como a análise funciona' },
   { id: 'agentes', label: 'Os agentes' },
   { id: 'prazos', label: 'Prazos' },
+  { id: 'verificador-precedentes', label: 'Verificador de Precedentes' },
   { id: 'config', label: 'Configurações' },
   { id: 'exportar', label: 'Exportação' },
   { id: 'confianca', label: 'Confiança e limites' },
@@ -311,6 +312,37 @@ export default function Ajuda() {
             <p className="text-sm">
               A calculadora sempre traz um aviso <strong>[A VERIFICAR]</strong> lembrando de conferir os
               feriados forenses locais do tribunal — ela cobre os nacionais, mas cada tribunal tem os seus.
+            </p>
+          </Sec>
+
+          <Sec id="verificador-precedentes" title="Verificador de Precedentes">
+            <p className="flex items-start gap-2">
+              <ShieldCheck className="mt-1 h-5 w-5 shrink-0 text-[#1e3a5f]" />
+              <span>
+                Em <strong>Precedentes</strong>, você cola citações que já tem — de peça da parte
+                contrária, de minuta de estagiário, de saída de outra IA ou da sua própria peça antes
+                do protocolo — e o sistema confere em <strong>portais oficiais</strong> se elas
+                existem e se dizem o que se afirma.
+              </span>
+            </p>
+            <p className="text-sm">
+              Informar a <strong>tese alegada</strong> é opcional, mas é o que torna a conferência
+              forte: sem ela, checamos existência e metadados; com ela, checamos também se o julgado
+              decide mesmo aquilo — que é onde mora a citação inventada.
+            </p>
+            <p className="text-sm">
+              O resultado nunca é um "verificado" binário. São quatro estados:{' '}
+              <strong>Confirmado — inteiro teor</strong> (localizado e lido na fonte),{' '}
+              <strong>Confirmado — metadados</strong> (o processo existe, mas o inteiro teor não
+              estava acessível), <strong>Divergente</strong> (existe, mas algum dado não confere ou
+              ele não decide o que se afirma) e <strong>Não localizado</strong>.
+            </p>
+            <p className="text-sm">
+              Duas ressalvas que valem para todo resultado: <strong>"não localizado" não é prova de
+              que a citação seja falsa</strong> — pode ser limite de cobertura dos portais; e o
+              sistema atesta existência e teor, <strong>não avalia se o precedente serve ao seu
+              caso</strong>, o que é juízo do advogado. Nenhum resultado é exibido como confirmado
+              sem URL de fonte oficial.
             </p>
           </Sec>
 
