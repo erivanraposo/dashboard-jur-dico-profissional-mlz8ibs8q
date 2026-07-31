@@ -29,7 +29,12 @@ import { corsHeaders } from '../_shared/cors.ts'
 // Retorno: { status:'ok', itens: Item[], consumo_hoje, teto_diario, custo_usd }
 // ============================================================================
 
-const TETO_DIARIO = 40 // verificações por escritório por dia (plano; decisão de 30/07)
+// Teto por escritório por dia. Baixado de 40 para 10 em 31/07/2026: a medição real
+// deu ~US$ 0,35 por verificação, então 40/dia custaria ~US$ 14/dia por escritório —
+// mais de 9x o ciclo completo de análise, que é o produto principal (~US$ 1,46).
+// Número provisório, a revisar quando o conjunto de teste fechar o custo com
+// max_uses=5. Ver lexaxis_custo_real_por_analise_2026-07-27.md.
+const TETO_DIARIO = 10
 const MAX_CITACOES = 10 // por requisição
 const MODELO = 'claude-sonnet-5'
 
@@ -249,7 +254,11 @@ async function verificaPorBusca(
         {
           type: 'web_search_20260209',
           name: 'web_search',
-          max_uses: 8,
+          // 8 -> 5 em 31/07/2026. Medição das 13 primeiras verificações: 70k tokens
+          // de GRAVAÇÃO de cache por chamada (3,75/M) = 75% do custo de US$ 0,35.
+          // Não é o system prompt (~2,5k) — é o conteúdo das buscas, reescrito no
+          // cache a cada volta do laço interno. Cortar buscas é a alavanca real.
+          max_uses: 5,
           allowed_callers: ['direct'],
           allowed_domains: DOMINIOS_OFICIAIS,
         },
@@ -412,6 +421,17 @@ Deno.serve(async (req: Request) => {
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
   const authHeader = req.headers.get('Authorization')
 
+  // ---- MODO LOTE (avaliação) -------------------------------------------------
+  // Habilitado só se a env BATCH_TEST_TOKEN existir E o chamador enviar o mesmo
+  // valor em x-batch-token. Serve para rodar o conjunto de teste ponta a ponta,
+  // exercitando a MESMA normalização do servidor — que é onde estavam três dos
+  // quatro defeitos achados nos testes manuais.
+  // Não toca em dados de usuário: sem perfil, sem workspace, sem gravação.
+  // O gateway continua exigindo JWT (a anon key, pública, basta).
+  const batchToken = Deno.env.get('BATCH_TEST_TOKEN') ?? ''
+  const batchHeader = req.headers.get('x-batch-token') ?? ''
+  const modoLote = batchToken.length >= 16 && batchHeader === batchToken
+
   try {
     if (!authHeader) {
       return json({ status: 'error', code: 'unauthorized', message: 'Não autenticado.' }, 401)
@@ -437,6 +457,26 @@ Deno.serve(async (req: Request) => {
         { status: 'error', code: 'too_long', message: 'Texto muito longo. Verifique por partes.' },
         400,
       )
+    }
+
+    // ---- lote: pula identificação, teto e gravação; roda o mesmo miolo
+    if (modoLote) {
+      const { itens: det, resto } = resolveDeterministico(texto)
+      let busca: Item[] = []
+      let usoLote: any = {}
+      if (/[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)) {
+        const r = await verificaPorBusca(resto.slice(0, 6000), tese, anthropicKey)
+        busca = r.itens.slice(0, MAX_CITACOES)
+        usoLote = r.uso
+      }
+      const todos = [...det, ...busca]
+      return json({
+        status: 'ok',
+        modo: 'lote',
+        itens: todos,
+        uso: usoLote, // bruto, para conferir a fórmula de custo por fora
+        custo_usd: Number(custo(usoLote).toFixed(6)),
+      })
     }
 
     // ---- chamador e workspace
