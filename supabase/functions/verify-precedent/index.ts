@@ -42,9 +42,18 @@ const PRECO = { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 3.75 }
 type Estado =
   | 'CONFIRMADO_INTEIRO_TEOR'
   | 'CONFIRMADO_METADADOS'
+  | 'CONFIRMADO_REPOSITORIO' // conferido no LexML, não no portal do tribunal
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
   | 'IDENTIFICADO' // reconhecido por padrão, sem consulta a fonte alguma
+
+// Repositório oficial do governo (Rede de Informação Legislativa e Jurídica).
+// Não é o tribunal, mas também não é terceiro: é fonte pública oficial, e —
+// diferentemente dos portais do STF e do STJ — legível por máquina. Sustenta
+// confirmação num grau PRÓPRIO, que diz de onde veio (decisão de 31/07/2026,
+// depois de constatar que os portais dos tribunais superiores só entregam
+// formulário de busca a acesso automatizado).
+const HOST_REPOSITORIO = 'lexml.gov.br'
 
 interface Item {
   citacao: string
@@ -181,20 +190,28 @@ Para CADA citação recebida, devolva um objeto com:
 - "tribunal": a sigla do tribunal a que a citação se refere (STF, STJ, TST, TSE, STM...). Deduza pela classe processual, pelo ministro citado ou pelo contexto. null se não der para saber.
 - "estado": um de
   * CONFIRMADO_INTEIRO_TEOR — você localizou o julgado em fonte oficial E leu conteúdo suficiente para dizer o que ele decide
-  * CONFIRMADO_METADADOS — o processo existe (número/classe/órgão/data batem), mas o inteiro teor não estava acessível
+  * CONFIRMADO_METADADOS — no portal do próprio tribunal, número/classe/órgão/data batem, mas o inteiro teor não estava acessível
+  * CONFIRMADO_REPOSITORIO — você não alcançou o portal do tribunal, mas encontrou o registro no **LexML** (lexml.gov.br), repositório oficial do governo. Use este estado sempre que a confirmação vier de lá
   * DIVERGENTE — o julgado existe, porém algum dado da citação não confere (relator, data, órgão, classe) OU ele não decide o que a tese alegada afirma
   * NAO_LOCALIZADO — não encontrado nos portais consultados
-- "url_oficial": URL **no domínio do próprio tribunal citado** (citação do STF ⇒ endereço em stf.jus.br; do STJ ⇒ stj.jus.br). OBRIGATÓRIA quando o estado não for NAO_LOCALIZADO. Nunca invente endereço, e nunca ofereça como fonte a decisão de OUTRO tribunal que apenas menciona o julgado: um acórdão de TRF ou de TJ que cita um HC do STF não é fonte daquele HC. Se você só encontrou menção em outro tribunal, o estado é NAO_LOCALIZADO e você diz isso na observação.
+- "url_oficial": URL **no domínio do próprio tribunal citado** (citação do STF ⇒ endereço em stf.jus.br; do STJ ⇒ stj.jus.br). OBRIGATÓRIA apenas para os dois estados CONFIRMADO_*. **DIVERGENTE NÃO exige URL**: apontar que um dado está errado se sustenta em indício, e não ter o documento em mãos jamais é motivo para rebaixar uma divergência a NAO_LOCALIZADO. Nunca invente endereço, e nunca ofereça como fonte a decisão de OUTRO tribunal que apenas menciona o julgado: um acórdão de TRF ou de TJ que cita um HC do STF não é fonte daquele HC. Se você só encontrou menção em outro tribunal, o estado é NAO_LOCALIZADO e você diz isso na observação.
 - "o_que_decide": em uma ou duas frases, o que o julgado efetivamente decide, conforme a fonte lida. null se não leu.
 - "observacao": o que exatamente diverge, ou o que não foi possível conferir. Seja específico: "o relator é o min. X, não o min. Y" vale; "dados divergentes" não vale.
 
+HIERARQUIA DAS FONTES — três degraus, e o estado muda conforme o degrau alcançado
+1. **Portal do próprio tribunal** (stf.jus.br, stj.jus.br...): o melhor. Rende CONFIRMADO_INTEIRO_TEOR ou CONFIRMADO_METADADOS. Aviso prático: os portais do STF e do STJ são aplicações JavaScript e costumam devolver só o formulário de busca — se foi isso que você recebeu, você NÃO alcançou o documento.
+2. **LexML** (lexml.gov.br): repositório oficial do governo. Rende CONFIRMADO_REPOSITORIO. Tente-o sempre que o portal do tribunal não entregar o registro — é legível e frequentemente traz a ficha do julgado.
+3. **Qualquer outra coisa** (acórdão de outro tribunal citando o julgado, notícia, repositório particular): não confirma nada. Ver a assimetria abaixo.
+
 ASSIMETRIA DA PROVA — leia com atenção, é a regra que mais erra
-Fonte SECUNDÁRIA é qualquer documento que não seja do tribunal citado: acórdão de TRF ou de TJ que menciona um julgado do STF, repositório particular, notícia, artigo.
+Fonte SECUNDÁRIA é o degrau 3: acórdão de TRF ou de TJ que menciona um julgado do STF, repositório particular, notícia, artigo.
 
 - Fonte secundária **NUNCA** sustenta confirmação, nem de metadados. Se você só encontrou menções em decisões de outros tribunais, o estado é NAO_LOCALIZADO, ainda que dez fontes repitam os mesmos dados. Repetição não é verificação: todas podem descender da mesma citação errada.
 - Fonte secundária **PODE** sustentar DIVERGENTE quando **contradiz** a citação apresentada. Evidência de discrepância é alerta útil ao advogado; evidência de existência vinda de terceiro não é prova. Nesse caso diga na observação que o indício é de fonte secundária e precisa ser conferido no portal do tribunal.
 
 Em resumo: para confirmar, a fonte tem de ser do próprio tribunal. Para levantar suspeita, não.
+
+Consequência prática que você costuma errar: se as fontes secundárias trazem, de forma consistente, um dado DIFERENTE do que o advogado escreveu — outro relator, outra data, outro órgão —, o estado é **DIVERGENTE**, não NAO_LOCALIZADO. Nomeie o dado divergente na observação ("as fontes indicam rel. min. X, não Y"). Escolher NAO_LOCALIZADO nesse caso esconde do advogado justamente o que ele precisa saber, e é falha grave. NAO_LOCALIZADO é para quando você não achou nada, não para quando achou algo que contradiz.
 
 REGRAS INEGOCIÁVEIS
 1. NAO_LOCALIZADO significa "não encontrei nos portais consultados", NUNCA "não existe" e NUNCA "é falso". Diga isso na observação.
@@ -295,36 +312,28 @@ function normaliza(i: any): Item {
   const ehBusca =
     !!bruta && /(pages\/search|pesquisar\.jsp|\?queryString=|\bbusca\b|search\?)/i.test(bruta)
 
-  let estado: Estado = ['CONFIRMADO_INTEIRO_TEOR', 'CONFIRMADO_METADADOS', 'DIVERGENTE'].includes(
-    i.estado,
-  )
+  const noRepositorio = !!host && host.endsWith(HOST_REPOSITORIO)
+
+  let estado: Estado = [
+    'CONFIRMADO_INTEIRO_TEOR',
+    'CONFIRMADO_METADADOS',
+    'CONFIRMADO_REPOSITORIO',
+    'DIVERGENTE',
+  ].includes(i.estado)
     ? i.estado
     : 'NAO_LOCALIZADO'
   let observacao: string | null = i.observacao ?? null
   let url: string | null = emDominioOficial && !ehBusca ? bruta : null
 
-  if (estado.startsWith('CONFIRMADO') && ehBusca) {
-    estado = 'NAO_LOCALIZADO'
-    observacao =
-      'A única referência obtida foi uma página de BUSCA do portal, não o documento do julgado. ' +
-      'Página de pesquisa não atesta nada — não confirmamos, o que não significa que a citação seja falsa. ' +
-      (observacao ? `Registro do que o sistema apurou: ${observacao}` : '')
-  } else if (estado !== 'NAO_LOCALIZADO' && !emDominioOficial) {
-    estado = 'NAO_LOCALIZADO'
-    url = null
-    observacao =
-      'O sistema não obteve URL em domínio oficial para esta citação. Sem fonte verificável não confirmamos — o que não significa que a citação seja falsa.'
-  } else if (estado !== 'NAO_LOCALIZADO' && !doTribunalCerto) {
-    // fonte é oficial, mas de outro tribunal: não serve para atestar este julgado
-    estado = 'NAO_LOCALIZADO'
-    observacao =
-      `A única fonte encontrada (${host}) não é do tribunal citado (${tribunal}). ` +
-      'Documento de outro tribunal que menciona o julgado não serve para atestá-lo. ' +
-      'Não confirmamos — o que não significa que a citação seja falsa. Use a busca oficial abaixo para conferir.'
-    url = null
+  // A ressalva do servidor ACRESCENTA, nunca substitui a análise do modelo.
+  // Em 30/07 o rebaixamento sobrescreveu a observação e apagou justamente o achado
+  // útil ("o relator é Luiz Fux, não Marco Aurélio") — o advogado ficou com um
+  // aviso genérico no lugar da informação que importava.
+  const ressalva = (txt: string) => {
+    observacao = observacao ? `${txt}\n\nO que o sistema apurou: ${observacao}` : txt
   }
 
-  return {
+  const montar = (): Item => ({
     citacao,
     tipo: 'acordao',
     tribunal,
@@ -335,7 +344,47 @@ function normaliza(i: any): Item {
     o_que_decide: i.o_que_decide ?? null,
     observacao,
     resolucao: 'busca',
+  })
+
+  // Confirmação apoiada no LexML é legítima, mas num grau que diz de onde veio:
+  // repositório oficial, não portal do tribunal. Tratado ANTES da checagem de
+  // tribunal, que naturalmente reprovaria lexml.gov.br.
+  if (estado.startsWith('CONFIRMADO') && noRepositorio && !ehBusca) {
+    estado = 'CONFIRMADO_REPOSITORIO'
+    ressalva(
+      'Conferido no LexML — repositório oficial do governo (Rede de Informação Legislativa e Jurídica) —, não no portal do próprio tribunal. ' +
+        'É fonte pública oficial, mas de segunda instância documental: o registro reproduz os dados do julgado, não o inteiro teor autenticado pela Corte.',
+    )
+    return montar()
   }
+
+  // Só CONFIRMADO exige documento. DIVERGENTE se sustenta em indício.
+  if (estado.startsWith('CONFIRMADO') && ehBusca) {
+    estado = 'NAO_LOCALIZADO'
+    url = null
+    ressalva(
+      'A única referência obtida foi uma página de BUSCA do portal, não o documento do julgado. Página de pesquisa não atesta nada — não confirmamos, o que não significa que a citação seja falsa.',
+    )
+  } else if (estado.startsWith('CONFIRMADO') && !emDominioOficial) {
+    estado = 'NAO_LOCALIZADO'
+    url = null
+    ressalva(
+      'O sistema não obteve URL em domínio oficial para esta citação. Sem fonte verificável não confirmamos — o que não significa que a citação seja falsa.',
+    )
+  } else if (estado.startsWith('CONFIRMADO') && !doTribunalCerto) {
+    // fonte é oficial, mas de outro tribunal: não serve para atestar este julgado
+    estado = 'NAO_LOCALIZADO'
+    url = null
+    ressalva(
+      `A única fonte encontrada (${host}) não é do tribunal citado (${tribunal}). Documento de outro tribunal que menciona o julgado não serve para atestá-lo. Não confirmamos — o que não significa que a citação seja falsa.`,
+    )
+  } else if (estado === 'DIVERGENTE' && !url) {
+    ressalva(
+      'Divergência apontada a partir de indício, sem documento do próprio tribunal em mãos. Confirme no portal antes de usar a citação.',
+    )
+  }
+
+  return montar()
 }
 
 function custo(u: any): number {

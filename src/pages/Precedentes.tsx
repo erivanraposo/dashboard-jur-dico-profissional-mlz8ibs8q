@@ -20,6 +20,7 @@ import { useToast } from '@/hooks/use-toast'
 type Estado =
   | 'CONFIRMADO_INTEIRO_TEOR'
   | 'CONFIRMADO_METADADOS'
+  | 'CONFIRMADO_REPOSITORIO'
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
   | 'IDENTIFICADO'
@@ -50,6 +51,13 @@ const ESTADOS: Record<Estado, { rotulo: string; cls: string; Icone: any; ajuda: 
     Icone: ShieldQuestion,
     ajuda:
       'Número, classe, relator e data foram conferidos em fonte do próprio tribunal, mas o inteiro teor não estava acessível — não sabemos o que o julgado decide.',
+  },
+  CONFIRMADO_REPOSITORIO: {
+    rotulo: 'Confirmado — repositório oficial',
+    cls: 'bg-[#c9a35a]/20 text-[#8a6d2f] border-[#c9a35a]/50',
+    Icone: ShieldQuestion,
+    ajuda:
+      'Registro localizado no LexML, repositório oficial do governo — não no portal do próprio tribunal. Fonte pública oficial, mas de segunda instância documental.',
   },
   IDENTIFICADO: {
     rotulo: 'Identificado — não conferido',
