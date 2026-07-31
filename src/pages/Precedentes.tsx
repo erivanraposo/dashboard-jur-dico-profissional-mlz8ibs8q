@@ -35,6 +35,8 @@ type Item = {
   url_lexml: string | null
   o_que_decide: string | null
   observacao: string | null
+  campos_conferidos?: string[]
+  campos_nao_conferidos?: string[]
   resolucao: 'deterministica' | 'busca'
 }
 
@@ -253,6 +255,21 @@ export default function Precedentes() {
                       O que o julgado decide
                     </span>
                     <p className="mt-1 text-slate-700">{i.o_que_decide}</p>
+                  </div>
+                )}
+
+                {(i.campos_conferidos?.length || i.campos_nao_conferidos?.length) && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                    {!!i.campos_conferidos?.length && (
+                      <span className="text-emerald-700">
+                        ✓ conferido na fonte: {i.campos_conferidos.join(', ')}
+                      </span>
+                    )}
+                    {!!i.campos_nao_conferidos?.length && (
+                      <span className="text-amber-700">
+                        ⚠ não conferido: {i.campos_nao_conferidos.join(', ')}
+                      </span>
+                    )}
                   </div>
                 )}
 

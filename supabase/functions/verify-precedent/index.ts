@@ -70,6 +70,8 @@ interface Item {
   url_lexml: string | null // segunda via estável
   o_que_decide: string | null
   observacao: string | null
+  campos_conferidos?: string[] // metadados que a fonte confirmou
+  campos_nao_conferidos?: string[] // afirmados na citação e NÃO vistos na fonte
   resolucao: 'deterministica' | 'busca'
 }
 
@@ -200,6 +202,7 @@ Para CADA citação recebida, devolva um objeto com:
   * DIVERGENTE — o julgado existe, porém algum dado da citação não confere (relator, data, órgão, classe) OU ele não decide o que a tese alegada afirma
   * NAO_LOCALIZADO — não encontrado nos portais consultados
 - "url_oficial": URL **no domínio do próprio tribunal citado** (citação do STF ⇒ endereço em stf.jus.br; do STJ ⇒ stj.jus.br). OBRIGATÓRIA apenas para os dois estados CONFIRMADO_*. **DIVERGENTE NÃO exige URL**: apontar que um dado está errado se sustenta em indício, e não ter o documento em mãos jamais é motivo para rebaixar uma divergência a NAO_LOCALIZADO. Nunca invente endereço, e nunca ofereça como fonte a decisão de OUTRO tribunal que apenas menciona o julgado: um acórdão de TRF ou de TJ que cita um HC do STF não é fonte daquele HC. Se você só encontrou menção em outro tribunal, o estado é NAO_LOCALIZADO e você diz isso na observação.
+- "observado": objeto com os metadados que você EFETIVAMENTE VIU na fonte oficial, tal como lá aparecem — {"classe": "...", "numero": "...", "relator": "...", "redator": "...", "orgao": "...", "data": "AAAA-MM-DD"}. Use **null** em todo campo que você não viu. Não deduza, não repita o que o advogado escreveu, não complete pelo que parece provável: este objeto é o registro do que a FONTE diz, e o sistema compara sozinho com a citação apresentada. Preencher por dedução aqui produz confirmação falsa.
 - "o_que_decide": em uma ou duas frases, o que o julgado efetivamente decide, conforme a fonte lida. null se não leu.
 - "observacao": o que exatamente diverge, ou o que não foi possível conferir. Seja específico: "o relator é o min. X, não o min. Y" vale; "dados divergentes" não vale.
 
@@ -319,6 +322,95 @@ async function verificaPorBusca(
 //   (b) a URL tem de ser do TRIBUNAL CITADO — domínio oficial não basta.
 // (b) nasceu da falha de 30/07/2026: o modelo devolveu um acórdão do TRF3 como
 // fonte de um HC do STF. Link oficial, tribunal errado, selo de confirmado.
+// ---------------------------------------------------------------------------
+// COMPARAÇÃO DETERMINÍSTICA DE METADADOS
+// Comparar strings é trabalho de código, e eu havia deixado com o modelo. Na
+// rodada 2 do conjunto de teste isso custou um FALSO CONFIRMADO: a distorção
+// era o órgão julgador, o modelo não conferiu esse campo e confirmou o resto.
+// Agora o modelo apenas RELATA o que viu; quem julga igualdade é o servidor.
+// ---------------------------------------------------------------------------
+const CLASSES_RE =
+  /\b(ADI|ADPF|ADC|ADO|RHC|RMS|RvC|RE|ARE|AI|HC|MS|MI|Rcl|ACO|AO|Pet|Rp|SS|STA|SL|AC|Inq|AP|Ext|PPE|EP|CC|AR|SE|IF)\s+([\d.]+)/i
+
+function normaliza2(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/\b(MIN|MINISTR[OA]|REL|RELATOR[A]?|DES|DR)\b\.?/g, '')
+    .replace(/[^A-Z0-9]/g, '')
+    .trim()
+}
+
+function mesmoNome(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return true // sem dado dos dois lados: nada a comparar
+  const x = normaliza2(a)
+  const y = normaliza2(b)
+  if (!x || !y) return true
+  return x === y || x.includes(y) || y.includes(x)
+}
+
+function normOrgao(s?: string | null): string | null {
+  if (!s) return null
+  const t = normaliza2(s)
+  if (/PLENARIO|TRIBUNALPLENO|^P$/.test(t)) return 'PLENARIO'
+  if (/(1|PRIMEIRA)(A|Â)?T/.test(t)) return '1T'
+  if (/(2|SEGUNDA)(A|Â)?T/.test(t)) return '2T'
+  if (/MONOCRAT/.test(t)) return 'MONO'
+  if (/CORTEESPECIAL/.test(t)) return 'CE'
+  return t || null
+}
+
+/** Lê a citação como o advogado a escreveu. */
+function parseCitacao(c: string) {
+  const out: Record<string, string | null> = {
+    classe: null, numero: null, relator: null, redator: null, orgao: null, data: null,
+  }
+  const m = c.match(CLASSES_RE)
+  if (m) {
+    out.classe = m[1].toUpperCase()
+    out.numero = m[2].replace(/\./g, '')
+  }
+  const red = c.match(/rel\.?\s*p\/\s*o\s*ac\.?\s*(?:min\.?)?\s*([^,\]]+)/i) ||
+    c.match(/red\.?\s*d[oa]\s*ac\.?\s*(?:min\.?)?\s*([^,\]]+)/i)
+  if (red) out.redator = red[1].trim()
+  else {
+    const rel = c.match(/\brel\b\.?\s*(?:min\.?)?\s*([^,\]]+)/i)
+    if (rel) out.relator = rel[1].trim()
+  }
+  const d = c.match(/\bj\.\s*(\d{1,2})-(\d{1,2})-(\d{4})/)
+  if (d) out.data = `${d[3]}-${d[2].padStart(2, '0')}-${d[1].padStart(2, '0')}`
+  const org = c.match(/(plen[áa]rio|1[ªa]\s*turma|2[ªa]\s*turma|corte especial|decis[ãa]o monocr[áa]tica)/i)
+  if (org) out.orgao = org[1]
+  return out
+}
+
+/** Confronta o que o advogado afirmou com o que a fonte mostrou. */
+function confronta(citado: Record<string, string | null>, obs: any) {
+  const divergencias: string[] = []
+  const naoConferidos: string[] = []
+  const conferidos: string[] = []
+  const campos: Array<[string, string, (a: any, b: any) => boolean]> = [
+    ['relator', 'relator', mesmoNome],
+    ['redator', 'redator do acórdão', mesmoNome],
+    ['data', 'data de julgamento', (a, b) => !a || !b || a === b],
+    ['orgao', 'órgão julgador', (a, b) => !a || !b || normOrgao(a) === normOrgao(b)],
+    ['classe', 'classe processual', (a, b) => !a || !b || normaliza2(a) === normaliza2(b)],
+  ]
+  for (const [k, rotulo, iguais] of campos) {
+    const afirmado = citado[k]
+    const visto = obs && typeof obs[k] === 'string' && obs[k].trim() ? obs[k].trim() : null
+    if (!afirmado) continue
+    if (!visto) {
+      naoConferidos.push(rotulo)
+      continue
+    }
+    if (iguais(afirmado, visto)) conferidos.push(rotulo)
+    else divergencias.push(`${rotulo}: a citação diz "${afirmado}", a fonte registra "${visto}"`)
+  }
+  return { divergencias, naoConferidos, conferidos }
+}
+
 function hostDe(url: string): string | null {
   try {
     return new URL(url).hostname
@@ -365,6 +457,9 @@ function normaliza(i: any): Item {
     observacao = observacao ? `${txt}\n\nO que o sistema apurou: ${observacao}` : txt
   }
 
+  // Confronto determinístico: o modelo relatou o que viu, o servidor julga.
+  const cotejo = confronta(parseCitacao(citacao), i.observado)
+
   const montar = (): Item => ({
     citacao,
     tipo: 'acordao',
@@ -375,8 +470,30 @@ function normaliza(i: any): Item {
     url_lexml: urlLexml(citacao),
     o_que_decide: i.o_que_decide ?? null,
     observacao,
+    campos_conferidos: cotejo.conferidos,
+    campos_nao_conferidos: cotejo.naoConferidos,
     resolucao: 'busca',
   })
+
+  // Divergência de metadado é fato, não opinião: se a fonte mostrou dado diferente
+  // do que a citação afirma, é DIVERGENTE — e o servidor decide isso, não o modelo.
+  // Só ELEVA para divergente; nunca rebaixa uma divergência que o modelo apontou
+  // por outra razão (a tese, por exemplo).
+  if (cotejo.divergencias.length > 0) {
+    estado = 'DIVERGENTE'
+    ressalva(
+      'Divergência apurada por comparação direta com a fonte — ' +
+        cotejo.divergencias.join('; ') +
+        '.',
+    )
+  } else if (estado.startsWith('CONFIRMADO') && cotejo.naoConferidos.length > 0) {
+    // Era assim que passava um falso confirmado: confirmar "os metadados" tendo
+    // conferido só parte deles. O que não foi visto na fonte fica dito.
+    ressalva(
+      `Confirmação PARCIAL. Conferidos na fonte: ${cotejo.conferidos.join(', ') || 'nenhum campo'}. ` +
+        `NÃO conferidos: ${cotejo.naoConferidos.join(', ')} — estes campos não foram vistos e podem estar errados.`,
+    )
+  }
 
   // Confirmação apoiada no LexML é legítima, mas num grau que diz de onde veio:
   // repositório oficial, não portal do tribunal. Tratado ANTES da checagem de
