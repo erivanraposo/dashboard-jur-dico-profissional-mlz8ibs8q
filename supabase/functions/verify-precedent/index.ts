@@ -221,6 +221,7 @@ Consequência prática que você costuma errar: se as fontes secundárias trazem
 REGRAS INEGOCIÁVEIS
 1. NAO_LOCALIZADO significa "não encontrei nos portais consultados", NUNCA "não existe" e NUNCA "é falso". Diga isso na observação.
 2. Se a tese alegada pelo usuário não corresponder ao que o julgado decide, o estado é DIVERGENTE mesmo que todos os metadados estejam corretos. Esse é o caso mais importante: aponte a diferença explicitamente.
+2-A. **Não confundir "não consegui confirmar" com "está errado".** DIVERGENTE exige evidência POSITIVA de contradição — você viu o dado certo e ele é outro, ou leu o que o julgado decide e não é aquilo. Se os metadados que você conseguiu ver conferem e apenas o teor ficou inacessível, o estado é CONFIRMADO_METADADOS (ou CONFIRMADO_REPOSITORIO), com a observação dizendo que a tese não pôde ser conferida. Marcar divergência por falta de informação faz o advogado descartar citação boa — erro tão grave quanto confirmar citação ruim, e mais frequente.
 3. Não avalie se o precedente serve ao caso do usuário. Isso é juízo do advogado.
 4. Na dúvida entre CONFIRMADO_INTEIRO_TEOR e CONFIRMADO_METADADOS, escolha o segundo. Superestimar o grau de confirmação é o pior erro possível aqui.
 5. Não prometa resultado nem opine sobre chance de êxito.
@@ -228,18 +229,11 @@ REGRAS INEGOCIÁVEIS
 
 Responda SOMENTE com JSON válido: {"itens":[...]}. Sem markdown, sem comentário.`
 
-async function verificaPorBusca(
-  citacoesTexto: string,
-  tese: string,
+// Uma tentativa. O laço com retentativa fica em verificaPorBusca.
+async function chamaModelo(
+  userMsg: string,
   anthropicKey: string,
 ): Promise<{ itens: Item[]; uso: any }> {
-  const userMsg = [
-    `CITAÇÕES A VERIFICAR (texto colado pelo advogado):\n${citacoesTexto}`,
-    tese
-      ? `\nTESE QUE O ADVOGADO AFIRMA que esses julgados sustentam:\n"${tese}"\n\nConfira se cada julgado efetivamente sustenta isso. Se não sustentar, o estado é DIVERGENTE.`
-      : '\nO advogado não informou a tese. Confira existência e metadados, e descreva em "o_que_decide" o que cada julgado decide.',
-  ].join('\n')
-
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -289,6 +283,35 @@ async function verificaPorBusca(
     throw new Error('Resposta do modelo não veio em JSON utilizável.')
   }
   return { itens, uso: data.usage ?? {} }
+}
+
+// 3 de 57 chamadas do conjunto de teste (5%) falharam com JSON quebrado — o modelo
+// às vezes encerra a resposta em prosa depois de usar a ferramenta de busca. Uma
+// retentativa com instrução mais dura resolve sem custo relevante, porque só ocorre
+// na fração que falhou.
+async function verificaPorBusca(
+  citacoesTexto: string,
+  tese: string,
+  anthropicKey: string,
+): Promise<{ itens: Item[]; uso: any }> {
+  const base = [
+    `CITAÇÕES A VERIFICAR (texto colado pelo advogado):\n${citacoesTexto}`,
+    tese
+      ? `\nTESE QUE O ADVOGADO AFIRMA que esses julgados sustentam:\n"${tese}"\n\nConfira se cada julgado efetivamente sustenta isso. Se ele NÃO sustentar — e você tiver visto o que ele decide —, o estado é DIVERGENTE. Se apenas não conseguiu ler o teor, não é divergência: confirme os metadados e diga que a tese não pôde ser conferida.`
+      : '\nO advogado não informou a tese. Confira existência e metadados, e descreva em "o_que_decide" o que cada julgado decide.',
+  ].join('\n')
+
+  try {
+    return await chamaModelo(base, anthropicKey)
+  } catch (err: any) {
+    if (!String(err?.message ?? '').includes('JSON')) throw err
+    console.warn('[verify-precedent] JSON quebrado; uma retentativa')
+    return await chamaModelo(
+      base +
+        '\n\nATENÇÃO: sua resposta anterior não veio em JSON. Responda AGORA exclusivamente com o objeto JSON {"itens":[...]}, sem uma palavra antes ou depois, sem cerca de código.',
+      anthropicKey,
+    )
+  }
 }
 
 // Regras de produto aplicadas NO SERVIDOR, nunca confiadas ao modelo:
