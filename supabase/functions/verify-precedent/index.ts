@@ -48,6 +48,7 @@ type Estado =
   | 'CONFIRMADO_INTEIRO_TEOR'
   | 'CONFIRMADO_METADADOS'
   | 'CONFIRMADO_REPOSITORIO' // conferido no LexML, não no portal do tribunal
+  | 'CONFIRMADO_BASE_STJ' // conferido na Jurisprudência em Teses do STJ (compilação oficial)
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
   | 'IDENTIFICADO' // reconhecido por padrão, sem consulta a fonte alguma
@@ -72,7 +73,7 @@ interface Item {
   observacao: string | null
   campos_conferidos?: string[] // metadados que a fonte confirmou
   campos_nao_conferidos?: string[] // afirmados na citação e NÃO vistos na fonte
-  resolucao: 'deterministica' | 'busca'
+  resolucao: 'deterministica' | 'busca' | 'base_stj'
 }
 
 // Host EXIGIDO por tribunal. Correção de 30/07/2026: validar só "domínio oficial"
@@ -546,6 +547,209 @@ function custo(u: any): number {
   )
 }
 
+// Confronto de metadados no FORMATO DO STJ (o confronta() genérico é do STF:
+// não lê "DJe DD/MM/YYYY" nem "SEXTA TURMA"). Compara a citação contra a verdade
+// da base. Relator por CONTENÇÃO de tokens — robusto a "rel. p/ acórdão" anexado.
+function normNomeStj(s?: string | null): string {
+  return (s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/\b(MINISTR[OA]|MIN|DESEMBARGADOR[A]?|DES|CONVOCAD[OA]|DO|DA|TJ[A-Z]{0,3})\b/g, ' ')
+    .replace(/[^A-Z ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+const ORG_STJ_RE =
+  /(?:PRIMEIRA|SEGUNDA|TERCEIRA|QUARTA|QUINTA|SEXTA)\s+TURMA|(?:PRIMEIRA|SEGUNDA|TERCEIRA)\s+SE[ÇC][ÃA]O|CORTE ESPECIAL/i
+const classePrefix = (c: string) =>
+  (c.match(/^\s*([A-Za-zç .]+?)\s*\d/)?.[1] || '')
+    .toUpperCase()
+    .replace(/\bN[OA]\b|\./g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+function confrontaStj(
+  citacao: string,
+  meta: any,
+): { divergencias: string[]; conferidos: string[]; naoConferidos: string[] } {
+  const div: string[] = []
+  const ok: string[] = []
+
+  // relator citado (para antes de vírgula ou de "rel. p/ acórdão")
+  const mRel = citacao.match(/\brel\.?\s*(?:min(?:istr[oa])?\.?)?\s*([^,]+?)(?=,|$|\s+rel\.?\s*p\/)/i)
+  if (mRel && meta.relator) {
+    const c = normNomeStj(mRel[1])
+    const bt = new Set(normNomeStj(meta.relator).split(' ').filter(Boolean))
+    if (c) {
+      const contido = c.split(' ').filter(Boolean).every((t) => bt.has(t))
+      if (contido) ok.push('relator')
+      else div.push(`relator: a citação diz "${mRel[1].trim()}", o STJ registra "${meta.relator}"`)
+    }
+  }
+
+  // órgão julgador (turmas/seções do STJ)
+  const mOrg = citacao.match(ORG_STJ_RE)
+  if (mOrg && meta.orgao) {
+    const norm = (s: string) => s.toUpperCase().replace(/[ÇC]/g, 'C').replace(/[^A-Z]/g, '')
+    if (norm(mOrg[0]) === norm(String(meta.orgao))) ok.push('órgão julgador')
+    else div.push(`órgão julgador: a citação diz "${mOrg[0]}", o STJ registra "${meta.orgao}"`)
+  }
+
+  // data (DJe/DJEN/DJ/PUB DD/MM/AAAA)
+  const mData = citacao.match(/(?:DJe|DJEN|DJ|PUB|publicad[oa] em)\s*(\d{2}\/\d{2}\/\d{4})/i)
+  if (mData && meta.data) {
+    if (mData[1] === meta.data) ok.push('data de julgamento')
+    else div.push(`data de julgamento: a citação diz "${mData[1]}", o STJ registra "${meta.data}"`)
+  }
+
+  // classe — comparada contra a citação ORIGINAL da base (texto completo)
+  if (meta.citacao) {
+    const c = classePrefix(citacao)
+    const b = classePrefix(String(meta.citacao))
+    if (c && b) {
+      if (c === b) ok.push('classe processual')
+      else div.push(`classe processual: a citação diz "${c}", o STJ registra "${b}"`)
+    }
+  }
+
+  return { divergencias: div, conferidos: ok, naoConferidos: [] }
+}
+
+// ---------------------------------------------------------------------------
+// NÍVEL 1 — base canônica STJ (Jurisprudência em Teses). Custo de IA: zero.
+// O STJ mapeia TESE -> JULGADOS: conferimos metadado contra a verdade do próprio
+// STJ (não contra palpite de busca) e casamos a tese alegada com a(s) tese(s)
+// que aquele julgado sustenta. Pega a distorção de tese sem LLM nem portal.
+// Só o que a base não cobre (STF, STJ fora da JT, outros tribunais) cai no Nível 2.
+// ---------------------------------------------------------------------------
+const LIMIAR_TESE = 0.3 // calibrar no conjunto de teste
+// Classes com sinal de STJ (exclui RE/ARE/ADI/ADPF... que são do STF).
+// prefixos podem se aninhar ("AgInt nos EDcl no REsp") e usar "no/na/nos/nas" — daí o grupo repetível.
+const RE_STJ_CIT =
+  /(?:(?:Ag(?:Rg|Int)|EDcl|ED|EAg|ProAfR|MC|QO|Rcl)\s+(?:nos?|nas?)\s+)*(E?A?REsp|RHC|RMS|RvC|HC|AR|Pet|CC|MS|Rcl|SLS|IAC|SEC)\s*n?[ºo.]?\s*(\d[\d.]*)\s*\/\s*([A-Z]{2})/gi
+
+async function verificaPorBaseStj(
+  texto: string,
+  tese: string | null,
+  admin: any,
+): Promise<{ itens: Item[]; resto: string }> {
+  const itens: Item[] = []
+  const remover: string[] = []
+  const vistos = new Set<string>()
+  let m: RegExpExecArray | null
+  RE_STJ_CIT.lastIndex = 0
+  while ((m = RE_STJ_CIT.exec(texto)) !== null && vistos.size < 20) {
+    const cit = m[0].trim()
+    // janela = a citação + o metadado que vem DEPOIS do /UF (rel., órgão, DJe...),
+    // que o confrontaStj precisa ver. m[0] termina no /UF.
+    const janela = texto.slice(m.index, m.index + m[0].length + 220).replace(/\s+/g, ' ').trim()
+    const numero = m[2].replace(/\./g, '')
+    const uf = m[3].toUpperCase()
+    const chave = `${numero}/${uf}`
+    if (vistos.has(chave)) continue
+    vistos.add(chave)
+
+    let rows: any[] = []
+    try {
+      const { data } = await admin.rpc('stj_lookup', {
+        p_numero: numero,
+        p_uf: uf,
+        p_tese: tese || '',
+      })
+      rows = Array.isArray(data) ? data : []
+    } catch {
+      rows = []
+    }
+    if (!rows.length) continue // não está na base -> Nível 2
+
+    const meta = rows[0]
+    const cotejo = confrontaStj(janela, meta)
+    const cls = m[1].toUpperCase().replace(/\s/g, '')
+    const exclusiva = /^(E?A?RESP|RHC|RMS)$/.test(cls)
+    const confiavel = exclusiva || cotejo.conferidos.length >= 1
+    const prov = (r: any) =>
+      `STJ — Jurisprudência em Teses${r.area ? ', ' + r.area : ''}, ed. ${r.edicao}, tese ${r.numero_tese}` +
+      (r.fonte_pagina ? ` (pg ${r.fonte_pagina})` : '')
+
+    const item = (estado: Estado, oQue: string | null, obs: string): Item => ({
+      citacao: janela.slice(0, 220),
+      tipo: 'acordao',
+      tribunal: 'STJ',
+      estado,
+      url_oficial: meta.fonte_url || null,
+      url_busca: urlBusca('STJ', cit),
+      url_lexml: urlLexml(cit),
+      o_que_decide: oQue,
+      observacao: obs,
+      campos_conferidos: cotejo.conferidos,
+      campos_nao_conferidos: cotejo.naoConferidos,
+      resolucao: 'base_stj',
+    })
+
+    // 1) metadado diverge -> DIVERGENTE (só se confiável que é o mesmo processo STJ)
+    if (cotejo.divergencias.length > 0) {
+      if (!confiavel) continue // ambíguo (pode ser outro tribunal): Nível 2
+      itens.push(
+        item(
+          'DIVERGENTE',
+          null,
+          `Divergência apurada na Jurisprudência em Teses do STJ — ${cotejo.divergencias.join('; ')}. Fonte: ${prov(meta)}.`,
+        ),
+      )
+      remover.push(cit)
+      continue
+    }
+
+    // 2) metadado ok e há tese alegada -> casa a tese
+    if (tese) {
+      const best = rows.reduce((a, b) => ((b.sim ?? 0) > (a.sim ?? 0) ? b : a), rows[0])
+      if ((best.sim ?? 0) >= LIMIAR_TESE) {
+        itens.push(
+          item(
+            'CONFIRMADO_BASE_STJ',
+            best.tese_text,
+            `Confirmado contra a Jurisprudência em Teses do STJ: o julgado existe, os metadados batem e o STJ o vincula a esta tese. Fonte: ${prov(best)}.`,
+          ),
+        )
+      } else if (confiavel) {
+        itens.push(
+          item(
+            'DIVERGENTE',
+            best.tese_text,
+            `O julgado existe no STJ, mas o que o próprio STJ registra que ele decide é: "${String(best.tese_text).slice(0, 180)}…" (${prov(best)}) — o que NÃO corresponde à tese alegada. Confira antes de citar.`,
+          ),
+        )
+      } else {
+        continue // ambíguo -> Nível 2
+      }
+      remover.push(cit)
+      continue
+    }
+
+    // 3) sem tese alegada -> confirma existência/metadados se confiável
+    if (confiavel) {
+      const onde = rows
+        .slice(0, 3)
+        .map((r) => `tese ${r.numero_tese} (ed. ${r.edicao})`)
+        .join('; ')
+      itens.push(
+        item(
+          'CONFIRMADO_BASE_STJ',
+          rows[0].tese_text,
+          `Existência e metadados confirmados na Jurisprudência em Teses do STJ. O julgado é invocado em: ${onde}. Fonte: ${prov(rows[0])}.`,
+        ),
+      )
+      remover.push(cit)
+    }
+    // senão -> Nível 2
+  }
+
+  let resto = texto
+  for (const c of remover) resto = resto.split(c).join(' ')
+  return { itens, resto }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -599,9 +803,14 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    // cliente service_role — usado pela base STJ (Nível 1) e, no fluxo normal,
+    // por perfil/teto/gravação. Criado cedo para o modo lote também alcançar a base.
+    const admin = createClient(url, serviceKey)
+
     // ---- lote: pula identificação, teto e gravação; roda o mesmo miolo
     if (modoLote) {
-      const { itens: det, resto } = resolveDeterministico(texto)
+      const { itens: det, resto: r0 } = resolveDeterministico(texto)
+      const { itens: baseStj, resto } = await verificaPorBaseStj(r0, tese, admin)
       let busca: Item[] = []
       let usoLote: any = {}
       if (/[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)) {
@@ -609,7 +818,7 @@ Deno.serve(async (req: Request) => {
         busca = r.itens.slice(0, MAX_CITACOES)
         usoLote = r.uso
       }
-      const todos = [...det, ...busca]
+      const todos = [...det, ...baseStj, ...busca]
       return json({
         status: 'ok',
         modo: 'lote',
@@ -630,7 +839,6 @@ Deno.serve(async (req: Request) => {
       return json({ status: 'error', code: 'unauthorized', message: 'Não autenticado.' }, 401)
     }
 
-    const admin = createClient(url, serviceKey)
     const { data: perfil } = await admin
       .from('profiles')
       .select('id, workspace_id')
@@ -664,9 +872,12 @@ Deno.serve(async (req: Request) => {
     }
 
     // ---- 1) determinístico (sem custo de IA)
-    const { itens: deterministicos, resto } = resolveDeterministico(texto)
+    const { itens: deterministicos, resto: r0 } = resolveDeterministico(texto)
 
-    // ---- 2) busca, só se sobrou algo que pareça acórdão
+    // ---- 2) Nível 1: base canônica STJ (sem custo de IA)
+    const { itens: baseStj, resto } = await verificaPorBaseStj(r0, tese, admin)
+
+    // ---- 3) Nível 2: busca, só no que a base não cobriu
     let porBusca: Item[] = []
     let uso: any = {}
     const temAcordao = /[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)
@@ -676,7 +887,7 @@ Deno.serve(async (req: Request) => {
       uso = r.uso
     }
 
-    const itens = [...deterministicos, ...porBusca]
+    const itens = [...deterministicos, ...baseStj, ...porBusca]
     if (itens.length === 0) {
       return json({
         status: 'ok',
@@ -699,7 +910,7 @@ Deno.serve(async (req: Request) => {
       tese_alegada: tese || null,
       n_citacoes: itens.length,
       resultado: itens,
-      n_confirmado: conta('CONFIRMADO_INTEIRO_TEOR') + conta('CONFIRMADO_METADADOS'),
+      n_confirmado: itens.filter((i) => i.estado.startsWith('CONFIRMADO')).length,
       n_divergente: conta('DIVERGENTE'),
       n_nao_local: conta('NAO_LOCALIZADO'),
       input_tokens: uso.input_tokens ?? 0,
