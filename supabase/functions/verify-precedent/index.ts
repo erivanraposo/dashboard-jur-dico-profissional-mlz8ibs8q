@@ -352,6 +352,39 @@ function mesmoNome(a?: string | null, b?: string | null): boolean {
   return x === y || x.includes(y) || y.includes(x)
 }
 
+// Classe vem ora como sigla ("HC"), ora por extenso ("Habeas Corpus"). Comparar
+// as duas formas como strings produziu falso divergente em 03/08: relator, data e
+// órgão conferiam, e o confronto reprovou por "HC" ≠ "Habeas Corpus".
+const CLASSE_CANONICA: Record<string, string> = {
+  HC: 'HC', HABEASCORPUS: 'HC',
+  RHC: 'RHC', RECURSOEMHABEASCORPUS: 'RHC', RECURSOORDINARIOEMHABEASCORPUS: 'RHC',
+  RE: 'RE', RECURSOEXTRAORDINARIO: 'RE',
+  ARE: 'ARE', AGRAVOEMRECURSOEXTRAORDINARIO: 'ARE',
+  AI: 'AI', AGRAVODEINSTRUMENTO: 'AI',
+  ADI: 'ADI', ACAODIRETADEINCONSTITUCIONALIDADE: 'ADI', ADIN: 'ADI',
+  ADPF: 'ADPF', ARGUICAODEDESCUMPRIMENTODEPRECEITOFUNDAMENTAL: 'ADPF',
+  ADC: 'ADC', ACAODECLARATORIADECONSTITUCIONALIDADE: 'ADC',
+  ADO: 'ADO', MS: 'MS', MANDADODESEGURANCA: 'MS',
+  MI: 'MI', MANDADODEINJUNCAO: 'MI',
+  RCL: 'RCL', RECLAMACAO: 'RCL',
+  INQ: 'INQ', INQUERITO: 'INQ',
+  AP: 'AP', ACAOPENAL: 'AP',
+  EXT: 'EXT', EXTRADICAO: 'EXT',
+  PET: 'PET', PETICAO: 'PET',
+  RVC: 'RVC', REVISAOCRIMINAL: 'RVC',
+  EP: 'EP', EXECUCAOPENAL: 'EP',
+  ACO: 'ACO', AO: 'AO', AC: 'AC', AR: 'AR', CC: 'CC',
+  RESP: 'RESP', RECURSOESPECIAL: 'RESP',
+  ARESP: 'ARESP', AGRAVOEMRECURSOESPECIAL: 'ARESP',
+  RMS: 'RMS', RECURSOEMMANDADODESEGURANCA: 'RMS',
+}
+
+function canonClasse(s?: string | null): string | null {
+  if (!s) return null
+  const t = normaliza2(s)
+  return CLASSE_CANONICA[t] ?? null // desconhecida: não canoniza, e o confronto se abstém
+}
+
 function normOrgao(s?: string | null): string | null {
   if (!s) return null
   const t = normaliza2(s)
@@ -397,7 +430,18 @@ function confronta(citado: Record<string, string | null>, obs: any) {
     ['redator', 'redator do acórdão', mesmoNome],
     ['data', 'data de julgamento', (a, b) => !a || !b || a === b],
     ['orgao', 'órgão julgador', (a, b) => !a || !b || normOrgao(a) === normOrgao(b)],
-    ['classe', 'classe processual', (a, b) => !a || !b || normaliza2(a) === normaliza2(b)],
+    // Só acusa divergência de classe quando as DUAS formas são reconhecidas e
+    // canonizam em coisas diferentes. Sigla desconhecida ⇒ abstém-se, nunca
+    // reprova por não entender a grafia.
+    [
+      'classe',
+      'classe processual',
+      (a, b) => {
+        const x = canonClasse(a)
+        const y = canonClasse(b)
+        return !x || !y || x === y
+      },
+    ],
   ]
   for (const [k, rotulo, iguais] of campos) {
     const afirmado = citado[k]
