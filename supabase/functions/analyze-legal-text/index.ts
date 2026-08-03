@@ -196,21 +196,38 @@ function addCitationLinks(text: string): string {
     const ARTIGO = `(?:art(?:igo|\\.|s\\.?)?\\s*)`
     const NUMERO_ART = `([\\d.]+)(?:[º°ª]|\\s*§\\s*\\d+(?:[º°ª])?(?:\\s+[IVX]+)?)?`
 
+    // Segunda via estável. Os portais dos tribunais superiores ora bloqueiam robô,
+    // ora mudam de endereço; o LexML (repositório oficial do governo) responde
+    // sempre. Mesmo padrão já usado nos acórdãos do STJ desde 26/06.
+    const comLexml = (rotulo: string, urlPrimaria: string, termo: string) =>
+      `${linkify(rotulo, urlPrimaria)} (${linkify(
+        'LexML',
+        `https://www.lexml.gov.br/busca/search?keyword=${encodeURIComponent(termo)}`,
+      )})`
+
     // 1. Súmulas STJ (case-insensitive)
     r = r.replace(/\bs[úu]mula\s+(\d+)\s+stj\b/gi, (m, num) =>
-      linkify(m, `https://scon.stj.jus.br/SCON/sumanot/toc.jsp?sumano=${num}`),
+      comLexml(m, `https://scon.stj.jus.br/SCON/sumanot/toc.jsp?sumano=${num}`, `súmula ${num} STJ`),
     )
 
     // 2. Súmulas STF (vinculantes ou não, case-insensitive)
+    // CORREÇÃO 03/08/2026: as duas URLs .asp anteriores respondiam 404 —
+    // listarJurisprudencia.asp e menuSumarioSumulas.asp saíram do ar, e a
+    // menuSumario.asp?sumula=N ignora o parâmetro e devolve a página genérica de
+    // súmulas para qualquer número. Deep link para .asp legado do STF apodrece;
+    // busca por parâmetro no portal atual de jurisprudência é estável.
     r = r.replace(/\bs[úu]mula(?:\s+vinculante)?\s+(\d+)\s+stf\b/gi, (m, num) => {
       const vinculante = /vinculante/i.test(m)
-      const url = vinculante
-        ? `https://www.stf.jus.br/portal/jurisprudencia/listarJurisprudencia.asp?s1=%28SUMULA+VINCULANTE+${num}%29&base=baseSumulasVinculantes`
-        : `https://www.stf.jus.br/portal/jurisprudencia/menuSumarioSumulas.asp?sumula=${num}`
-      return linkify(m, url)
+      const termo = vinculante ? `súmula vinculante ${num}` : `súmula ${num} STF`
+      const url = `https://jurisprudencia.stf.jus.br/pages/search?base=sumulas&pesquisa_inicial=${encodeURIComponent(
+        vinculante ? `sumula vinculante ${num}` : `sumula ${num}`,
+      )}`
+      return comLexml(m, url, termo)
     })
 
     // 3. Temas (repetitivos/repercussão geral, case-insensitive)
+    // O tema.asp do STF respondia 200 em 03/08; o pesquisa.jsp do STJ devolveu 500
+    // ao acesso automatizado (pode ser WAF, pode estar quebrado) — daí o LexML.
     r = r.replace(/\btema\s+([\d.]+)\s+(stj|stf)\b/gi, (m, num, trib) => {
       const cleanNum = num.replace(/\./g, '')
       const tribUpper = trib.toUpperCase()
@@ -218,7 +235,7 @@ function addCitationLinks(text: string): string {
         tribUpper === 'STJ'
           ? `https://processo.stj.jus.br/repetitivos/temas_repetitivos/pesquisa.jsp?numero=${cleanNum}`
           : `https://portal.stf.jus.br/jurisprudenciaRepercussao/tema.asp?num=${cleanNum}`
-      return linkify(m, url)
+      return comLexml(m, url, `tema ${cleanNum} ${tribUpper}`)
     })
 
     // 4. Acórdãos do STJ: REsp, AgInt, AREsp, RHC, RMS, EREsp, MS, HC
