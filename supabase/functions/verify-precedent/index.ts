@@ -49,6 +49,7 @@ type Estado =
   | 'CONFIRMADO_METADADOS'
   | 'CONFIRMADO_REPOSITORIO' // conferido no LexML, não no portal do tribunal
   | 'CONFIRMADO_BASE_STJ' // conferido na Jurisprudência em Teses do STJ (compilação oficial)
+  | 'CONFIRMADO_BASE_STF' // metadados conferidos na Coletânea Temática do STF (só metadados)
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
   | 'IDENTIFICADO' // reconhecido por padrão, sem consulta a fonte alguma
@@ -73,7 +74,7 @@ interface Item {
   observacao: string | null
   campos_conferidos?: string[] // metadados que a fonte confirmou
   campos_nao_conferidos?: string[] // afirmados na citação e NÃO vistos na fonte
-  resolucao: 'deterministica' | 'busca' | 'base_stj'
+  resolucao: 'deterministica' | 'busca' | 'base_stj' | 'base_stf'
 }
 
 // Host EXIGIDO por tribunal. Correção de 30/07/2026: validar só "domínio oficial"
@@ -750,6 +751,131 @@ async function verificaPorBaseStj(
   return { itens, resto }
 }
 
+// ---------------------------------------------------------------------------
+// NÍVEL 1 — STF (Coletâneas Temáticas de Jurisprudência), 03/08/2026
+//
+// Escopo deliberadamente MENOR que o do STJ: aqui só se confronta METADADO.
+// A Jurisprudência em Teses é base autocontida — o STJ mapeia tese→julgados.
+// A coletânea do STF não é isso: traz RECORTE (de ementa, de decisão ou de
+// VOTO) escolhido por tema. Metadado dá para atestar com autoridade, porque a
+// citação vem do próprio STF; "o julgado sustenta esta tese", não — recorte de
+// voto é a posição de um ministro, não a ratio do colegiado. Foi essa confusão
+// que produziu 36% de falso divergente na rodada 1 do conjunto STF.
+//
+// Consequência de desenho: havendo tese alegada e metadado conferido, o item
+// NÃO é resolvido aqui — segue para o Nível 2, que lê a tese. Confirmar só pelo
+// metadado nesse caso seria falso confirmado na categoria TESE, justamente a
+// que distingue o produto.
+// ---------------------------------------------------------------------------
+// Classes que só existem no STF: dispensam corroboração para atribuir o processo.
+const STF_EXCLUSIVAS = /^(ADI|ADPF|ADC|ADO|RE|ARE|AI|EP|PPE)$/
+const RE_STF_CIT =
+  /\b(ADI|ADPF|ADC|ADO|RE|ARE|AI|RHC|HC|MS|MI|Rcl|ACO|AO|Pet|Inq|AP|Ext|RvC|EP|PPE|AC|AR|CC|SS|STA|SL|SE|IF)\s*n?[ºo.]?\s*(\d[\d.]*)((?:\s+(?:AgR|ED|MC|QO|REF|EI|ExtN|ProgReg|TrabExt|segundos?|terceiro|quarto|quinto|primeiro)(?:-[A-Za-z]+)?)*)/g
+
+async function verificaPorBaseStf(
+  texto: string,
+  tese: string | null,
+  admin: any,
+): Promise<{ itens: Item[]; resto: string }> {
+  const itens: Item[] = []
+  const remover: string[] = []
+  const vistos = new Set<string>()
+  let m: RegExpExecArray | null
+  RE_STF_CIT.lastIndex = 0
+
+  while ((m = RE_STF_CIT.exec(texto)) !== null && vistos.size < 20) {
+    const cit = m[0].trim()
+    // janela = citação + o metadado que vem depois (rel., j., órgão, DJE)
+    const janela = texto.slice(m.index, m.index + m[0].length + 220).replace(/\s+/g, ' ').trim()
+    const classe = m[1].toUpperCase()
+    const numero = m[2].replace(/\./g, '')
+    const chave = `${classe}/${numero}`
+    if (vistos.has(chave)) continue
+    vistos.add(chave)
+
+    let rows: any[] = []
+    try {
+      const { data } = await admin.rpc('stf_lookup', { p_numero: numero, p_classe: classe })
+      rows = Array.isArray(data) ? data : []
+    } catch {
+      rows = []
+    }
+    if (!rows.length) continue // fora da base -> Nível 2
+
+    const meta = rows[0]
+    // A base guarda o relator vencido em campo próprio; o confronto compara o
+    // papel certo com o papel certo (escrever redator como "rel." falsifica a
+    // citação — erro que eu mesmo cometi no gerador do conjunto de teste).
+    const observado = {
+      classe: meta.classe,
+      relator: meta.relator,
+      redator: meta.redator_acordao,
+      orgao: meta.orgao,
+      data: meta.data ? String(meta.data).slice(0, 10) : null,
+    }
+    const cotejo = confronta(parseCitacao(janela), observado)
+
+    // HC, MS, Rcl, Inq, AP... existem nos dois tribunais. Fora das classes
+    // exclusivas do STF, só atribuo o processo se ao menos um metadado bater —
+    // senão um HC do STJ com o mesmo número seria confundido com um do STF.
+    const confiavel = STF_EXCLUSIVAS.test(classe) || cotejo.conferidos.length >= 1
+    if (!confiavel) continue
+
+    const prov =
+      `STF — Coletânea Temática de Jurisprudência (${meta.colecao === 'penal' ? 'Direito Penal e Processual Penal' : 'Controle de Constitucionalidade'})` +
+      (meta.fonte_pagina ? `, pg ${meta.fonte_pagina}` : '')
+
+    const item = (estado: Estado, obs: string): Item => ({
+      citacao: janela.slice(0, 220),
+      tipo: 'acordao',
+      tribunal: 'STF',
+      estado,
+      url_oficial: meta.fonte_url || null,
+      url_busca: urlBusca('STF', cit),
+      url_lexml: urlLexml(cit),
+      o_que_decide: null, // por desenho: a coletânea traz recorte, não a tese firmada
+      observacao: obs,
+      campos_conferidos: cotejo.conferidos,
+      campos_nao_conferidos: cotejo.naoConferidos,
+      resolucao: 'base_stf',
+    })
+
+    // 1) metadado diverge -> DIVERGENTE, sem custo de IA
+    if (cotejo.divergencias.length > 0) {
+      itens.push(
+        item(
+          'DIVERGENTE',
+          `Divergência apurada contra a publicação do próprio STF — ${cotejo.divergencias.join('; ')}. ` +
+            `Citação como o STF a registra: "${meta.citacao}". Fonte: ${prov}.`,
+        ),
+      )
+      remover.push(cit)
+      continue
+    }
+
+    // 2) metadado ok E há tese alegada -> Nível 2 (só ele lê a tese)
+    if (tese) continue
+
+    // 3) metadado ok e sem tese alegada -> confirma existência e metadados
+    itens.push(
+      item(
+        'CONFIRMADO_BASE_STF',
+        `Existência e metadados confirmados na publicação do próprio STF. ` +
+          `Citação como o STF a registra: "${meta.citacao}". Fonte: ${prov}. ` +
+          `O que o julgado decide NÃO foi conferido: a coletânea publica recortes selecionados por tema, não a tese firmada.` +
+          (meta.confianca !== 'alta'
+            ? ' [A VERIFICAR] O registro veio de trecho marcado com confiança média na extração — confira na fonte.'
+            : ''),
+      ),
+    )
+    remover.push(cit)
+  }
+
+  let resto = texto
+  for (const c of remover) resto = resto.split(c).join(' ')
+  return { itens, resto }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -810,7 +936,8 @@ Deno.serve(async (req: Request) => {
     // ---- lote: pula identificação, teto e gravação; roda o mesmo miolo
     if (modoLote) {
       const { itens: det, resto: r0 } = resolveDeterministico(texto)
-      const { itens: baseStj, resto } = await verificaPorBaseStj(r0, tese, admin)
+      const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, tese, admin)
+      const { itens: baseStf, resto } = await verificaPorBaseStf(r1, tese, admin)
       let busca: Item[] = []
       let usoLote: any = {}
       if (/[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)) {
@@ -818,7 +945,7 @@ Deno.serve(async (req: Request) => {
         busca = r.itens.slice(0, MAX_CITACOES)
         usoLote = r.uso
       }
-      const todos = [...det, ...baseStj, ...busca]
+      const todos = [...det, ...baseStj, ...baseStf, ...busca]
       return json({
         status: 'ok',
         modo: 'lote',
@@ -874,10 +1001,14 @@ Deno.serve(async (req: Request) => {
     // ---- 1) determinístico (sem custo de IA)
     const { itens: deterministicos, resto: r0 } = resolveDeterministico(texto)
 
-    // ---- 2) Nível 1: base canônica STJ (sem custo de IA)
-    const { itens: baseStj, resto } = await verificaPorBaseStj(r0, tese, admin)
+    // ---- 2) Nível 1: bases canônicas (sem custo de IA)
+    //   STJ primeiro: a citação de lá exige /UF, o que a torna inequívoca.
+    //   STF depois: HC, MS, Rcl, Inq e AP existem nos dois tribunais, então a
+    //   camada do STF só atribui o processo com corroboração de metadado.
+    const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, tese, admin)
+    const { itens: baseStf, resto } = await verificaPorBaseStf(r1, tese, admin)
 
-    // ---- 3) Nível 2: busca, só no que a base não cobriu
+    // ---- 3) Nível 2: busca, só no que as bases não cobriram
     let porBusca: Item[] = []
     let uso: any = {}
     const temAcordao = /[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)
@@ -887,7 +1018,7 @@ Deno.serve(async (req: Request) => {
       uso = r.uso
     }
 
-    const itens = [...deterministicos, ...baseStj, ...porBusca]
+    const itens = [...deterministicos, ...baseStj, ...baseStf, ...porBusca]
     if (itens.length === 0) {
       return json({
         status: 'ok',

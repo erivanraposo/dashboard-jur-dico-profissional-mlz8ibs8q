@@ -21,6 +21,8 @@ type Estado =
   | 'CONFIRMADO_INTEIRO_TEOR'
   | 'CONFIRMADO_METADADOS'
   | 'CONFIRMADO_REPOSITORIO'
+  | 'CONFIRMADO_BASE_STJ'
+  | 'CONFIRMADO_BASE_STF'
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
   | 'IDENTIFICADO'
@@ -53,6 +55,20 @@ const ESTADOS: Record<Estado, { rotulo: string; cls: string; Icone: any; ajuda: 
     Icone: ShieldQuestion,
     ajuda:
       'Número, classe, relator e data foram conferidos em fonte do próprio tribunal, mas o inteiro teor não estava acessível — não sabemos o que o julgado decide.',
+  },
+  CONFIRMADO_BASE_STJ: {
+    rotulo: 'Confirmado — base do STJ',
+    cls: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    Icone: ShieldCheck,
+    ajuda:
+      'Conferido na Jurisprudência em Teses, compilação do próprio STJ: o julgado existe, os metadados batem e o STJ o vincula à tese indicada.',
+  },
+  CONFIRMADO_BASE_STF: {
+    rotulo: 'Confirmado — base do STF (metadados)',
+    cls: 'bg-[#c9a35a]/20 text-[#8a6d2f] border-[#c9a35a]/50',
+    Icone: ShieldQuestion,
+    ajuda:
+      'Número, classe, relator, órgão e data conferidos na Coletânea Temática publicada pelo próprio STF. O que o julgado decide NÃO foi conferido: a coletânea traz recortes selecionados por tema, não a tese firmada.',
   },
   CONFIRMADO_REPOSITORIO: {
     rotulo: 'Confirmado — repositório oficial',
