@@ -238,6 +238,7 @@ Responda SOMENTE com JSON válido: {"itens":[...]}. Sem markdown, sem comentári
 async function chamaModelo(
   userMsg: string,
   anthropicKey: string,
+  confirmados: ConfirmadoBase[] = [],
 ): Promise<{ itens: Item[]; uso: any }> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -283,7 +284,7 @@ async function chamaModelo(
     const ini = bruto.indexOf('{')
     const fim = bruto.lastIndexOf('}')
     const obj = JSON.parse(bruto.slice(ini, fim + 1))
-    itens = (obj.itens ?? []).map((i: any) => normaliza(i))
+    itens = (obj.itens ?? []).map((i: any) => normaliza(i, confirmados))
   } catch (_e) {
     throw new Error('Resposta do modelo não veio em JSON utilizável.')
   }
@@ -294,20 +295,36 @@ async function chamaModelo(
 // às vezes encerra a resposta em prosa depois de usar a ferramenta de busca. Uma
 // retentativa com instrução mais dura resolve sem custo relevante, porque só ocorre
 // na fração que falhou.
+function blocoConfirmados(cs: ConfirmadoBase[]): string {
+  if (!cs.length) return ''
+  const linhas = cs.map(
+    (c) =>
+      `- ${c.classe} ${c.numero}: ${c.campos.join(', ')} — já conferidos contra "${c.citacaoOficial}" (${c.fonte}).`,
+  )
+  return (
+    '\n\nMETADADOS JÁ CONFERIDOS PELO SISTEMA, em publicação do próprio tribunal:\n' +
+    linhas.join('\n') +
+    '\n\nNÃO reconfira nem contradiga esses campos: eles vêm de publicação oficial e têm precedência sobre o que você encontrar em busca. ' +
+    'Se o portal não devolver o processo, isso é limite de cobertura do portal — NÃO é motivo para divergir. ' +
+    'Sua tarefa aqui é só uma: ler o que o julgado decide e dizer se sustenta a tese alegada.'
+  )
+}
+
 async function verificaPorBusca(
   citacoesTexto: string,
   tese: string,
   anthropicKey: string,
+  confirmados: ConfirmadoBase[] = [],
 ): Promise<{ itens: Item[]; uso: any }> {
   const base = [
     `CITAÇÕES A VERIFICAR (texto colado pelo advogado):\n${citacoesTexto}`,
     tese
       ? `\nTESE QUE O ADVOGADO AFIRMA que esses julgados sustentam:\n"${tese}"\n\nConfira se cada julgado efetivamente sustenta isso. Se ele NÃO sustentar — e você tiver visto o que ele decide —, o estado é DIVERGENTE. Se apenas não conseguiu ler o teor, não é divergência: confirme os metadados e diga que a tese não pôde ser conferida.`
       : '\nO advogado não informou a tese. Confira existência e metadados, e descreva em "o_que_decide" o que cada julgado decide.',
-  ].join('\n')
+  ].join('\n') + blocoConfirmados(confirmados)
 
   try {
-    return await chamaModelo(base, anthropicKey)
+    return await chamaModelo(base, anthropicKey, confirmados)
   } catch (err: any) {
     if (!String(err?.message ?? '').includes('JSON')) throw err
     console.warn('[verify-precedent] JSON quebrado; uma retentativa')
@@ -315,6 +332,7 @@ async function verificaPorBusca(
       base +
         '\n\nATENÇÃO: sua resposta anterior não veio em JSON. Responda AGORA exclusivamente com o objeto JSON {"itens":[...]}, sem uma palavra antes ou depois, sem cerca de código.',
       anthropicKey,
+      confirmados,
     )
   }
 }
@@ -465,7 +483,7 @@ function hostDe(url: string): string | null {
   }
 }
 
-function normaliza(i: any): Item {
+function normaliza(i: any, confirmados: ConfirmadoBase[] = []): Item {
   const citacao = String(i.citacao ?? '').slice(0, 300)
   const tribunal =
     typeof i.tribunal === 'string' && i.tribunal.trim() ? i.tribunal.trim().toUpperCase() : null
@@ -504,7 +522,32 @@ function normaliza(i: any): Item {
   }
 
   // Confronto determinístico: o modelo relatou o que viu, o servidor julga.
-  const cotejo = confronta(parseCitacao(citacao), i.observado)
+  const citado = parseCitacao(citacao)
+  const cotejo = confronta(citado, i.observado)
+
+  // PRECEDÊNCIA DA BASE (03/08/2026). Entre a coletânea publicada pelo próprio
+  // tribunal e o que o modelo diz ter visto numa busca, a coletânea vence.
+  // Sem isso, o confronto determinístico virava amplificador do erro do modelo:
+  // no POS-017 ele reportou data 2015-09-22 para o HC 123.144 e eu emiti
+  // "divergência apurada" com ar de fato — enquanto a citação do STF, repetida
+  // em duas páginas da coletânea, diz 10-5-2016.
+  const daBase = confirmados.find(
+    (c) =>
+      c.numero === (citado.numero ?? '') &&
+      (!citado.classe || !canonClasse(c.classe) || canonClasse(c.classe) === canonClasse(citado.classe)),
+  )
+  if (daBase && daBase.campos.length) {
+    const suprimidas = cotejo.divergencias.filter((d) =>
+      daBase.campos.some((campo) => d.startsWith(campo + ':')),
+    )
+    if (suprimidas.length) {
+      cotejo.divergencias = cotejo.divergencias.filter((d) => !suprimidas.includes(d))
+      cotejo.conferidos = Array.from(new Set([...cotejo.conferidos, ...daBase.campos]))
+      cotejo.naoConferidos = cotejo.naoConferidos.filter(
+        (c) => !daBase.campos.includes(c),
+      )
+    }
+  }
 
   const montar = (): Item => ({
     citacao,
@@ -816,13 +859,23 @@ const STF_EXCLUSIVAS = /^(ADI|ADPF|ADC|ADO|RE|ARE|AI|EP|PPE)$/
 const RE_STF_CIT =
   /\b(ADI|ADPF|ADC|ADO|RE|ARE|AI|RHC|HC|MS|MI|Rcl|ACO|AO|Pet|Inq|AP|Ext|RvC|EP|PPE|AC|AR|CC|SS|STA|SL|SE|IF)\s*n?[ºo.]?\s*(\d[\d.]*)((?:\s+(?:AgR|ED|MC|QO|REF|EI|ExtN|ProgReg|TrabExt|segundos?|terceiro|quarto|quinto|primeiro)(?:-[A-Za-z]+)?)*)/g
 
+// O que a base já atestou, para o Nível 2 não refazer nem contradizer.
+export interface ConfirmadoBase {
+  classe: string
+  numero: string
+  campos: string[] // rótulos: relator, órgão julgador, data de julgamento...
+  citacaoOficial: string
+  fonte: string
+}
+
 async function verificaPorBaseStf(
   texto: string,
   tese: string | null,
   admin: any,
-): Promise<{ itens: Item[]; resto: string }> {
+): Promise<{ itens: Item[]; resto: string; confirmados: ConfirmadoBase[] }> {
   const itens: Item[] = []
   const remover: string[] = []
+  const confirmados: ConfirmadoBase[] = []
   const vistos = new Set<string>()
   let m: RegExpExecArray | null
   RE_STF_CIT.lastIndex = 0
@@ -897,8 +950,20 @@ async function verificaPorBaseStf(
       continue
     }
 
-    // 2) metadado ok E há tese alegada -> Nível 2 (só ele lê a tese)
-    if (tese) continue
+    // 2) metadado ok E há tese alegada -> Nível 2 (só ele lê a tese).
+    // Mas o que a base atestou vai JUNTO: sem isso o Nível 2 refazia o trabalho,
+    // não achava o processo no portal (que é uma SPA) e divergia por não achar —
+    // 5 dos 8 falsos divergentes da rodada 3 eram exatamente isso.
+    if (tese) {
+      confirmados.push({
+        classe: meta.classe,
+        numero: meta.numero,
+        campos: cotejo.conferidos,
+        citacaoOficial: meta.citacao,
+        fonte: prov,
+      })
+      continue
+    }
 
     // 3) metadado ok e sem tese alegada -> confirma existência e metadados
     itens.push(
@@ -917,7 +982,7 @@ async function verificaPorBaseStf(
 
   let resto = texto
   for (const c of remover) resto = resto.split(c).join(' ')
-  return { itens, resto }
+  return { itens, resto, confirmados }
 }
 
 Deno.serve(async (req: Request) => {
@@ -981,11 +1046,11 @@ Deno.serve(async (req: Request) => {
     if (modoLote) {
       const { itens: det, resto: r0 } = resolveDeterministico(texto)
       const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, tese, admin)
-      const { itens: baseStf, resto } = await verificaPorBaseStf(r1, tese, admin)
+      const { itens: baseStf, resto, confirmados } = await verificaPorBaseStf(r1, tese, admin)
       let busca: Item[] = []
       let usoLote: any = {}
       if (/[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)) {
-        const r = await verificaPorBusca(resto.slice(0, 6000), tese, anthropicKey)
+        const r = await verificaPorBusca(resto.slice(0, 6000), tese, anthropicKey, confirmados)
         busca = r.itens.slice(0, MAX_CITACOES)
         usoLote = r.uso
       }
@@ -1050,14 +1115,14 @@ Deno.serve(async (req: Request) => {
     //   STF depois: HC, MS, Rcl, Inq e AP existem nos dois tribunais, então a
     //   camada do STF só atribui o processo com corroboração de metadado.
     const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, tese, admin)
-    const { itens: baseStf, resto } = await verificaPorBaseStf(r1, tese, admin)
+    const { itens: baseStf, resto, confirmados } = await verificaPorBaseStf(r1, tese, admin)
 
     // ---- 3) Nível 2: busca, só no que as bases não cobriram
     let porBusca: Item[] = []
     let uso: any = {}
     const temAcordao = /[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)
     if (temAcordao) {
-      const r = await verificaPorBusca(resto.slice(0, 6000), tese, anthropicKey)
+      const r = await verificaPorBusca(resto.slice(0, 6000), tese, anthropicKey, confirmados)
       porBusca = r.itens.slice(0, MAX_CITACOES)
       uso = r.uso
     }
