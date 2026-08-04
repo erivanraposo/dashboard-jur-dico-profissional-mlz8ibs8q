@@ -897,7 +897,13 @@ async function enriqueceSumulas(
       continue
     }
 
-    const enunciado: string = linha.enunciado
+    // A base do STJ guarda o enunciado com o prefixo "Súmula N do STJ: " embutido
+    // no tese_text; a do STF, não. Tirar aqui deixa o texto uniforme na tela — a
+    // citação já aparece logo acima, repeti-la dentro do enunciado é ruído.
+    const enunciado: string = String(linha.enunciado).replace(
+      /^S[úu]mula\s+(?:Vinculante\s+)?\d+\s+d[oe]\s+ST[FJ]:\s*/i,
+      '',
+    )
     const fonte = doStf
       ? `STF — Súmulas Vinculantes: aplicação e interpretação pelo STF` +
         (linha.fonte_pagina ? ` (pg ${linha.fonte_pagina})` : '')

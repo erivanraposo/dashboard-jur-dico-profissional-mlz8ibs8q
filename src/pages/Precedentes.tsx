@@ -314,10 +314,15 @@ export default function Precedentes() {
           // Súmula não tem "julgado" nem "metadados a bater" — tem enunciado.
           // O texto genérico do selo descrevia um acórdão e dizia o que não foi feito.
           const ehSumula = i.tipo === 'sumula' || i.tipo === 'sumula_vinculante'
-          const ajuda =
-            ehSumula && i.estado.startsWith('CONFIRMADO_BASE')
-              ? `Enunciado lido na publicação oficial do ${i.tribunal ?? 'tribunal'}. O texto ao lado é o da súmula, como o tribunal o publica.`
-              : meta.ajuda
+          const sumulaConferida = ehSumula && i.estado.startsWith('CONFIRMADO_BASE')
+          const ajuda = sumulaConferida
+            ? `Enunciado lido na publicação oficial do ${i.tribunal ?? 'tribunal'}. O texto ao lado é o da súmula, como o tribunal o publica.`
+            : meta.ajuda
+          // O rótulo do STF diz "(metadados)", que descreve acórdão. Em súmula não
+          // há metadado a conferir — há o enunciado, e ele foi lido.
+          const rotulo = sumulaConferida
+            ? `Confirmado — base do ${i.tribunal ?? 'tribunal'}`
+            : meta.rotulo
           return (
             <Card key={n} className="border-border/50 shadow-sm overflow-hidden">
               <CardContent className="p-5 space-y-3">
@@ -325,7 +330,7 @@ export default function Precedentes() {
                   <p className="font-serif text-base leading-relaxed">{i.citacao}</p>
                   <Badge className={`${meta.cls} shrink-0 gap-1`}>
                     <Icone className="h-3.5 w-3.5" />
-                    {meta.rotulo}
+                    {rotulo}
                   </Badge>
                 </div>
 
