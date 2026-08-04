@@ -858,6 +858,10 @@ Critérios:
             agent_id: firstAgent.id,
             input_tokens: 0,
             output_tokens: 0,
+            // O tipo da ação só existia dentro do diagnostic_log, em JSON — contar
+            // crédito assim seria frágil. Agora é coluna: só `analyze` consome
+            // crédito; aplicação e gate são partes do mesmo ciclo.
+            action: action || 'analyze',
           }
           if (process_id) initialInvocationPayload.process_id = process_id
 

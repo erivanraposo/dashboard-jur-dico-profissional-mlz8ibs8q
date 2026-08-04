@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { useAuth } from '@/hooks/use-auth'
 import PrazosProximos from '@/components/PrazosProximos'
 import GettingStarted from '@/components/GettingStarted'
+import MedidorCreditos from '@/components/MedidorCreditos'
 import {
   Table,
   TableBody,
@@ -320,6 +321,7 @@ function DashboardContent() {
       </div>
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        <MedidorCreditos />
         <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
