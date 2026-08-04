@@ -864,51 +864,59 @@ async function verificaPorBaseStj(
 // Súmula é o caso mais favorável do produto: o enunciado é curto, fechado e
 // autoritativo — não há recorte nem ratio a interpretar, como no STF.
 // ---------------------------------------------------------------------------
-async function enriqueceSumulasStj(
+async function enriqueceSumulas(
   itens: Item[],
   tese: string | null,
   admin: any,
 ): Promise<Item[]> {
   const saida: Item[] = []
   for (const it of itens) {
-    const ehSumulaStj = it.tipo === 'sumula' && it.tribunal === 'STJ'
-    const num = ehSumulaStj ? (it.citacao.match(/(\d+)/) || [])[1] : null
+    const ehSumula = it.tipo === 'sumula' || it.tipo === 'sumula_vinculante'
+    const num = ehSumula ? (it.citacao.match(/(\d+)/) || [])[1] : null
     if (!num) {
       saida.push(it)
       continue
     }
+
+    const doStf = it.tribunal === 'STF'
     let linha: any = null
     try {
-      const { data } = await admin.rpc('stj_sumula', {
-        p_numero: Number(num),
-        p_tese: tese || '',
-      })
+      const { data } = doStf
+        ? await admin.rpc('stf_sumula', {
+            p_numero: Number(num),
+            p_vinculante: it.tipo === 'sumula_vinculante',
+            p_tese: tese || '',
+          })
+        : await admin.rpc('stj_sumula', { p_numero: Number(num), p_tese: tese || '' })
       linha = Array.isArray(data) ? data[0] : data
     } catch {
       /* migration ainda não aplicada: mantém o IDENTIFICADO */
     }
     if (!linha?.enunciado) {
-      saida.push(it)
+      saida.push(it) // fora da base (ex.: súmula comum do STF) — segue identificada
       continue
     }
 
     const enunciado: string = linha.enunciado
-    const fonte =
-      `STJ — ${linha.area ? linha.area + ', ' : ''}base oficial de súmulas` +
-      (linha.fonte_pagina ? ` (pg ${linha.fonte_pagina})` : '')
+    const fonte = doStf
+      ? `STF — Súmulas Vinculantes: aplicação e interpretação pelo STF` +
+        (linha.fonte_pagina ? ` (pg ${linha.fonte_pagina})` : '')
+      : `STJ — ${linha.area ? linha.area + ', ' : ''}base oficial de súmulas` +
+        (linha.fonte_pagina ? ` (pg ${linha.fonte_pagina})` : '')
+    const confirmado: Estado = doStf ? 'CONFIRMADO_BASE_STF' : 'CONFIRMADO_BASE_STJ'
     const base = {
       ...it,
       o_que_decide: enunciado,
       url_oficial: linha.fonte_url || it.url_oficial,
-      resolucao: 'base_stj' as const,
+      resolucao: (doStf ? 'base_stf' : 'base_stj') as 'base_stf' | 'base_stj',
     }
 
     // Sem tese alegada: confirma e entrega o enunciado.
     if (!tese) {
       saida.push({
         ...base,
-        estado: 'CONFIRMADO_BASE_STJ',
-        observacao: `Enunciado conferido na base oficial de súmulas do STJ. Fonte: ${fonte}.`,
+        estado: confirmado,
+        observacao: `Enunciado conferido na publicação oficial. Fonte: ${fonte}.`,
       })
       continue
     }
@@ -919,7 +927,7 @@ async function enriqueceSumulasStj(
     if (sim >= LIMIAR_TESE) {
       saida.push({
         ...base,
-        estado: 'CONFIRMADO_BASE_STJ',
+        estado: confirmado,
         observacao: `A súmula existe e o enunciado oficial corresponde à tese alegada. Fonte: ${fonte}.`,
       })
     } else {
@@ -1196,7 +1204,7 @@ Deno.serve(async (req: Request) => {
     // ---- lote: pula identificação, teto e gravação; roda o mesmo miolo
     if (modoLote) {
       const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-      const det = await enriqueceSumulasStj(det0, tese, admin)
+      const det = await enriqueceSumulas(det0, tese, admin)
       const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, tese, admin)
       const { itens: baseStf, resto, confirmados } = await verificaPorBaseStf(r1, tese, admin)
       let busca: Item[] = []
@@ -1285,7 +1293,7 @@ Deno.serve(async (req: Request) => {
     const trabalho = async (send: (d: any) => void) => {
     // ---- 1) determinístico (sem custo de IA), com súmula do STJ lida na base
     const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-    const deterministicos = await enriqueceSumulasStj(det0, tese, admin)
+    const deterministicos = await enriqueceSumulas(det0, tese, admin)
 
     // ---- 2) Nível 1: bases canônicas (sem custo de IA)
     //   STJ primeiro: a citação de lá exige /UF, o que a torna inequívoca.

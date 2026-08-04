@@ -313,9 +313,10 @@ export default function Precedentes() {
           const { Icone } = meta
           // Súmula não tem "julgado" nem "metadados a bater" — tem enunciado.
           // O texto genérico do selo descrevia um acórdão e dizia o que não foi feito.
+          const ehSumula = i.tipo === 'sumula' || i.tipo === 'sumula_vinculante'
           const ajuda =
-            i.tipo === 'sumula' && i.estado === 'CONFIRMADO_BASE_STJ'
-              ? 'Enunciado lido na base oficial de súmulas do STJ. O texto ao lado é o da súmula, como o tribunal o publica.'
+            ehSumula && i.estado.startsWith('CONFIRMADO_BASE')
+              ? `Enunciado lido na publicação oficial do ${i.tribunal ?? 'tribunal'}. O texto ao lado é o da súmula, como o tribunal o publica.`
               : meta.ajuda
           return (
             <Card key={n} className="border-border/50 shadow-sm overflow-hidden">
