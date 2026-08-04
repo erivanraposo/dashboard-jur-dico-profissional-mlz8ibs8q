@@ -311,6 +311,12 @@ export default function Precedentes() {
         {itens?.map((i, n) => {
           const meta = ESTADOS[i.estado] ?? ESTADOS.NAO_LOCALIZADO
           const { Icone } = meta
+          // Súmula não tem "julgado" nem "metadados a bater" — tem enunciado.
+          // O texto genérico do selo descrevia um acórdão e dizia o que não foi feito.
+          const ajuda =
+            i.tipo === 'sumula' && i.estado === 'CONFIRMADO_BASE_STJ'
+              ? 'Enunciado lido na base oficial de súmulas do STJ. O texto ao lado é o da súmula, como o tribunal o publica.'
+              : meta.ajuda
           return (
             <Card key={n} className="border-border/50 shadow-sm overflow-hidden">
               <CardContent className="p-5 space-y-3">
@@ -322,7 +328,7 @@ export default function Precedentes() {
                   </Badge>
                 </div>
 
-                <p className="text-xs text-muted-foreground">{meta.ajuda}</p>
+                <p className="text-xs text-muted-foreground">{ajuda}</p>
 
                 {i.o_que_decide && (
                   <div className="text-sm">
