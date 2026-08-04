@@ -11,6 +11,7 @@ import './print.css'
 import Layout from './components/Layout'
 import Index from './pages/Index'
 import Precedentes from './pages/Precedentes'
+import Planos from './pages/Planos'
 // Jurisprudência: rota desativada em 30/07/2026. A página era scaffolding do SKIP
 // (3 seeds de demonstração, busca ilike na própria tabela, relator/ano fixos no
 // código, "Clipar" sem destino). Será substituída pelo Verificador de Precedentes,
@@ -98,6 +99,7 @@ const AppContent = () => (
     <Route path="/landing" element={<Landing />} />
     <Route path="/reset-password" element={<ResetPassword />} />
     <Route path="/como-verificamos" element={<ComoVerificamos />} />
+    <Route path="/planos" element={<Planos />} />
     <Route path="/ajuda" element={<Ajuda />} />
     <Route
       element={

@@ -22,6 +22,7 @@ export default function PublicShell({ children }: { children: React.ReactNode })
           </Link>
           <nav className="hidden items-center gap-7 text-sm font-medium text-[#475569] md:flex">
             <Link to="/como-verificamos" className="transition-colors hover:text-[#1e3a5f]">Como verificamos</Link>
+            <Link to="/planos" className="transition-colors hover:text-[#1e3a5f]">Planos</Link>
             <Link to="/ajuda" className="transition-colors hover:text-[#1e3a5f]">Ajuda</Link>
           </nav>
           <Link
@@ -46,6 +47,7 @@ export default function PublicShell({ children }: { children: React.ReactNode })
           </div>
           <div className="flex items-center gap-6 text-sm text-[#475569]">
             <Link to="/como-verificamos" className="transition-colors hover:text-[#1e3a5f]">Como verificamos</Link>
+            <Link to="/planos" className="transition-colors hover:text-[#1e3a5f]">Planos</Link>
             <Link to="/ajuda" className="transition-colors hover:text-[#1e3a5f]">Ajuda</Link>
             <Link to={ctaTo} className="transition-colors hover:text-[#1e3a5f]">{ctaLabel}</Link>
           </div>

@@ -42,6 +42,7 @@ export default function Landing() {
           <nav className="hidden items-center gap-8 text-sm font-medium text-[#475569] md:flex">
             <a href="#como" className="transition-colors hover:text-[#1e3a5f]">Como funciona</a>
             <a href="#proveniencia" className="transition-colors hover:text-[#1e3a5f]">Proveniência</a>
+            <Link to="/planos" className="transition-colors hover:text-[#1e3a5f]">Planos</Link>
             <a href="#recursos" className="transition-colors hover:text-[#1e3a5f]">Recursos</a>
             <a href="#confianca" className="transition-colors hover:text-[#1e3a5f]">Confiança</a>
           </nav>
@@ -376,6 +377,7 @@ export default function Landing() {
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-[#475569]">
             <Link to="/como-verificamos" className="transition-colors hover:text-[#1e3a5f]">Como verificamos</Link>
+            <Link to="/planos" className="transition-colors hover:text-[#1e3a5f]">Planos</Link>
             <Link to="/ajuda" className="transition-colors hover:text-[#1e3a5f]">Ajuda</Link>
             <a href="#recursos" className="transition-colors hover:text-[#1e3a5f]">Recursos</a>
             <Link to="/login" className="transition-colors hover:text-[#1e3a5f]">Entrar</Link>
