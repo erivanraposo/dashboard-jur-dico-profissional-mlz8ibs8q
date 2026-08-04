@@ -730,6 +730,9 @@ function confrontaStj(
 // Só o que a base não cobre (STF, STJ fora da JT, outros tribunais) cai no Nível 2.
 // ---------------------------------------------------------------------------
 const LIMIAR_TESE = 0.3 // calibrar no conjunto de teste
+
+// Enunciado citado dentro de uma observação: corta sem podar o sentido.
+const corta = (s: string, n = 220) => (s.length > n ? s.slice(0, n) + '…' : s)
 // Classes com sinal de STJ (exclui RE/ARE/ADI/ADPF... que são do STF).
 // prefixos podem se aninhar ("AgInt nos EDcl no REsp") e usar "no/na/nos/nas" — daí o grupo repetível.
 const RE_STJ_CIT =
@@ -932,7 +935,30 @@ async function enriqueceSumulas(
     const emPt = (d: string | null) =>
       d ? d.split('-').reverse().join('/') : 'data não registrada'
 
-    if (situacao && !['vigente', 'nao_verificada'].includes(situacao)) {
+    // 'alterada' NÃO é queda: o enunciado em vigor é o que temos, e o texto antigo
+    // fica em redacao_anterior. Tratá-la como as canceladas seria alarme falso —
+    // a Súmula 309 (prisão civil por alimentos) mudou de redação e segue valendo.
+    // O risco real é outro: manuais e petições antigas ainda citam o texto velho.
+    // Quando é ELE que o usuário alega, dizer "divergente" esconde o que importa.
+    if (situacao === 'alterada') {
+      const anterior: string | null = linha.redacao_anterior ?? null
+      const simAnt = Number(linha.sim_anterior ?? 0)
+      if (anterior && simAnt >= LIMIAR_TESE && simAnt > Number(linha.sim ?? 0)) {
+        saida.push({
+          ...base,
+          estado: 'VIGENCIA_COMPROMETIDA',
+          observacao:
+            `A súmula existe, mas a tese alegada corresponde à REDAÇÃO ANTERIOR dela, ` +
+            `não à que está em vigor. ` +
+            (linha.nota_situacao ? `${linha.nota_situacao} ` : '') +
+            `Texto em vigor: "${corta(enunciado)}". ` +
+            `Situação conferida na lista do ${it.tribunal} em ${emPt(dataSit)}. Fonte: ${fonte}.`,
+        })
+        continue
+      }
+    }
+
+    if (situacao && !['vigente', 'nao_verificada', 'alterada'].includes(situacao)) {
       saida.push({
         ...base,
         estado: 'VIGENCIA_COMPROMETIDA',
@@ -952,7 +978,11 @@ async function enriqueceSumulas(
     const ressalvaVigencia =
       situacao === 'vigente'
         ? ` Situação conferida na lista do ${it.tribunal} em ${emPt(dataSit)} — a lista muda, confira se for citar em peça.`
-        : ` A SITUAÇÃO (vigente, superada, cancelada) NÃO foi conferida: temos o texto, não o estado atual.`
+        : situacao === 'alterada'
+          ? ` Atenção: a redação deste enunciado foi ALTERADA. O texto acima é o em vigor, conferido em ${emPt(dataSit)}; ` +
+            (linha.nota_situacao ? `${linha.nota_situacao} ` : '') +
+            `publicações anteriores trazem outra redação.`
+          : ` A SITUAÇÃO (vigente, superada, cancelada) NÃO foi conferida: temos o texto, não o estado atual.`
 
     // Sem tese alegada: confirma e entrega o enunciado.
     if (!tese) {
@@ -979,7 +1009,7 @@ async function enriqueceSumulas(
         estado: 'DIVERGENTE',
         observacao:
           `A súmula existe, mas o que ela enuncia não corresponde à tese alegada. ` +
-          `Texto oficial: "${enunciado.slice(0, 220)}${enunciado.length > 220 ? '…' : ''}". Fonte: ${fonte}.`,
+          `Texto oficial: "${corta(enunciado)}". Fonte: ${fonte}.`,
       })
     }
   }
