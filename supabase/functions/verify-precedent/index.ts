@@ -853,6 +853,89 @@ async function verificaPorBaseStj(
 }
 
 // ---------------------------------------------------------------------------
+// SÚMULA DO STJ — enriquecimento do determinístico (04/08/2026)
+//
+// O determinístico reconhece o PADRÃO "Súmula N do STJ" e devolvia IDENTIFICADO:
+// "reconhecemos a citação, não lemos o texto". Mas as 553 súmulas estão na base
+// desde 02/08 — dava para ler. Aqui o item é promovido a CONFIRMADO_BASE_STJ com
+// o ENUNCIADO oficial, e, havendo tese alegada, a similaridade decide se ela
+// corresponde ao que a súmula diz.
+//
+// Súmula é o caso mais favorável do produto: o enunciado é curto, fechado e
+// autoritativo — não há recorte nem ratio a interpretar, como no STF.
+// ---------------------------------------------------------------------------
+async function enriqueceSumulasStj(
+  itens: Item[],
+  tese: string | null,
+  admin: any,
+): Promise<Item[]> {
+  const saida: Item[] = []
+  for (const it of itens) {
+    const ehSumulaStj = it.tipo === 'sumula' && it.tribunal === 'STJ'
+    const num = ehSumulaStj ? (it.citacao.match(/(\d+)/) || [])[1] : null
+    if (!num) {
+      saida.push(it)
+      continue
+    }
+    let linha: any = null
+    try {
+      const { data } = await admin.rpc('stj_sumula', {
+        p_numero: Number(num),
+        p_tese: tese || '',
+      })
+      linha = Array.isArray(data) ? data[0] : data
+    } catch {
+      /* migration ainda não aplicada: mantém o IDENTIFICADO */
+    }
+    if (!linha?.enunciado) {
+      saida.push(it)
+      continue
+    }
+
+    const enunciado: string = linha.enunciado
+    const fonte =
+      `STJ — ${linha.area ? linha.area + ', ' : ''}base oficial de súmulas` +
+      (linha.fonte_pagina ? ` (pg ${linha.fonte_pagina})` : '')
+    const base = {
+      ...it,
+      o_que_decide: enunciado,
+      url_oficial: linha.fonte_url || it.url_oficial,
+      resolucao: 'base_stj' as const,
+    }
+
+    // Sem tese alegada: confirma e entrega o enunciado.
+    if (!tese) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_STJ',
+        observacao: `Enunciado conferido na base oficial de súmulas do STJ. Fonte: ${fonte}.`,
+      })
+      continue
+    }
+
+    // Com tese alegada: o enunciado é curto e fechado, então a comparação
+    // lexical é confiável aqui — diferente do recorte de coletânea do STF.
+    const sim = Number(linha.sim ?? 0)
+    if (sim >= LIMIAR_TESE) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_STJ',
+        observacao: `A súmula existe e o enunciado oficial corresponde à tese alegada. Fonte: ${fonte}.`,
+      })
+    } else {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `A súmula existe, mas o que ela enuncia não corresponde à tese alegada. ` +
+          `Texto oficial: "${enunciado.slice(0, 220)}${enunciado.length > 220 ? '…' : ''}". Fonte: ${fonte}.`,
+      })
+    }
+  }
+  return saida
+}
+
+// ---------------------------------------------------------------------------
 // NÍVEL 1 — STF (Coletâneas Temáticas de Jurisprudência), 03/08/2026
 //
 // Escopo deliberadamente MENOR que o do STJ: aqui só se confronta METADADO.
@@ -1112,7 +1195,8 @@ Deno.serve(async (req: Request) => {
 
     // ---- lote: pula identificação, teto e gravação; roda o mesmo miolo
     if (modoLote) {
-      const { itens: det, resto: r0 } = resolveDeterministico(texto)
+      const { itens: det0, resto: r0 } = resolveDeterministico(texto)
+      const det = await enriqueceSumulasStj(det0, tese, admin)
       const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, tese, admin)
       const { itens: baseStf, resto, confirmados } = await verificaPorBaseStf(r1, tese, admin)
       let busca: Item[] = []
@@ -1199,8 +1283,9 @@ Deno.serve(async (req: Request) => {
     }
 
     const trabalho = async (send: (d: any) => void) => {
-    // ---- 1) determinístico (sem custo de IA)
-    const { itens: deterministicos, resto: r0 } = resolveDeterministico(texto)
+    // ---- 1) determinístico (sem custo de IA), com súmula do STJ lida na base
+    const { itens: det0, resto: r0 } = resolveDeterministico(texto)
+    const deterministicos = await enriqueceSumulasStj(det0, tese, admin)
 
     // ---- 2) Nível 1: bases canônicas (sem custo de IA)
     //   STJ primeiro: a citação de lá exige /UF, o que a torna inequívoca.
