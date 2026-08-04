@@ -64,6 +64,10 @@ type Estado =
   | 'CONFIRMADO_REPOSITORIO' // conferido no LexML, não no portal do tribunal
   | 'CONFIRMADO_BASE_STJ' // conferido na Jurisprudência em Teses do STJ (compilação oficial)
   | 'CONFIRMADO_BASE_STF' // metadados conferidos na Coletânea Temática do STF (só metadados)
+  // O enunciado existe e é aquele mesmo, mas foi cancelado, revogado, superado ou
+  // alterado. Não é confirmação nem divergência — é um terceiro aviso, e o mais
+  // grave na prática: citar súmula morta derruba a peça.
+  | 'VIGENCIA_COMPROMETIDA'
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
   | 'IDENTIFICADO' // reconhecido por padrão, sem consulta a fonte alguma
@@ -917,12 +921,45 @@ async function enriqueceSumulas(
       resolucao: (doStf ? 'base_stf' : 'base_stj') as 'base_stf' | 'base_stj',
     }
 
+    // ---- VIGÊNCIA, antes de qualquer confirmação ------------------------------
+    // Enunciado e situação têm validades diferentes: o texto das 736 comuns está
+    // congelado desde 2003, a situação muda a qualquer momento. Por isso cada um
+    // vem com a data da SUA fonte, e nenhuma afirmação sai sem ela.
+    const situacao: string | null = linha.situacao ?? null
+    const dataSit: string | null = linha.situacao_data
+      ? String(linha.situacao_data).slice(0, 10)
+      : null
+    const emPt = (d: string | null) =>
+      d ? d.split('-').reverse().join('/') : 'data não registrada'
+
+    if (situacao && !['vigente', 'nao_verificada'].includes(situacao)) {
+      saida.push({
+        ...base,
+        estado: 'VIGENCIA_COMPROMETIDA',
+        observacao:
+          `O enunciado existe e é este, mas em ${emPt(dataSit)} a lista do ${it.tribunal} ` +
+          `registrava a súmula como **${situacao}**. ` +
+          (linha.nota_situacao ? `${linha.nota_situacao} ` : '') +
+          (it.tipo === 'sumula_vinculante'
+            ? 'Atenção: contra ato que aplique indevidamente súmula vinculante cabe reclamação ao STF (Lei 11.417/2006, art. 7º). '
+            : '') +
+          `Confirme a situação atual no portal antes de usar. Fonte do texto: ${fonte}.`,
+      })
+      continue
+    }
+
+    // Situação não conferida não é sinônimo de vigente — e precisa ser dita.
+    const ressalvaVigencia =
+      situacao === 'vigente'
+        ? ` Situação conferida na lista do ${it.tribunal} em ${emPt(dataSit)} — a lista muda, confira se for citar em peça.`
+        : ` A SITUAÇÃO (vigente, superada, cancelada) NÃO foi conferida: temos o texto, não o estado atual.`
+
     // Sem tese alegada: confirma e entrega o enunciado.
     if (!tese) {
       saida.push({
         ...base,
         estado: confirmado,
-        observacao: `Enunciado conferido na publicação oficial. Fonte: ${fonte}.`,
+        observacao: `Enunciado conferido na publicação oficial. Fonte: ${fonte}.${ressalvaVigencia}`,
       })
       continue
     }
@@ -934,7 +971,7 @@ async function enriqueceSumulas(
       saida.push({
         ...base,
         estado: confirmado,
-        observacao: `A súmula existe e o enunciado oficial corresponde à tese alegada. Fonte: ${fonte}.`,
+        observacao: `A súmula existe e o enunciado oficial corresponde à tese alegada. Fonte: ${fonte}.${ressalvaVigencia}`,
       })
     } else {
       saida.push({

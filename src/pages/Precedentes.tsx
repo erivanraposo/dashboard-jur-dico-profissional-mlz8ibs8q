@@ -23,6 +23,7 @@ type Estado =
   | 'CONFIRMADO_REPOSITORIO'
   | 'CONFIRMADO_BASE_STJ'
   | 'CONFIRMADO_BASE_STF'
+  | 'VIGENCIA_COMPROMETIDA'
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
   | 'IDENTIFICADO'
@@ -83,6 +84,13 @@ const ESTADOS: Record<Estado, { rotulo: string; cls: string; Icone: any; ajuda: 
     Icone: ShieldQuestion,
     ajuda:
       'Reconhecemos a citação pelo formato e abrimos a busca oficial. Nenhuma fonte foi consultada e o teor não foi lido — isto não é uma confirmação.',
+  },
+  VIGENCIA_COMPROMETIDA: {
+    rotulo: 'Vigência comprometida',
+    cls: 'bg-red-100 text-red-800 border-red-300',
+    Icone: ShieldAlert,
+    ajuda:
+      'O enunciado existe e é esse mesmo — mas foi cancelado, revogado, superado ou alterado. Citá-lo como vigente derruba o argumento.',
   },
   DIVERGENTE: {
     rotulo: 'Divergente',
