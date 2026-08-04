@@ -1052,6 +1052,8 @@ Critérios:
               let inputTokens = 0
               let outputTokens = 0
               let cachedTokens = 0
+              let cacheWriteTokens = 0
+              let cacheReadTokens = 0
               let fullText = content_so_far || ''
               let charCountSinceLastSave = 0
               let stopReason = null
@@ -1082,10 +1084,15 @@ Critérios:
                       const data = JSON.parse(dataStr)
                       if (data.type === 'message_start') {
                         inputTokens = data.message?.usage?.input_tokens || 0
-                        cachedTokens =
-                          data.message?.usage?.cache_creation_input_tokens ||
-                          data.message?.usage?.cache_read_input_tokens ||
-                          0
+                        // CORREÇÃO 04/08/2026: era `creation || read || 0` — um OU
+                        // com curto-circuito. Quando a gravação é zero (o normal a
+                        // partir do 2º agente, que só LÊ o prefixo cacheado), o valor
+                        // caía para a leitura. A coluna guardava ora um, ora outro,
+                        // nunca a soma — e os dois têm preços diferentes (0,1× e 1,25×).
+                        cacheWriteTokens =
+                          data.message?.usage?.cache_creation_input_tokens || 0
+                        cacheReadTokens = data.message?.usage?.cache_read_input_tokens || 0
+                        cachedTokens = cacheWriteTokens + cacheReadTokens
                       } else if (data.type === 'content_block_delta') {
                         if (data.delta?.type === 'text_delta') {
                           const text = data.delta?.text || ''
@@ -1197,7 +1204,10 @@ Critérios:
               }
               const costInput = (inputTokens / 1000000) * costInputPerM
               const costOutput = (outputTokens / 1000000) * costOutputPerM
-              const estimatedCost = costInput + costOutput
+              // leitura 0,1× e gravação 1,25× o preço de entrada (tabela Anthropic)
+              const costCacheRead = (cacheReadTokens / 1000000) * (costInputPerM * 0.1)
+              const costCacheWrite = (cacheWriteTokens / 1000000) * (costInputPerM * 1.25)
+              const estimatedCost = costInput + costOutput + costCacheRead + costCacheWrite
 
               console.log(
                 `Attempting DB Save for Invocation ID: ${activeInvocationId} (Token/Cost Update)`,
@@ -1219,6 +1229,10 @@ Critérios:
                   estimated_cost: estimatedCost,
                   currency: 'USD',
                   cached_tokens: cachedTokens,
+                  // grava a separação, como a trilha de análise já fazia — sem ela
+                  // não dá para auditar a conta depois
+                  cache_creation_input_tokens: cacheWriteTokens,
+                  cache_read_input_tokens: cacheReadTokens,
                 },
                 { onConflict: 'invocation_id', ignoreDuplicates: false },
               )
@@ -1608,9 +1622,17 @@ Critérios:
                   }
                 }
 
+                // CORREÇÃO 04/08/2026: a fórmula somava só entrada e saída e
+                // ignorava os tokens de CACHE, que são o maior volume aqui
+                // (média medida em 27/07: 214 mil lidos + 81 mil gravados contra
+                // 23 mil de entrada). O painel mostrava ~40% do custo real.
+                // Tabela da Anthropic: leitura 0,1× e gravação 1,25× o preço de
+                // entrada do modelo.
                 const estimatedCost =
                   (inputTokens / 1000000) * costInputPerM +
-                  (outputTokens / 1000000) * costOutputPerM
+                  (outputTokens / 1000000) * costOutputPerM +
+                  (cacheRead / 1000000) * (costInputPerM * 0.1) +
+                  (cacheWrite / 1000000) * (costInputPerM * 1.25)
 
                 return {
                   success: true,
