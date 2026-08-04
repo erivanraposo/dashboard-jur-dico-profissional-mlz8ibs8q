@@ -108,11 +108,15 @@ export default function Precedentes() {
   const [texto, setTexto] = useState('')
   const [tese, setTese] = useState('')
   const [carregando, setCarregando] = useState(false)
+  const [etapa, setEtapa] = useState('')
   const [itens, setItens] = useState<Item[] | null>(null)
   const [consumo, setConsumo] = useState<{ hoje: number; teto: number } | null>(null)
   const [dominios, setDominios] = useState<string[]>([])
   const { toast } = useToast()
 
+  // Streaming: a Edge Function corta em 150s sem tráfego, e uma verificação
+  // demorada morria em 504 na cara do advogado. O batimento mantém a conexão
+  // viva e, de quebra, a espera deixa de ser uma tela parada.
   const verificar = async () => {
     if (texto.trim().length < 4) {
       toast({ title: 'Cole ao menos uma citação', variant: 'destructive' })
@@ -120,11 +124,61 @@ export default function Precedentes() {
     }
     setCarregando(true)
     setItens(null)
+    setEtapa('Reconhecendo as citações…')
     try {
-      const { data, error } = await supabase.functions.invoke('verify-precedent', {
-        body: { texto, tese },
-      })
-      if (error) throw error
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) throw new Error('Sessão expirada. Entre novamente.')
+
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-precedent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ texto, tese }),
+        },
+      )
+      if (!res.ok && res.status !== 200) {
+        const txt = await res.text()
+        let msg = `Falha na verificação (HTTP ${res.status}).`
+        try {
+          msg = JSON.parse(txt)?.message ?? msg
+        } catch {
+          /* corpo não-JSON */
+        }
+        throw new Error(msg)
+      }
+
+      const reader = res.body?.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let data: any = null
+      while (reader) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const partes = buffer.split('\n\n')
+        buffer = partes.pop() ?? ''
+        for (const p of partes) {
+          const linha = p.trim()
+          if (!linha.startsWith('data:')) continue
+          let evt: any
+          try {
+            evt = JSON.parse(linha.slice(5).trim())
+          } catch {
+            continue
+          }
+          if (evt.tipo === 'progresso') setEtapa(evt.etapa)
+          else if (evt.tipo === 'resultado') data = evt
+        }
+      }
+      if (!data) throw new Error('A verificação terminou sem resposta. Tente novamente.')
+
       if (data?.status === 'error') {
         toast({ title: 'Não foi possível verificar', description: data.message, variant: 'destructive' })
         if (data.consumo_hoje != null) setConsumo({ hoje: data.consumo_hoje, teto: data.teto_diario })
@@ -138,6 +192,7 @@ export default function Precedentes() {
       toast({ title: 'Erro na verificação', description: e.message, variant: 'destructive' })
     } finally {
       setCarregando(false)
+      setEtapa('')
     }
   }
 
@@ -222,7 +277,7 @@ export default function Precedentes() {
             <Button onClick={verificar} disabled={carregando} className="h-11 px-8 gap-2">
               {carregando ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Consultando portais oficiais...
+                  <Loader2 className="h-4 w-4 animate-spin" /> Verificando...
                 </>
               ) : (
                 <>
@@ -230,10 +285,14 @@ export default function Precedentes() {
                 </>
               )}
             </Button>
-            {consumo && (
-              <span className="text-xs text-muted-foreground">
-                {consumo.hoje} de {consumo.teto} verificações hoje
-              </span>
+            {carregando && etapa ? (
+              <span className="text-xs text-muted-foreground animate-pulse">{etapa}</span>
+            ) : (
+              consumo && (
+                <span className="text-xs text-muted-foreground">
+                  {consumo.hoje} {consumo.hoje === 1 ? 'verificação' : 'verificações'} hoje
+                </span>
+              )
             )}
           </div>
         </CardContent>

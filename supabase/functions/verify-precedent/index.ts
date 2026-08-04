@@ -29,12 +29,16 @@ import { corsHeaders } from '../_shared/cors.ts'
 // Retorno: { status:'ok', itens: Item[], consumo_hoje, teto_diario, custo_usd }
 // ============================================================================
 
-// Teto por escritório por dia. Baixado de 40 para 10 em 31/07/2026: a medição real
-// deu ~US$ 0,35 por verificação, então 40/dia custaria ~US$ 14/dia por escritório —
-// mais de 9x o ciclo completo de análise, que é o produto principal (~US$ 1,46).
-// Número provisório, a revisar quando o conjunto de teste fechar o custo com
-// max_uses=5. Ver lexaxis_custo_real_por_analise_2026-07-27.md.
-const TETO_DIARIO = 10
+// TETO DIÁRIO POR CUSTO, não por chamadas (03/08/2026).
+// Contar chamadas fazia sentido quando toda verificação passava pelo Sonnet
+// (~US$ 0,35). Com o Nível 1, uma verificação resolvida na base custa ~US$ 0 e
+// uma do Nível 2 custa ~US$ 0,19 (medido na rodada 4, 57 casos) — contar chamadas
+// passou a punir exatamente quem usa o caminho barato. Limita-se a despesa.
+// US$ 1,50/dia ≈ 8 verificações caras, ou dezenas de baratas; o ciclo completo de
+// análise, que é o produto principal, custa ~US$ 1,46. Rever ao definir os planos.
+const TETO_DIARIO_USD = 1.5
+// Backstop contra abuso do caminho barato: não é limite comercial, é sanidade.
+const TETO_CHAMADAS_DIA = 200
 const MAX_CITACOES = 10 // por requisição
 const MODELO = 'claude-sonnet-5'
 
@@ -985,8 +989,62 @@ async function verificaPorBaseStf(
   return { itens, resto, confirmados }
 }
 
+// SSE. A Edge Function do Supabase corta a requisição aos 150s SEM TRÁFEGO, e
+// como a chamada ao modelo é um await único, tudo conta como ocioso: uma
+// verificação demorada morria em 504 IDLE_TIMEOUT — no runner e, pior, na tela do
+// advogado (caso POS-019 da rodada 4). O batimento a cada 12s mantém bytes
+// fluindo e, de quebra, mostra a quem espera o que está acontecendo.
+function respostaStream(trabalho: (send: (d: any) => void) => Promise<any>): Response {
+  const enc = new TextEncoder()
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (d: any) => {
+        try {
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(d)}\n\n`))
+        } catch {
+          /* cliente desconectou */
+        }
+      }
+      const batimento = setInterval(
+        () => send({ tipo: 'progresso', etapa: 'Consultando fontes oficiais…' }),
+        12_000,
+      )
+      try {
+        const payload = await trabalho(send)
+        send({ tipo: 'resultado', ...payload })
+      } catch (e: any) {
+        console.error('[verify-precedent/stream]', e?.message ?? e)
+        send({
+          tipo: 'resultado',
+          status: 'error',
+          code: 'internal',
+          message: e?.message ?? 'Falha ao verificar. Tente novamente.',
+        })
+      } finally {
+        clearInterval(batimento)
+        try {
+          controller.close()
+        } catch {
+          /* já fechado */
+        }
+      }
+    },
+  })
+  return new Response(stream, {
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  })
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+
+  // Streaming só a pedido do cliente — mantém compatível quem consome JSON.
+  const querStream = (req.headers.get('Accept') ?? '').includes('text/event-stream')
 
   const json = (body: any, status = 200) =>
     new Response(JSON.stringify(body), {
@@ -1084,29 +1142,41 @@ Deno.serve(async (req: Request) => {
       return json({ status: 'error', code: 'no_profile', message: 'Perfil não encontrado.' }, 400)
     }
 
-    // ---- teto diário do plano (por escritório)
+    // ---- teto diário do plano, por CUSTO (por escritório)
+    // Contar chamadas deixou de fazer sentido quando o Nível 1 entrou: uma
+    // verificação resolvida na base custa ~US$ 0 e uma do Nível 2 custa ~US$ 0,19.
+    // Contar chamadas punia justamente quem só confere súmula e tese — quem usa
+    // o caminho barato. O que precisa ser limitado é a despesa, não o uso.
     const inicioDia = new Date()
     inicioDia.setUTCHours(3, 0, 0, 0) // ~00h em America/Sao_Paulo
     if (inicioDia.getTime() > Date.now()) inicioDia.setUTCDate(inicioDia.getUTCDate() - 1)
-    const { count: usadas } = await admin
+    const { data: doDia } = await admin
       .from('precedent_verifications')
-      .select('id', { count: 'exact', head: true })
+      .select('estimated_cost')
       .eq('workspace_id', perfil.workspace_id)
       .gte('created_at', inicioDia.toISOString())
-    const consumo = usadas ?? 0
-    if (consumo >= TETO_DIARIO) {
+    const linhasDia = Array.isArray(doDia) ? doDia : []
+    const gastoDia = linhasDia.reduce((s: number, r: any) => s + Number(r.estimated_cost || 0), 0)
+    const consumo = linhasDia.length
+
+    if (gastoDia >= TETO_DIARIO_USD || consumo >= TETO_CHAMADAS_DIA) {
+      const porCusto = gastoDia >= TETO_DIARIO_USD
       return json(
         {
           status: 'error',
           code: 'daily_cap',
-          message: `Teto diário de ${TETO_DIARIO} verificações atingido para este escritório. O contador zera à meia-noite.`,
+          message: porCusto
+            ? 'O limite diário de verificações deste escritório foi atingido. O contador zera à meia-noite. ' +
+              'Consultas a súmula, tema e a julgados já conferidos na base oficial não consomem esse limite.'
+            : `Limite de ${TETO_CHAMADAS_DIA} verificações no dia atingido. O contador zera à meia-noite.`,
           consumo_hoje: consumo,
-          teto_diario: TETO_DIARIO,
+          teto_diario: TETO_CHAMADAS_DIA,
         },
         429,
       )
     }
 
+    const trabalho = async (send: (d: any) => void) => {
     // ---- 1) determinístico (sem custo de IA)
     const { itens: deterministicos, resto: r0 } = resolveDeterministico(texto)
 
@@ -1116,12 +1186,20 @@ Deno.serve(async (req: Request) => {
     //   camada do STF só atribui o processo com corroboração de metadado.
     const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, tese, admin)
     const { itens: baseStf, resto, confirmados } = await verificaPorBaseStf(r1, tese, admin)
+    const naBase = baseStj.length + baseStf.length
+    if (naBase) {
+      send({
+        tipo: 'progresso',
+        etapa: `${naBase} citação(ões) conferida(s) nas bases oficiais, sem consulta externa…`,
+      })
+    }
 
     // ---- 3) Nível 2: busca, só no que as bases não cobriram
     let porBusca: Item[] = []
     let uso: any = {}
     const temAcordao = /[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)
     if (temAcordao) {
+      send({ tipo: 'progresso', etapa: 'Consultando os portais oficiais dos tribunais…' })
       const r = await verificaPorBusca(resto.slice(0, 6000), tese, anthropicKey, confirmados)
       porBusca = r.itens.slice(0, MAX_CITACOES)
       uso = r.uso
@@ -1129,14 +1207,14 @@ Deno.serve(async (req: Request) => {
 
     const itens = [...deterministicos, ...baseStj, ...baseStf, ...porBusca]
     if (itens.length === 0) {
-      return json({
+      return {
         status: 'ok',
         itens: [],
         aviso:
           'Não reconhecemos nenhuma citação de jurisprudência no texto. Verifique o formato — ex.: "HC 103.118", "Súmula Vinculante 11", "Tema 121 do STF".',
         consumo_hoje: consumo,
-        teto_diario: TETO_DIARIO,
-      })
+        teto_diario: TETO_CHAMADAS_DIA,
+      }
     }
 
     const conta = (e: Estado) => itens.filter((i) => i.estado === e).length
@@ -1161,14 +1239,18 @@ Deno.serve(async (req: Request) => {
       modelo: temAcordao ? MODELO : 'deterministico',
     })
 
-    return json({
-      status: 'ok',
-      itens,
-      consumo_hoje: consumo + 1,
-      teto_diario: TETO_DIARIO,
-      custo_usd: Number(custoUsd.toFixed(6)),
-      dominios_consultados: DOMINIOS_OFICIAIS,
-    })
+      return {
+        status: 'ok',
+        itens,
+        consumo_hoje: consumo + 1,
+        teto_diario: TETO_CHAMADAS_DIA,
+        custo_usd: Number(custoUsd.toFixed(6)),
+        dominios_consultados: DOMINIOS_OFICIAIS,
+      }
+    }
+
+    if (querStream) return respostaStream(trabalho)
+    return json(await trabalho(() => {}))
   } catch (err: any) {
     console.error('[verify-precedent]', err?.message ?? err)
     return json(
