@@ -36,7 +36,17 @@ import { corsHeaders } from '../_shared/cors.ts'
 // passou a punir exatamente quem usa o caminho barato. Limita-se a despesa.
 // US$ 1,50/dia ≈ 8 verificações caras, ou dezenas de baratas; o ciclo completo de
 // análise, que é o produto principal, custa ~US$ 1,46. Rever ao definir os planos.
-const TETO_DIARIO_USD = 1.5
+// Teto ESCALONADO por faixa (decisão de 04/08/2026). Com teto único, a margem
+// caía conforme o plano encarecia — o plano de entrada pagava o mesmo teto do
+// caro. 'beta' fica no teto do meio até a virada comercial.
+const TETO_POR_PLANO: Record<string, number> = {
+  essencial: 0.6,
+  escritorio: 1.5,
+  performance: 3.0,
+  enterprise: 10.0,
+  beta: 1.5,
+}
+const TETO_PADRAO_USD = 1.5
 // Backstop contra abuso do caminho barato: não é limite comercial, é sanidade.
 const TETO_CHAMADAS_DIA = 200
 const MAX_CITACOES = 10 // por requisição
@@ -1159,8 +1169,20 @@ Deno.serve(async (req: Request) => {
     const gastoDia = linhasDia.reduce((s: number, r: any) => s + Number(r.estimated_cost || 0), 0)
     const consumo = linhasDia.length
 
-    if (gastoDia >= TETO_DIARIO_USD || consumo >= TETO_CHAMADAS_DIA) {
-      const porCusto = gastoDia >= TETO_DIARIO_USD
+    // teto pela faixa comercial do escritório
+    let plano = 'beta'
+    try {
+      const { data: p } = await admin.rpc('plano_do_workspace', {
+        p_workspace: perfil.workspace_id,
+      })
+      if (typeof p === 'string' && p) plano = p
+    } catch {
+      /* migration ainda não aplicada: cai no padrão */
+    }
+    const tetoUsd = TETO_POR_PLANO[plano] ?? TETO_PADRAO_USD
+
+    if (gastoDia >= tetoUsd || consumo >= TETO_CHAMADAS_DIA) {
+      const porCusto = gastoDia >= tetoUsd
       return json(
         {
           status: 'error',
