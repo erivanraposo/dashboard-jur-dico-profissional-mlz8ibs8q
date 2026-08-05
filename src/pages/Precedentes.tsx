@@ -90,7 +90,7 @@ const ESTADOS: Record<Estado, { rotulo: string; cls: string; Icone: any; ajuda: 
     cls: 'bg-red-100 text-red-800 border-red-300',
     Icone: ShieldAlert,
     ajuda:
-      'O enunciado existe e é esse mesmo — mas foi cancelado, revogado, superado ou alterado. Citá-lo como vigente derruba o argumento.',
+      'O enunciado existe — mas a súmula caiu (cancelada, revogada, superada) ou o texto citado não é a redação em vigor. Usá-lo como está derruba o argumento.',
   },
   DIVERGENTE: {
     rotulo: 'Divergente',

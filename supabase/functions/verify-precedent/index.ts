@@ -732,7 +732,10 @@ function confrontaStj(
 const LIMIAR_TESE = 0.3 // calibrar no conjunto de teste
 
 // Enunciado citado dentro de uma observação: corta sem podar o sentido.
+// O enunciado já termina em ponto; citá-lo entre aspas e acrescentar outro
+// produz `julgador.".` na tela. A pontuação final fica DENTRO das aspas.
 const corta = (s: string, n = 220) => (s.length > n ? s.slice(0, n) + '…' : s)
+const citado = (s: string) => `"${corta(s)}"`
 // Classes com sinal de STJ (exclui RE/ARE/ADI/ADPF... que são do STF).
 // prefixos podem se aninhar ("AgInt nos EDcl no REsp") e usar "no/na/nos/nas" — daí o grupo repetível.
 const RE_STJ_CIT =
@@ -951,7 +954,7 @@ async function enriqueceSumulas(
             `A súmula existe, mas a tese alegada corresponde à REDAÇÃO ANTERIOR dela, ` +
             `não à que está em vigor. ` +
             (linha.nota_situacao ? `${linha.nota_situacao} ` : '') +
-            `Texto em vigor: "${corta(enunciado)}". ` +
+            `Texto em vigor: ${citado(enunciado)} ` +
             `Situação conferida na lista do ${it.tribunal} em ${emPt(dataSit)}. Fonte: ${fonte}.`,
         })
         continue
@@ -979,9 +982,9 @@ async function enriqueceSumulas(
       situacao === 'vigente'
         ? ` Situação conferida na lista do ${it.tribunal} em ${emPt(dataSit)} — a lista muda, confira se for citar em peça.`
         : situacao === 'alterada'
-          ? ` Atenção: a redação deste enunciado foi ALTERADA. O texto acima é o em vigor, conferido em ${emPt(dataSit)}; ` +
-            (linha.nota_situacao ? `${linha.nota_situacao} ` : '') +
-            `publicações anteriores trazem outra redação.`
+          ? ` Atenção: a redação deste enunciado foi ALTERADA — o texto acima é o em vigor, ` +
+            `conferido em ${emPt(dataSit)}, e publicações anteriores trazem outra. ` +
+            (linha.nota_situacao ?? '')
           : ` A SITUAÇÃO (vigente, superada, cancelada) NÃO foi conferida: temos o texto, não o estado atual.`
 
     // Sem tese alegada: confirma e entrega o enunciado.
@@ -1009,7 +1012,7 @@ async function enriqueceSumulas(
         estado: 'DIVERGENTE',
         observacao:
           `A súmula existe, mas o que ela enuncia não corresponde à tese alegada. ` +
-          `Texto oficial: "${corta(enunciado)}". Fonte: ${fonte}.`,
+          `Texto oficial: ${citado(enunciado)} Fonte: ${fonte}.`,
       })
     }
   }
