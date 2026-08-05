@@ -736,6 +736,23 @@ const LIMIAR_TESE = 0.3 // calibrar no conjunto de teste
 // produz `julgador.".` na tela. A pontuação final fica DENTRO das aspas.
 const corta = (s: string, n = 220) => (s.length > n ? s.slice(0, n) + '…' : s)
 const citado = (s: string) => `"${corta(s)}"`
+const dataPt = (d: string | null) => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : null)
+
+// Negação pesa quase nada em similaridade lexical: "É hediondo o delito" e
+// "Não é hediondo o delito" compartilham todo o vocabulário e batem muito acima
+// do limiar. No conjunto de teste de 05/08, alegar o OPOSTO EXATO da Súmula 668
+// do STJ gerou "o enunciado oficial corresponde à tese alegada" — a pior falha
+// possível aqui, porque manda para a peça uma tese invertida com selo de
+// conferida.
+//
+// A contagem de marcadores é grosseira e vai gerar alarme falso em paráfrase
+// legítima que troque a construção negativa por outra. Erra para o lado certo:
+// deixa de confirmar, nunca confirma errado — e diz ao usuário exatamente por
+// que parou, com os dois textos à vista.
+const NEGACAO =
+  /\b(n[ãa]o|nem|jamais|inexist\w*|descab\w*|incab[íi]ve\w*|vedad[ao]s?|veda|pro[íi]be|proibid[ao]s?|imposs[íi]ve\w*)\b/gi
+const contaNegacao = (s: string) => (s.match(NEGACAO) || []).length
+const mesmaPolaridade = (a: string, b: string) => contaNegacao(a) === contaNegacao(b)
 // Classes com sinal de STJ (exclui RE/ARE/ADI/ADPF... que são do STF).
 // prefixos podem se aninhar ("AgInt nos EDcl no REsp") e usar "no/na/nos/nas" — daí o grupo repetível.
 const RE_STJ_CIT =
@@ -880,6 +897,22 @@ async function enriqueceSumulas(
   admin: any,
 ): Promise<Item[]> {
   const saida: Item[] = []
+
+  // Teto de cada série, buscado no máximo uma vez por verificação.
+  let limites: Record<string, { maximo: number; ultima: string | null }> | null = null
+  const limitesDe = async () => {
+    if (limites) return limites
+    const m: Record<string, { maximo: number; ultima: string | null }> = {}
+    try {
+      const { data } = await admin.rpc('sumula_limites')
+      for (const l of data ?? []) m[l.base] = { maximo: l.maximo, ultima: l.ultima_publicacao }
+    } catch {
+      /* migration ainda não aplicada: segue sem afirmar inexistência */
+    }
+    limites = m
+    return limites
+  }
+
   for (const it of itens) {
     const ehSumula = it.tipo === 'sumula' || it.tipo === 'sumula_vinculante'
     const num = ehSumula ? (it.citacao.match(/(\d+)/) || [])[1] : null
@@ -903,7 +936,35 @@ async function enriqueceSumulas(
       /* migration ainda não aplicada: mantém o IDENTIFICADO */
     }
     if (!linha?.enunciado) {
-      saida.push(it) // fora da base (ex.: súmula comum do STF) — segue identificada
+      // Série completa na base: número acima do teto é INEXISTÊNCIA, não ausência.
+      // Dizer "não leu o texto" aqui seria reticência sobre algo que sabemos.
+      const serie = doStf
+        ? it.tipo === 'sumula_vinculante'
+          ? 'stf_vinculante'
+          : 'stf_comum'
+        : 'stj'
+      const lim = (await limitesDe())[serie]
+      if (lim && Number(num) > lim.maximo) {
+        const comoSeChama =
+          serie === 'stf_vinculante' ? `Súmula Vinculante ${num}` : `Súmula ${num} do ${it.tribunal}`
+        const oQueExiste =
+          serie === 'stj'
+            ? `O STJ editou ${lim.maximo} súmulas, a última publicada em ${dataPt(lim.ultima) ?? 'data não registrada'}.`
+            : serie === 'stf_vinculante'
+              ? `O STF editou ${lim.maximo} súmulas vinculantes.`
+              : `As súmulas comuns do STF vão de 1 a ${lim.maximo} — o tribunal deixou de editá-las em 2003, ` +
+                `passando a usar súmulas vinculantes e repercussão geral após a EC 45/2004.`
+        saida.push({
+          ...it,
+          estado: 'NAO_LOCALIZADO',
+          observacao:
+            `${oQueExiste} Não existe ${comoSeChama}. ` +
+            `Nossa base cobre a série inteira, por isso a ausência é conclusiva — não é falta de consulta. ` +
+            `Confira a citação: pode ser súmula de outro tribunal, ou número trocado.`,
+        })
+        continue
+      }
+      saida.push(it) // dentro da faixa e fora da base — segue identificada
       continue
     }
 
@@ -946,7 +1007,12 @@ async function enriqueceSumulas(
     if (situacao === 'alterada') {
       const anterior: string | null = linha.redacao_anterior ?? null
       const simAnt = Number(linha.sim_anterior ?? 0)
-      if (anterior && simAnt >= LIMIAR_TESE && simAnt > Number(linha.sim ?? 0)) {
+      if (
+        anterior &&
+        simAnt >= LIMIAR_TESE &&
+        simAnt > Number(linha.sim ?? 0) &&
+        mesmaPolaridade(tese ?? '', anterior)
+      ) {
         saida.push({
           ...base,
           estado: 'VIGENCIA_COMPROMETIDA',
@@ -1000,11 +1066,23 @@ async function enriqueceSumulas(
     // Com tese alegada: o enunciado é curto e fechado, então a comparação
     // lexical é confiável aqui — diferente do recorte de coletânea do STF.
     const sim = Number(linha.sim ?? 0)
-    if (sim >= LIMIAR_TESE) {
+    if (sim >= LIMIAR_TESE && mesmaPolaridade(tese, enunciado)) {
       saida.push({
         ...base,
         estado: confirmado,
         observacao: `A súmula existe e o enunciado oficial corresponde à tese alegada. Fonte: ${fonte}.${ressalvaVigencia}`,
+      })
+    } else if (sim >= LIMIAR_TESE) {
+      // Vocabulário quase idêntico, negação diferente: o caso clássico de tese
+      // invertida. Não confirmar é obrigatório; explicar por quê é o que
+      // permite ao usuário resolver em dez segundos, com os dois textos à vista.
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `A tese alegada usa quase as mesmas palavras do enunciado, mas com NEGAÇÃO diferente — ` +
+          `e inverter a negação inverte o sentido. Por isso não confirmo. ` +
+          `Texto oficial: ${citado(enunciado)} Compare os dois antes de citar. Fonte: ${fonte}.`,
       })
     } else {
       saida.push({
