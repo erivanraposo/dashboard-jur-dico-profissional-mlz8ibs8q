@@ -797,9 +797,29 @@ async function verificaPorBaseStj(
     const cls = m[1].toUpperCase().replace(/\s/g, '')
     const exclusiva = /^(E?A?RESP|RHC|RMS)$/.test(cls)
     const confiavel = exclusiva || cotejo.conferidos.length >= 1
+    // A base guarda duas coisas em stj_teses: as teses da Jurisprudência em Teses
+    // (com edição) e as 553 súmulas trazidas em 02/08 (sem edição, texto começando
+    // por "Súmula N do STJ:"). Sem distinguir, a procedência de uma súmula saía
+    // como "Jurisprudência em Teses, ed. null, tese 407" — que erra a fonte e
+    // ainda imprime "null" na tela.
+    const ehSumulaDaBase = (r: any) =>
+      r.edicao == null && /^S[úu]mula\s+\d+\s+d[oe]\s+STJ:/i.test(String(r.tese_text ?? ''))
+    const baseNome = (r: any) =>
+      ehSumulaDaBase(r) ? 'base oficial de súmulas do STJ' : 'Jurisprudência em Teses do STJ'
     const prov = (r: any) =>
-      `STJ — Jurisprudência em Teses${r.area ? ', ' + r.area : ''}, ed. ${r.edicao}, tese ${r.numero_tese}` +
+      (ehSumulaDaBase(r)
+        ? `STJ — precedente da ${String(r.tese_text).match(/^S[úu]mula\s+\d+/i)?.[0] ?? 'súmula'} do STJ`
+        : `STJ — Jurisprudência em Teses${r.area ? ', ' + r.area : ''}, ed. ${r.edicao}, tese ${r.numero_tese}`) +
       (r.fonte_pagina ? ` (pg ${r.fonte_pagina})` : '')
+
+    // 49 registros de stj_teses não são teses: são AVISOS DE CANCELAMENTO que o
+    // próprio STJ publica no lugar da tese superada, com a redação anterior
+    // logo em seguida. Quem alegar aquela redação casa por similaridade e
+    // receberia CONFIRMADO de algo cancelado — o defeito de 05/08 outra vez,
+    // agora dentro da Jurisprudência em Teses.
+    const cancelada = (r: any) =>
+      /(?:determinou|deliberou)[^.]{0,60}cancelamento|cancelamento d[ao]s?\s+(?:s[úu]mula|tese)|cancelou\s+a\s+(?:s[úu]mula|tese)/i
+        .test(String(r.tese_text ?? ''))
 
     const item = (estado: Estado, oQue: string | null, obs: string): Item => ({
       citacao: janela.slice(0, 220),
@@ -823,7 +843,7 @@ async function verificaPorBaseStj(
         item(
           'DIVERGENTE',
           null,
-          `Divergência apurada na Jurisprudência em Teses do STJ — ${cotejo.divergencias.join('; ')}. Fonte: ${prov(meta)}.`,
+          `Divergência apurada na ${baseNome(meta)} — ${cotejo.divergencias.join('; ')}. Fonte: ${prov(meta)}.`,
         ),
       )
       remover.push(cit)
@@ -833,12 +853,33 @@ async function verificaPorBaseStj(
     // 2) metadado ok e há tese alegada -> casa a tese
     if (tese) {
       const best = rows.reduce((a, b) => ((b.sim ?? 0) > (a.sim ?? 0) ? b : a), rows[0])
-      if ((best.sim ?? 0) >= LIMIAR_TESE) {
+      if ((best.sim ?? 0) >= LIMIAR_TESE && cancelada(best)) {
+        itens.push(
+          item(
+            'VIGENCIA_COMPROMETIDA',
+            best.tese_text,
+            `O julgado existe e os metadados batem, mas a tese que ele sustentava foi CANCELADA — ` +
+              `o que a base registra no lugar dela é o próprio aviso de cancelamento. ` +
+              `Registro do STJ: ${citado(String(best.tese_text))} ` +
+              `Citar essa tese como vigente derruba o argumento. Fonte: ${prov(best)}.`,
+          ),
+        )
+      } else if ((best.sim ?? 0) >= LIMIAR_TESE && !mesmaPolaridade(tese, String(best.tese_text))) {
+        itens.push(
+          item(
+            'DIVERGENTE',
+            best.tese_text,
+            `A tese alegada usa quase as mesmas palavras da que o STJ vincula a este julgado, mas com ` +
+              `NEGAÇÃO diferente — e inverter a negação inverte o sentido. Por isso não confirmo. ` +
+              `Texto oficial: ${citado(String(best.tese_text))} Compare os dois antes de citar. Fonte: ${prov(best)}.`,
+          ),
+        )
+      } else if ((best.sim ?? 0) >= LIMIAR_TESE) {
         itens.push(
           item(
             'CONFIRMADO_BASE_STJ',
             best.tese_text,
-            `Confirmado contra a Jurisprudência em Teses do STJ: o julgado existe, os metadados batem e o STJ o vincula a esta tese. Fonte: ${prov(best)}.`,
+            `Confirmado contra a ${baseNome(best)}: o julgado existe, os metadados batem e o STJ o vincula a esta tese. Fonte: ${prov(best)}.`,
           ),
         )
       } else if (confiavel) {
@@ -866,7 +907,7 @@ async function verificaPorBaseStj(
         item(
           'CONFIRMADO_BASE_STJ',
           rows[0].tese_text,
-          `Existência e metadados confirmados na Jurisprudência em Teses do STJ. O julgado é invocado em: ${onde}. Fonte: ${prov(rows[0])}.`,
+          `Existência e metadados confirmados na ${baseNome(rows[0])}. O julgado é invocado em: ${onde}. Fonte: ${prov(rows[0])}.`,
         ),
       )
       remover.push(cit)
