@@ -821,6 +821,15 @@ async function verificaPorBaseStj(
       /(?:determinou|deliberou)[^.]{0,60}cancelamento|cancelamento d[ao]s?\s+(?:s[úu]mula|tese)|cancelou\s+a\s+(?:s[úu]mula|tese)/i
         .test(String(r.tese_text ?? ''))
 
+    // As 553 súmulas antigas têm texto limpo — o detector acima não as alcança.
+    // A situação vem agora da própria stj_sumulas, a mesma fonte que a consulta
+    // direta por súmula já usava desde 05/08. Sem isto, o sistema respondia
+    // coisas opostas sobre a Súmula 603 conforme o caminho.
+    const situacaoRuim = (r: any) =>
+      !!r.situacao && !['vigente', 'nao_verificada'].includes(String(r.situacao))
+    const numSumula = (r: any) =>
+      String(r.tese_text ?? '').match(/^S[úu]mula\s+(\d+)/i)?.[1] ?? null
+
     const item = (estado: Estado, oQue: string | null, obs: string): Item => ({
       citacao: janela.slice(0, 220),
       tipo: 'acordao',
@@ -853,7 +862,19 @@ async function verificaPorBaseStj(
     // 2) metadado ok e há tese alegada -> casa a tese
     if (tese) {
       const best = rows.reduce((a, b) => ((b.sim ?? 0) > (a.sim ?? 0) ? b : a), rows[0])
-      if ((best.sim ?? 0) >= LIMIAR_TESE && cancelada(best)) {
+      if ((best.sim ?? 0) >= LIMIAR_TESE && situacaoRuim(best)) {
+        itens.push(
+          item(
+            'VIGENCIA_COMPROMETIDA',
+            best.tese_text,
+            `O julgado existe e os metadados batem, mas a tese alegada é a Súmula ${numSumula(best) ?? ''} ` +
+              `do STJ, que em ${dataPt(best.situacao_data) ?? 'data não registrada'} a lista do STJ ` +
+              `registrava como **${best.situacao}**. ` +
+              (best.nota_situacao ? `${best.nota_situacao} ` : '') +
+              `O precedente continua existindo — o que caiu é o enunciado. Fonte: ${prov(best)}.`,
+          ),
+        )
+      } else if ((best.sim ?? 0) >= LIMIAR_TESE && cancelada(best)) {
         itens.push(
           item(
             'VIGENCIA_COMPROMETIDA',
@@ -899,15 +920,24 @@ async function verificaPorBaseStj(
 
     // 3) sem tese alegada -> confirma existência/metadados se confiável
     if (confiavel) {
-      const onde = rows
-        .slice(0, 3)
-        .map((r) => `tese ${r.numero_tese} (ed. ${r.edicao})`)
-        .join('; ')
+      // "tese 407 (ed. null)" era o mesmo erro de rótulo da procedência: o que
+      // está ali é a Súmula 407, não a tese 407 de edição nenhuma.
+      const rotulo = (r: any) =>
+        ehSumulaDaBase(r) ? `Súmula ${numSumula(r)} do STJ` : `tese ${r.numero_tese} (ed. ${r.edicao})`
+      const onde = rows.slice(0, 3).map(rotulo).join('; ')
+      // Sem tese alegada, o julgado citado está intacto — quem caiu foi o
+      // enunciado que ele sustenta. Confirmar sem dizer isso seria meia verdade.
+      const caidas = rows.filter((r) => situacaoRuim(r) || cancelada(r)).slice(0, 3)
+      const alerta = caidas.length
+        ? ` ATENÇÃO: ${caidas
+            .map((r) => `${rotulo(r)} consta como ${r.situacao ?? 'cancelada'}`)
+            .join('; ')} — o precedente existe, o enunciado não vale mais.`
+        : ''
       itens.push(
         item(
           'CONFIRMADO_BASE_STJ',
           rows[0].tese_text,
-          `Existência e metadados confirmados na ${baseNome(rows[0])}. O julgado é invocado em: ${onde}. Fonte: ${prov(rows[0])}.`,
+          `Existência e metadados confirmados na ${baseNome(rows[0])}. O julgado é invocado em: ${onde}. Fonte: ${prov(rows[0])}.${alerta}`,
         ),
       )
       remover.push(cit)
