@@ -962,6 +962,109 @@ async function verificaPorBaseStj(
 // Súmula é o caso mais favorável do produto: o enunciado é curto, fechado e
 // autoritativo — não há recorte nem ratio a interpretar, como no STF.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// NÍVEL 1 — Temas de repercussão geral do STF. Custo de IA: zero.
+//
+// Até 06/08 toda citação de tema saía como IDENTIFICADO ("não lemos a tese") e
+// caía no Nível 2, a ~US$0,19. Era a maior lacuna de cobertura que restava, num
+// tipo de citação frequentíssimo em peça.
+//
+// ASSIMETRIA EM RELAÇÃO ÀS SÚMULAS: lá a série é completa e ausência prova
+// inexistência. Aqui NÃO: faltam 146 dos 1.430 temas, os sem mérito julgado.
+// Por isso um tema fora da base continua IDENTIFICADO — jamais NAO_LOCALIZADO.
+// ---------------------------------------------------------------------------
+async function enriqueceTemas(itens: Item[], tese: string | null, admin: any): Promise<Item[]> {
+  const saida: Item[] = []
+  for (const it of itens) {
+    const num = it.tipo === 'tema' && it.tribunal === 'STF' ? (it.citacao.match(/(\d[\d.]*)/) || [])[1] : null
+    if (!num) {
+      saida.push(it) // repetitivo do STJ ainda não tem base — segue identificado
+      continue
+    }
+
+    let linha: any = null
+    try {
+      const { data } = await admin.rpc('stf_tema', {
+        p_numero: Number(num.replace(/\./g, '')),
+        p_tese: tese || '',
+      })
+      linha = Array.isArray(data) ? data[0] : data
+    } catch {
+      /* migration ainda não aplicada: mantém o IDENTIFICADO */
+    }
+    if (!linha?.tese) {
+      saida.push(it) // fora da base: pode estar pendente de julgamento
+      continue
+    }
+
+    const colhido = dataPt(linha.colhido_em) ?? 'data não registrada'
+    const julgado = dataPt(linha.data_andamento)
+    const paradigma = linha.classe && linha.processo ? `${linha.classe} ${linha.processo}` : null
+    const fonte =
+      `STF — banco de teses de repercussão geral` +
+      (paradigma ? `, paradigma ${paradigma}` : '') +
+      (julgado ? `, ${julgado}` : '') +
+      ` (colhido em ${colhido})`
+    const base = {
+      ...it,
+      o_que_decide: linha.tese,
+      url_oficial: linha.fonte_url || it.url_oficial,
+      resolucao: 'base_stf' as const,
+    }
+
+    // O STF NEGOU repercussão geral: o texto não é tese firmada, é a decisão de
+    // que a matéria é infraconstitucional. Citar como se fixasse tese é erro
+    // comum em petição — e confirmar seria endossá-lo.
+    if (linha.tem_rg === false) {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `Neste tema o STF NEGOU repercussão geral — não há tese firmada a invocar. ` +
+          `O que o tribunal registra é: ${citado(String(linha.tese))} ` +
+          `Citá-lo como precedente vinculante inverte o que foi decidido. Fonte: ${fonte}.`,
+      })
+      continue
+    }
+
+    if (!tese) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_STF',
+        observacao: `Tese firmada conferida no banco de teses do STF. Fonte: ${fonte}.`,
+      })
+      continue
+    }
+
+    const sim = Number(linha.sim ?? 0)
+    if (sim >= LIMIAR_TESE && mesmaPolaridade(tese, String(linha.tese))) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_STF',
+        observacao: `O tema existe e a tese firmada corresponde à alegada. Fonte: ${fonte}.`,
+      })
+    } else if (sim >= LIMIAR_TESE) {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `A tese alegada usa quase as mesmas palavras da firmada, mas com NEGAÇÃO diferente — ` +
+          `e inverter a negação inverte o sentido. Por isso não confirmo. ` +
+          `Tese oficial: ${citado(String(linha.tese))} Compare as duas antes de citar. Fonte: ${fonte}.`,
+      })
+    } else {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `O tema existe, mas a tese que o STF firmou nele não corresponde à alegada. ` +
+          `Tese oficial: ${citado(String(linha.tese))} Fonte: ${fonte}.`,
+      })
+    }
+  }
+  return saida
+}
+
 async function enriqueceSumulas(
   itens: Item[],
   tese: string | null,
@@ -1408,7 +1511,14 @@ Deno.serve(async (req: Request) => {
 
     const payload = await req.json().catch(() => ({}))
     const texto = String(payload?.texto ?? '').trim()
-    const tese = String(payload?.tese ?? '').trim().slice(0, 2000)
+    // O corte em 2.000 existe para limitar o que vai ao MODELO, e só para isso.
+    // O Nível 1 compara contra o banco, sem custo — e comparar uma tese cortada
+    // com o texto oficial inteiro produz falsa divergência: foi o que aconteceu
+    // com o Tema 6 (2.657 caracteres), acusado de "negação diferente" quando a
+    // tese alegada era idêntica à firmada. Ao truncar, sumiram negações que só
+    // existiam depois do caractere 2.000.
+    const teseIntegral = String(payload?.tese ?? '').trim().slice(0, 20000)
+    const tese = teseIntegral.slice(0, 2000)
     if (texto.length < 4) {
       return json(
         { status: 'error', code: 'empty', message: 'Cole ao menos uma citação para verificar.' },
@@ -1429,9 +1539,9 @@ Deno.serve(async (req: Request) => {
     // ---- lote: pula identificação, teto e gravação; roda o mesmo miolo
     if (modoLote) {
       const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-      const det = await enriqueceSumulas(det0, tese, admin)
-      const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, tese, admin)
-      const { itens: baseStf, resto, confirmados } = await verificaPorBaseStf(r1, tese, admin)
+      const det = await enriqueceTemas(await enriqueceSumulas(det0, teseIntegral, admin), teseIntegral, admin)
+      const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, teseIntegral, admin)
+      const { itens: baseStf, resto, confirmados } = await verificaPorBaseStf(r1, teseIntegral, admin)
       let busca: Item[] = []
       let usoLote: any = {}
       if (/[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)) {
@@ -1518,14 +1628,18 @@ Deno.serve(async (req: Request) => {
     const trabalho = async (send: (d: any) => void) => {
     // ---- 1) determinístico (sem custo de IA), com súmula do STJ lida na base
     const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-    const deterministicos = await enriqueceSumulas(det0, tese, admin)
+    const deterministicos = await enriqueceTemas(
+      await enriqueceSumulas(det0, teseIntegral, admin),
+      teseIntegral,
+      admin,
+    )
 
     // ---- 2) Nível 1: bases canônicas (sem custo de IA)
     //   STJ primeiro: a citação de lá exige /UF, o que a torna inequívoca.
     //   STF depois: HC, MS, Rcl, Inq e AP existem nos dois tribunais, então a
     //   camada do STF só atribui o processo com corroboração de metadado.
-    const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, tese, admin)
-    const { itens: baseStf, resto, confirmados } = await verificaPorBaseStf(r1, tese, admin)
+    const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, teseIntegral, admin)
+    const { itens: baseStf, resto, confirmados } = await verificaPorBaseStf(r1, teseIntegral, admin)
     const naBase = baseStj.length + baseStf.length
     if (naBase) {
       send({
