@@ -309,10 +309,6 @@ async function chamaModelo(
   return { itens, uso: data.usage ?? {} }
 }
 
-// 3 de 57 chamadas do conjunto de teste (5%) falharam com JSON quebrado — o modelo
-// às vezes encerra a resposta em prosa depois de usar a ferramenta de busca. Uma
-// retentativa com instrução mais dura resolve sem custo relevante, porque só ocorre
-// na fração que falhou.
 function blocoConfirmados(cs: ConfirmadoBase[]): string {
   if (!cs.length) return ''
   const linhas = cs.map(
@@ -328,6 +324,11 @@ function blocoConfirmados(cs: ConfirmadoBase[]): string {
   )
 }
 
+// 3 de 57 chamadas do conjunto de teste (5%) falharam com JSON quebrado — o modelo
+// às vezes encerra a resposta em prosa depois de usar a ferramenta de busca. Uma
+// retentativa com instrução mais dura resolve sem custo relevante, porque só ocorre
+// na fração que falhou. Na rodada de 06/08 restou 1 caso em 57 que falhou nas duas
+// tentativas: resíduo, não ausência de tratamento.
 async function verificaPorBusca(
   citacoesTexto: string,
   tese: string,
@@ -634,7 +635,31 @@ function normaliza(i: any, confirmados: ConfirmadoBase[] = []): Item {
     ressalva(
       `A única fonte encontrada (${host}) não é do tribunal citado (${tribunal}). Documento de outro tribunal que menciona o julgado não serve para atestá-lo. Não confirmamos — o que não significa que a citação seja falsa.`,
     )
+  } else if (
+    estado === 'DIVERGENTE' &&
+    cotejo.divergencias.length === 0 &&
+    (!url || ehBusca || !emDominioOficial || !doTribunalCerto)
+  ) {
+    // NÃO ALCANÇAR A FONTE NÃO É INDÍCIO DE DIVERGÊNCIA — é ausência de
+    // informação. A regra "DIVERGENTE se sustenta em indício" vale quando HÁ
+    // indício: uma fonte secundária que mostre relator diferente sustenta a
+    // suspeita, ainda que não sirva para confirmar. Ela não vale quando não há
+    // documento nenhum E a comparação de metadados feita aqui não apontou nada.
+    //
+    // A rodada paga de 06/08 mostrou três citações CORRETAS acusadas de
+    // divergir com "não consegui abrir o inteiro teor" / "não alcancei o portal
+    // do STF" como única base. Acusar de errada uma citação certa porque o
+    // portal não respondeu é o mesmo erro que corrigimos na base do STJ nesta
+    // manhã, do outro lado do sistema.
+    estado = 'NAO_LOCALIZADO'
+    url = null
+    ressalva(
+      'Não foi possível alcançar o documento no portal do tribunal, e a comparação de metadados feita aqui não apontou divergência alguma. ' +
+        'Ausência de fonte não é prova de erro: não confirmamos nem acusamos. Confira no portal antes de usar a citação.',
+    )
   } else if (estado === 'DIVERGENTE' && !url) {
+    // Sobrou o caso legítimo: o servidor apurou divergência de metadado, mas o
+    // documento do tribunal não foi obtido. O achado tem base; a fonte, não.
     ressalva(
       'Divergência apontada a partir de indício, sem documento do próprio tribunal em mãos. Confirme no portal antes de usar a citação.',
     )
@@ -1538,25 +1563,41 @@ Deno.serve(async (req: Request) => {
 
     // ---- lote: pula identificação, teto e gravação; roda o mesmo miolo
     if (modoLote) {
-      const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-      const det = await enriqueceTemas(await enriqueceSumulas(det0, teseIntegral, admin), teseIntegral, admin)
-      const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, teseIntegral, admin)
-      const { itens: baseStf, resto, confirmados } = await verificaPorBaseStf(r1, teseIntegral, admin)
-      let busca: Item[] = []
-      let usoLote: any = {}
-      if (/[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)) {
-        const r = await verificaPorBusca(resto.slice(0, 6000), tese, anthropicKey, confirmados)
-        busca = r.itens.slice(0, MAX_CITACOES)
-        usoLote = r.uso
+      const miolo = async () => {
+        const { itens: det0, resto: r0 } = resolveDeterministico(texto)
+        const det = await enriqueceTemas(
+          await enriqueceSumulas(det0, teseIntegral, admin),
+          teseIntegral,
+          admin,
+        )
+        const { itens: baseStj, resto: r1 } = await verificaPorBaseStj(r0, teseIntegral, admin)
+        const { itens: baseStf, resto, confirmados } = await verificaPorBaseStf(r1, teseIntegral, admin)
+        let busca: Item[] = []
+        let usoLote: any = {}
+        if (/[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)) {
+          const r = await verificaPorBusca(resto.slice(0, 6000), tese, anthropicKey, confirmados)
+          busca = r.itens.slice(0, MAX_CITACOES)
+          usoLote = r.uso
+        }
+        return {
+          status: 'ok',
+          modo: 'lote',
+          itens: [...det, ...baseStj, ...baseStf, ...busca],
+          uso: usoLote, // bruto, para conferir a fórmula de custo por fora
+          custo_usd: Number(custo(usoLote).toFixed(6)),
+        }
       }
-      const todos = [...det, ...baseStj, ...baseStf, ...busca]
-      return json({
-        status: 'ok',
-        modo: 'lote',
-        itens: todos,
-        uso: usoLote, // bruto, para conferir a fórmula de custo por fora
-        custo_usd: Number(custo(usoLote).toFixed(6)),
-      })
+
+      // O batimento SSE de 12s existe para atravessar o corte de 150s SEM
+      // TRÁFEGO da Edge Function — e até 06/08 valia só no caminho da tela. O
+      // lote devolvia JSON de uma vez, então toda verificação longa morria em
+      // IDLE_TIMEOUT: pagávamos a chamada e não recebíamos o resultado. Um
+      // conjunto de teste que perde justamente os casos mais demorados mede o
+      // sistema pelo lado fácil. O executor já aceita as duas formas.
+      if ((req.headers.get('accept') || '').includes('text/event-stream')) {
+        return respostaStream(miolo)
+      }
+      return json(await miolo())
     }
 
     // ---- chamador e workspace
