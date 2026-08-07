@@ -678,6 +678,30 @@ function normaliza(i: any, confirmados: ConfirmadoBase[] = []): Item {
   } else if (
     estado === 'DIVERGENTE' &&
     cotejo.divergencias.length === 0 &&
+    !!url &&
+    emDominioOficial &&
+    !doTribunalCerto
+  ) {
+    // DOCUMENTO DE OUTRO TRIBUNAL NÃO SUSTENTA DIVERGÊNCIA. A regra de que a
+    // fonte tem de ser do tribunal citado já valia para CONFIRMAR desde 30/07;
+    // faltava para DIVERGIR — e a assimetria não se justifica: se um acórdão do
+    // TJES não serve para atestar o que o STF decidiu, também não serve para
+    // dizer que decidiu outra coisa.
+    //
+    // Foi o POS-010 da rodada de 06/08: citação correta acusada de divergente
+    // com base em "indício de fonte secundária (TJES)". A demoção por ausência
+    // de documento não pegava o caso, porque o modelo havia preenchido o que o
+    // julgado decide — só que a partir da fonte errada.
+    estado = 'NAO_LOCALIZADO'
+    url = null
+    ressalva(
+      `A única fonte encontrada (${host}) não é do tribunal citado (${tribunal}). ` +
+        `Documento de outro tribunal não atesta o que este julgado decidiu — nem para confirmar, ` +
+        `nem para divergir. Não confirmamos e não acusamos: confira no portal do ${tribunal}.`,
+    )
+  } else if (
+    estado === 'DIVERGENTE' &&
+    cotejo.divergencias.length === 0 &&
     // A divergência pode ser de TESE, e o servidor nunca compara tese — só
     // metadado. Se o modelo estabeleceu o que o julgado decide, sua conclusão
     // tem base ainda que a URL não sirva; rebaixar aqui foi o erro da primeira
