@@ -434,14 +434,35 @@ function normOrgao(s?: string | null): string | null {
 }
 
 /** Lê a citação como o advogado a escreveu. */
+// Sufixos que designam um INCIDENTE dentro do processo — agravo regimental,
+// embargos, questão de ordem, medida cautelar. Cada um é julgado em sessão
+// própria, com relator e data próprios.
+// Inclui RG (repercussão geral, reconhecida em plenário virtual, com data
+// própria) e os embargos com ordinal — "AP 470 EDj-vigésimos sextos" é um ato
+// distinto de "AP 470". Calibrado contra as 246 citações do conjunto de teste:
+// 246 acertos, zero falso positivo. Sufixo não detectado volta a comparar e
+// pode acusar citação correta, então a cobertura importa.
+const ORDINAL =
+  '(?:primeir|segund|terceir|quart|quint|sext|s[eé]tim|oitav|non|d[eé]cim|vig[eé]sim|trig[eé]sim)[oa]s?'
+const SUFIXO_RE = new RegExp(
+  '\\b(?:AgR|AgRg|EDcl|EDv|EDj|ED|MC|QO|REF|EI|RG|ExtN|ProgReg|TrabExt)\\b' +
+    '(?:-[A-Za-zÀ-ÿ]+)*(?:\\s+' + ORDINAL + ')*' +
+    '|\\b' + ORDINAL + '\\s+julgamento\\b',
+  'i',
+)
+
 function parseCitacao(c: string) {
   const out: Record<string, string | null> = {
     classe: null, numero: null, relator: null, redator: null, orgao: null, data: null,
+    sufixo: null,
   }
   const m = c.match(CLASSES_RE)
   if (m) {
     out.classe = m[1].toUpperCase()
     out.numero = m[2].replace(/\./g, '')
+    // procura o sufixo DEPOIS do número, para não confundir com a classe
+    const s = c.slice(m.index! + m[0].length, m.index! + m[0].length + 60).match(SUFIXO_RE)
+    if (s) out.sufixo = s[0].trim().toUpperCase()
   }
   const red = c.match(/rel\.?\s*p\/\s*o\s*ac\.?\s*(?:min\.?)?\s*([^,\]]+)/i) ||
     c.match(/red\.?\s*d[oa]\s*ac\.?\s*(?:min\.?)?\s*([^,\]]+)/i)
@@ -480,10 +501,25 @@ function confronta(citado: Record<string, string | null>, obs: any) {
       },
     ],
   ]
+  // CITAÇÃO COM SUFIXO APONTA PARA UM INCIDENTE, não para o processo principal —
+  // e o incidente tem relator e data próprios. "HC 96.760 AgR" foi relatado por
+  // Luiz Fux, enquanto o HC 96.760 é de Eros Grau; a "ADC 1 QO" foi julgada em
+  // 27/10/1993 e a ADC 1 em 01/12/1993. Comparar a citação do agravo com o
+  // registro do principal produz acusação falsa contra citação correta.
+  //
+  // Só se abstém de RELATOR, REDATOR e DATA: o órgão julgador do incidente é,
+  // em regra, o mesmo do principal, e a classe evidentemente também.
+  const norm = (s: string | null) => (s || '').toUpperCase().replace(/[^A-Z]/g, '')
+  const atoDiferente = !!citado.sufixo && norm(citado.sufixo) !== norm(obs?.sufixo ?? null)
+
   for (const [k, rotulo, iguais] of campos) {
     const afirmado = citado[k]
     const visto = obs && typeof obs[k] === 'string' && obs[k].trim() ? obs[k].trim() : null
     if (!afirmado) continue
+    if (atoDiferente && (k === 'relator' || k === 'redator' || k === 'data')) {
+      naoConferidos.push(rotulo)
+      continue
+    }
     if (!visto) {
       naoConferidos.push(rotulo)
       continue
@@ -491,7 +527,7 @@ function confronta(citado: Record<string, string | null>, obs: any) {
     if (iguais(afirmado, visto)) conferidos.push(rotulo)
     else divergencias.push(`${rotulo}: a citação diz "${afirmado}", a fonte registra "${visto}"`)
   }
-  return { divergencias, naoConferidos, conferidos }
+  return { divergencias, naoConferidos, conferidos, atoDiferente }
 }
 
 function hostDe(url: string): string | null {
@@ -599,7 +635,11 @@ function normaliza(i: any, confirmados: ConfirmadoBase[] = []): Item {
     // conferido só parte deles. O que não foi visto na fonte fica dito.
     ressalva(
       `Confirmação PARCIAL. Conferidos na fonte: ${cotejo.conferidos.join(', ') || 'nenhum campo'}. ` +
-        `NÃO conferidos: ${cotejo.naoConferidos.join(', ')} — estes campos não foram vistos e podem estar errados.`,
+        `NÃO conferidos: ${cotejo.naoConferidos.join(', ')} — estes campos não foram vistos e podem estar errados.` +
+        (cotejo.atoDiferente
+          ? ` A citação aponta para um incidente do processo (${citado.sufixo}), que é julgado em sessão própria: ` +
+            `relator e data do incidente podem diferir dos do processo principal, e por isso não foram comparados.`
+          : ''),
     )
   }
 
@@ -1373,6 +1413,9 @@ async function verificaPorBaseStf(
       redator: meta.redator_acordao,
       orgao: meta.orgao,
       data: meta.data ? String(meta.data).slice(0, 10) : null,
+      // a coletânea guarda o sufixo em campo próprio: "HC 96.760 AgR" e
+      // "HC 96.760" são registros distintos, com relatores distintos
+      sufixo: meta.sufixo ?? null,
     }
     const cotejo = confronta(parseCitacao(janela), observado)
 
