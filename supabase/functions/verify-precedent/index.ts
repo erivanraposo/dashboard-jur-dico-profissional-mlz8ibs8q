@@ -638,6 +638,12 @@ function normaliza(i: any, confirmados: ConfirmadoBase[] = []): Item {
   } else if (
     estado === 'DIVERGENTE' &&
     cotejo.divergencias.length === 0 &&
+    // A divergência pode ser de TESE, e o servidor nunca compara tese — só
+    // metadado. Se o modelo estabeleceu o que o julgado decide, sua conclusão
+    // tem base ainda que a URL não sirva; rebaixar aqui foi o erro da primeira
+    // versão desta regra, que derrubou TESE-001 a 003 (divergências corretas)
+    // para NAO_LOCALIZADO na rodada de 06/08.
+    !String(i.o_que_decide ?? '').trim() &&
     (!url || ehBusca || !emDominioOficial || !doTribunalCerto)
   ) {
     // NÃO ALCANÇAR A FONTE NÃO É INDÍCIO DE DIVERGÊNCIA — é ausência de
