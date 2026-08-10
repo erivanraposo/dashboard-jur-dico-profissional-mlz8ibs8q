@@ -23,6 +23,7 @@ type Estado =
   | 'CONFIRMADO_REPOSITORIO'
   | 'CONFIRMADO_BASE_STJ'
   | 'CONFIRMADO_BASE_STF'
+  | 'CONFIRMADO_BASE_TST'
   | 'VIGENCIA_COMPROMETIDA'
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
@@ -70,6 +71,13 @@ const ESTADOS: Record<Estado, { rotulo: string; cls: string; Icone: any; ajuda: 
     Icone: ShieldQuestion,
     ajuda:
       'Número, classe, relator, órgão e data conferidos na Coletânea Temática publicada pelo próprio STF. O que o julgado decide NÃO foi conferido: a coletânea traz recortes selecionados por tema, não a tese firmada.',
+  },
+  CONFIRMADO_BASE_TST: {
+    rotulo: 'Confirmado — base do TST',
+    cls: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    Icone: ShieldCheck,
+    ajuda:
+      'Tese conferida no Índice Temático de Precedentes publicado pelo próprio TST, que reúne os incidentes de recursos repetitivos e os temas de repercussão geral de interesse trabalhista. Quando o índice registra trânsito em julgado, a data aparece na observação.',
   },
   CONFIRMADO_REPOSITORIO: {
     rotulo: 'Confirmado — repositório oficial',

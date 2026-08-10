@@ -64,6 +64,7 @@ type Estado =
   | 'CONFIRMADO_REPOSITORIO' // conferido no LexML, não no portal do tribunal
   | 'CONFIRMADO_BASE_STJ' // conferido na Jurisprudência em Teses do STJ (compilação oficial)
   | 'CONFIRMADO_BASE_STF' // metadados conferidos na Coletânea Temática do STF (só metadados)
+  | 'CONFIRMADO_BASE_TST' // conferido no Índice Temático de Precedentes do TST/SPR
   // O enunciado existe e é aquele mesmo, mas foi cancelado, revogado, superado ou
   // alterado. Não é confirmação nem divergência — é um terceiro aviso, e o mais
   // grave na prática: citar súmula morta derruba a peça.
@@ -179,6 +180,33 @@ function resolveDeterministico(texto: string): { itens: Item[]; resto: string } 
       resolucao: 'deterministica',
     }
   })
+
+  // Precedente qualificado do TST: "Tema 41 do TST", "IRR 41", "IAC 2 do TST".
+  // O TST numera seus repetitivos como IRR, e é assim que a base guarda.
+  //
+  // "IRR" exige espaço e no máximo três dígitos, sem hífen adiante: o número do
+  // PROCESSO também começa por IRR ("IRR-243000-58.2013.5.13.0023"), e casar com
+  // ele produziria "Tema 243" a partir de um número de autos.
+  consome(
+    /\b(?:tema\s+(?:n[ºo.]?\s*)?(\d{1,3})\s+d[oe]\s+tst|irr\s+n?[ºo.]?\s*(\d{1,3})(?![\d.\-\/])|iac\s+n?[ºo.]?\s*(\d{1,3})\s+d[oe]\s+tst)\b/gi,
+    (m) => {
+      const num = m[1] || m[2] || m[3]
+      const tipo = m[3] ? 'IAC' : 'IRR'
+      return {
+        citacao: m[0].trim(),
+        tipo: 'tema',
+        tribunal: 'TST',
+        estado: 'IDENTIFICADO',
+        url_oficial: 'https://www.tst.jus.br/nugep-sp/recursos-repetitivos/tabela-completa',
+        url_busca: null,
+        url_lexml: urlLexml(`${tipo} ${num} TST`),
+        o_que_decide: null,
+        observacao: `Precedente do TST identificado sem consulta de IA. O sistema NÃO leu a tese — confira na tabela do NUGEP.`,
+        resolucao: 'deterministica',
+        _tst: `${tipo}:${num}`,
+      } as Item & { _tst: string }
+    },
+  )
 
   // Tema de repercussão geral (STF) ou repetitivo (STJ) — deep links verificados
   // (respondiam 200 em 30/07/2026).
@@ -1160,6 +1188,110 @@ async function enriqueceTemas(itens: Item[], tese: string | null, admin: any): P
   return saida
 }
 
+// ---------------------------------------------------------------------------
+// NÍVEL 1 — Precedentes qualificados do TST. Custo de IA: zero.
+//
+// Fecha a lacuna que o convite de 07/08 expôs: as bases eram todas do STF e do
+// STJ, e quem atua na Justiça do Trabalho citava justamente o que não
+// cobríamos. Fonte: Índice Temático do TST/SPR, agosto de 2026.
+//
+// ASSIMETRIA PRÓPRIA, diferente das duas anteriores: o IRR é SÉRIE COMPLETA
+// (1 a 313, conferida contra a tabela do NUGEP), então ausência ali é
+// informativa; mas o RG dessa base é SELEÇÃO por interesse trabalhista, e a
+// ausência de um tema de repercussão geral não diz nada. Por isso nada aqui
+// devolve NAO_LOCALIZADO: fora da base, segue IDENTIFICADO.
+// ---------------------------------------------------------------------------
+async function enriqueceTst(itens: Item[], tese: string | null, admin: any): Promise<Item[]> {
+  const saida: Item[] = []
+  for (const it of itens) {
+    const marca = (it as any)._tst as string | undefined
+    if (!marca) {
+      saida.push(it)
+      continue
+    }
+    const [tipo, num] = marca.split(':')
+    delete (it as any)._tst
+
+    let linha: any = null
+    try {
+      const { data } = await admin.rpc('tst_precedente', {
+        p_tipo: tipo,
+        p_numero: Number(num),
+        p_tese: tese || '',
+      })
+      linha = Array.isArray(data) ? data[0] : data
+    } catch {
+      /* migration ainda não aplicada: mantém o IDENTIFICADO */
+    }
+    const texto: string | null = linha?.tese_firmada || linha?.tese || null
+    if (!texto) {
+      saida.push(it)
+      continue
+    }
+
+    const colhido = dataPt(linha.colhido_em) ?? 'data não registrada'
+    const fonte =
+      `TST — Índice Temático de Precedentes (${linha.tipo} ${linha.numero}` +
+      (linha.tribunal ? `, ${linha.tribunal}` : '') +
+      `, colhido em ${colhido})`
+    const transito = dataPt(linha.transito_julgado)
+    const base = {
+      ...it,
+      o_que_decide: texto,
+      url_oficial: linha.fonte_url || it.url_oficial,
+      resolucao: 'base_stf' as const,
+    }
+    // O trânsito em julgado é o que separa precedente firme de tese ainda em
+    // discussão — e é o campo que esta fonte dá de graça, ao contrário do STF.
+    const ressalva = transito
+      ? ` Transitado em julgado em ${transito}.`
+      : ` ATENÇÃO: o índice não registra trânsito em julgado para este precedente — pode estar pendente de recurso.`
+    const ondeAparece =
+      Array.isArray(linha.secoes) && linha.secoes.length
+        ? ` Assuntos no índice do TST: ${linha.secoes.slice(0, 3).join('; ')}.`
+        : ''
+
+    if (!tese) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_TST',
+        observacao:
+          `Tese conferida no Índice Temático do TST. Processos representativos: ${linha.processos}. ` +
+          `Fonte: ${fonte}.${ressalva}${ondeAparece}`,
+      })
+      continue
+    }
+
+    const sim = Number(linha.sim ?? 0)
+    if (sim >= LIMIAR_TESE && mesmaPolaridade(tese, texto)) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_TST',
+        observacao:
+          `O precedente existe e a tese firmada corresponde à alegada. Fonte: ${fonte}.${ressalva}`,
+      })
+    } else if (sim >= LIMIAR_TESE) {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `A tese alegada usa quase as mesmas palavras da firmada, mas com NEGAÇÃO diferente — ` +
+          `e inverter a negação inverte o sentido. Por isso não confirmo. ` +
+          `Texto oficial: ${citado(texto)} Compare os dois antes de citar. Fonte: ${fonte}.`,
+      })
+    } else {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `O precedente existe, mas a tese que o ${linha.tribunal?.includes('STF') ? 'STF' : 'TST'} ` +
+          `firmou nele não corresponde à alegada. Texto oficial: ${citado(texto)} Fonte: ${fonte}.`,
+      })
+    }
+  }
+  return saida
+}
+
 async function enriqueceSumulas(
   itens: Item[],
   tese: string | null,
@@ -1638,8 +1770,12 @@ Deno.serve(async (req: Request) => {
     if (modoLote) {
       const miolo = async () => {
         const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-        const det = await enriqueceTemas(
-          await enriqueceSumulas(det0, teseIntegral, admin),
+        const det = await enriqueceTst(
+          await enriqueceTemas(
+            await enriqueceSumulas(det0, teseIntegral, admin),
+            teseIntegral,
+            admin,
+          ),
           teseIntegral,
           admin,
         )
@@ -1742,8 +1878,12 @@ Deno.serve(async (req: Request) => {
     const trabalho = async (send: (d: any) => void) => {
     // ---- 1) determinístico (sem custo de IA), com súmula do STJ lida na base
     const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-    const deterministicos = await enriqueceTemas(
-      await enriqueceSumulas(det0, teseIntegral, admin),
+    const deterministicos = await enriqueceTst(
+      await enriqueceTemas(
+        await enriqueceSumulas(det0, teseIntegral, admin),
+        teseIntegral,
+        admin,
+      ),
       teseIntegral,
       admin,
     )
