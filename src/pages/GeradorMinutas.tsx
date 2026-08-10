@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/RichTextEditor'
@@ -349,6 +349,66 @@ const sanitizeForDocx = (html: string): string => {
   }
 }
 
+// ---------------------------------------------------------------------------
+// PORTA DE REVISÃO — as perguntas do advogado, não os nomes dos nossos agentes.
+//
+// Nasce do retorno de Maurício Tadeu em 10/08/2026: ele usou o sistema 12 vezes
+// em duas semanas e parou, não por desconfiar, mas porque "preparar o trabalho
+// dentro da plataforma exigia mais tempo do que o fluxo habitual". A frase que
+// resume: "quanto mais o LexAxis conseguir se encaixar em etapas específicas do
+// fluxo do advogado, SEM EXIGIR QUE TODO O TRABALHO SEJA RECONSTRUÍDO DENTRO DA
+// PLATAFORMA, maior a chance de virar ferramenta de uso recorrente."
+//
+// Ele sugeriu sete "ferramentas novas". Seis já existiam como agentes — o que
+// faltava era ACESSO, não capacidade. Quem tem a minuta pronta era obrigado a
+// fingir que estava criando uma: colar o texto, escolher um "tipo de minuta"
+// que não geraria nada, e só então chegar aos agentes.
+//
+// Aqui os mesmos agentes aparecem pelo que o advogado QUER SABER. A taxonomia
+// interna (Pesquisa, Contencioso, Revisão) descreve o que o agente é; a pergunta
+// descreve o que ele resolve. Só o rótulo muda.
+type PerguntaRevisao = {
+  pergunta: string
+  detalhe: string
+  agentes: string[] // nomes como estão em `agentes.name`; o que não existir é ignorado
+  destino?: '/precedentes' // quando a resposta não é agente, e sim outra tela
+}
+
+const PERGUNTAS_REVISAO: PerguntaRevisao[] = [
+  {
+    pergunta: 'Leia e aponte onde está frágil',
+    detalhe: 'Lógica, terminologia, forma e estilo — sem reescrever a peça.',
+    agentes: ['Revisor Sênior'],
+  },
+  {
+    pergunta: 'Confira as citações que usei',
+    detalhe:
+      'Confere cada citação contra a fonte oficial: se existe, o que decide, e se a súmula ainda vale.',
+    agentes: [],
+    destino: '/precedentes',
+  },
+  {
+    pergunta: 'O que a parte contrária vai atacar?',
+    detalhe: 'Critica as premissas e antecipa o adversário.',
+    agentes: ['red-team-juridico'],
+  },
+  {
+    pergunta: 'Falta fundamento doutrinário?',
+    detalhe: 'Doutrina em ABNT, com a distinção entre majoritária e minoritária.',
+    agentes: ['doutrina'],
+  },
+  {
+    pergunta: 'Os precedentes que citei ainda valem?',
+    detalhe: 'Alinha as teses da peça com precedentes qualificados.',
+    agentes: ['Analista de Jurisprudência'],
+  },
+  {
+    pergunta: 'Os prazos estão certos?',
+    detalhe: 'Dias úteis, recesso, prazo em dobro.',
+    agentes: ['Gestão de Prazos Processuais'],
+  },
+]
+
 export default function GeradorMinutas() {
   const defaultContent =
     '<h1>Nova Peça Jurídica</h1><p>Inicie a redação do seu documento aqui...</p>'
@@ -373,6 +433,9 @@ export default function GeradorMinutas() {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
   const [selectedProcess, setSelectedProcess] = useState<string>('none')
   const [minuteType, setMinuteType] = useState<string>('')
+  // 'criar' = fluxo de sempre. 'revisar' = já tenho a peça, quero uma leitura.
+  const [modo, setModo] = useState<'criar' | 'revisar'>('criar')
+  const navigate = useNavigate()
   // Instruções livres do usuário para orientar os agentes na análise
   // (ex.: "correlacione os recibos com o relatório anexo", "verifique o ponto X")
   const [analysisInstructions, setAnalysisInstructions] = useState<string>('')
@@ -1174,7 +1237,11 @@ export default function GeradorMinutas() {
         variant: 'destructive',
       })
     }
-    if (!minuteType) {
+    // O tipo de peça diz o que PRODUZIR — é exigência de quem gera. Cobrá-la de
+    // quem só quer uma leitura da peça pronta obrigava o advogado a fingir que
+    // estava criando: escolher um tipo que não geraria nada. Era a fricção que
+    // fez o testador parar de usar.
+    if (modo === 'criar' && !minuteType) {
       return toast({
         title: 'Atenção',
         description: 'Selecione o Tipo de Minuta.',
@@ -4063,23 +4130,55 @@ export default function GeradorMinutas() {
                         </Popover>
                       </div>
 
+                      {/* Duas portas. A de revisão não pede tipo de peça. */}
                       <div className="space-y-3">
                         <label className="text-sm font-semibold text-foreground">
-                          Tipo de Minuta
+                          O que você quer fazer
                         </label>
-                        <Select value={minuteType} onValueChange={setMinuteType}>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Selecione..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {MINUTE_TYPES.map((type) => (
-                              <SelectItem key={type} value={type}>
-                                {type}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(
+                            [
+                              ['criar', 'Criar uma peça', 'Do zero, com os especialistas'],
+                              ['revisar', 'Revisar o que já escrevi', 'Cole ou anexe a peça pronta'],
+                            ] as const
+                          ).map(([valor, titulo, sub]) => (
+                            <button
+                              key={valor}
+                              type="button"
+                              onClick={() => setModo(valor)}
+                              className={cn(
+                                'rounded-md border p-3 text-left transition-colors',
+                                modo === valor
+                                  ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                                  : 'border-border hover:bg-muted/40',
+                              )}
+                            >
+                              <span className="block text-sm font-medium">{titulo}</span>
+                              <span className="block text-xs text-muted-foreground">{sub}</span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
+
+                      {modo === 'criar' && (
+                        <div className="space-y-3">
+                          <label className="text-sm font-semibold text-foreground">
+                            Tipo de Minuta
+                          </label>
+                          <Select value={minuteType} onValueChange={setMinuteType}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Selecione..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MINUTE_TYPES.map((type) => (
+                                <SelectItem key={type} value={type}>
+                                  {type}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
 
                       <Accordion
                         type="single"
@@ -4152,10 +4251,70 @@ export default function GeradorMinutas() {
                         </div>
                       )}
 
+                      {modo === 'revisar' && (
+                        <div className="space-y-3">
+                          <label className="text-sm font-semibold text-foreground">
+                            O que você quer saber sobre esta peça
+                          </label>
+                          <div className="space-y-2">
+                            {PERGUNTAS_REVISAO.map((p) => {
+                              const ids = p.agentes
+                                .map((nome) => agents.find((a) => a.name === nome)?.id)
+                                .filter(Boolean) as string[]
+                              // Pergunta cujo agente não existe nesta instalação
+                              // simplesmente não aparece — melhor faltar opção que
+                              // oferecer botão que não faz nada.
+                              if (!p.destino && ids.length === 0) return null
+                              const ativa =
+                                ids.length > 0 && ids.every((id) => selectedAgents.includes(id))
+                              return (
+                                <button
+                                  key={p.pergunta}
+                                  type="button"
+                                  onClick={() => {
+                                    if (p.destino) {
+                                      navigate(p.destino)
+                                      return
+                                    }
+                                    setSelectedAgents((prev) =>
+                                      ativa
+                                        ? prev.filter((id) => !ids.includes(id))
+                                        : Array.from(new Set([...prev, ...ids])),
+                                    )
+                                  }}
+                                  className={cn(
+                                    'w-full rounded-md border p-3 text-left transition-colors',
+                                    ativa
+                                      ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                                      : 'border-border hover:bg-muted/40',
+                                  )}
+                                >
+                                  <span className="block text-sm font-medium">
+                                    {p.pergunta}
+                                    {p.destino && (
+                                      <span className="ml-2 text-xs font-normal text-primary">
+                                        abre o Verificador →
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="block text-xs text-muted-foreground">
+                                    {p.detalhe}
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            São os mesmos especialistas da criação, agrupados pelo que respondem.
+                            Quem preferir escolher pelo nome tem a lista completa abaixo.
+                          </p>
+                        </div>
+                      )}
+
                       <div className="space-y-3">
                         <div className="flex justify-between items-center">
                           <label className="text-sm font-semibold text-foreground">
-                            Agentes de IA
+                            {modo === 'revisar' ? 'Ou escolha pelo nome' : 'Agentes de IA'}
                           </label>
                           <span
                             className={cn(
