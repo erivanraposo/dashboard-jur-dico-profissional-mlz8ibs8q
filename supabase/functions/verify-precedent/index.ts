@@ -181,6 +181,77 @@ function resolveDeterministico(texto: string): { itens: Item[]; resto: string } 
     }
   })
 
+  // Súmulas, OJs e Precedentes Normativos do TST. Sete séries, e a seção importa:
+  // "OJ 191" sem dizer de qual subseção é citação incompleta — a SDI-1 e a SDI-2
+  // têm ambas uma OJ 191, sobre coisas diferentes. Por isso a seção é exigida:
+  // adivinhar a mais comum acertaria na maioria e erraria feio no resto.
+  const SECAO_TST: Record<string, string> = {
+    SDI1: 'OJ-SDI1', SDII: 'OJ-SDI1', SBDI1: 'OJ-SDI1', SBDII: 'OJ-SDI1',
+    SDI2: 'OJ-SDI2', SDIII: 'OJ-SDI2', SBDI2: 'OJ-SDI2', SBDIII: 'OJ-SDI2',
+    SDC: 'OJ-SDC', TP: 'OJ-TP/OE', OE: 'OJ-TP/OE',
+  }
+  const canonSecao = (s: string) =>
+    SECAO_TST[s.toUpperCase().replace(/[^A-Z0-9]/g, '')] ?? null
+
+  const itemTst = (cit: string, tipo: string, num: string): Item & { _tstSum: string } => ({
+    citacao: cit.trim(),
+    tipo: 'sumula',
+    tribunal: 'TST',
+    estado: 'IDENTIFICADO',
+    url_oficial: 'https://www.tst.jus.br/livro-de-sumulas-ojs-e-pns',
+    url_busca: null,
+    url_lexml: urlLexml(`${tipo} ${num} TST`),
+    o_que_decide: null,
+    observacao:
+      'Verbete do TST identificado sem consulta de IA. O sistema NÃO leu o texto — confira no Livro de Súmulas do TST.',
+    resolucao: 'deterministica',
+    _tstSum: `${tipo}:${num}`,
+  })
+
+  // "Súmula 331 do TST"
+  consome(/\bs[úu]mula\s+(?:n[ºo.]?\s*)?(\d{1,3})\s+d[oe]\s+tst\b/gi, (m) =>
+    itemTst(m[0], 'SUM', m[1]),
+  )
+
+  // "OJ-SDI1-191" — a forma como o próprio Livro escreve
+  consome(
+    /\bOJ[-\s]?(SDI\s?-?\s?1\s?T|SBDI\s?-?\s?1\s?T|SDI\s?-?\s?[12I]{1,3}|SBDI\s?-?\s?[12I]{1,3}|SDC|TP\/OE)[-\s]?(\d{1,3})\b/gi,
+    (m) => {
+      const transitoria = /T\s*$/i.test(m[1].replace(/\s/g, ''))
+      const tipo = transitoria ? 'OJ-SDI1T' : canonSecao(m[1])
+      return tipo ? itemTst(m[0], tipo, m[2]) : null
+    },
+  )
+
+  // "OJ 191 da SDI-1", "Orientação Jurisprudencial nº 191 da SBDI-1",
+  // "OJ transitória 70 da SDI-1"
+  consome(
+    /\b(?:OJ|orienta[çc][ãa]o\s+jurisprudencial)\s+(transit[óo]ria\s+)?(?:n[ºo.]?\s*)?(\d{1,3})\s+d[ao]\s+(S?BDI\s?-?\s?[12I]{1,3}|SDI\s?-?\s?[12I]{1,3}|SDC|[óo]rg[ãa]o\s+especial|tribunal\s+pleno)\b/gi,
+    (m) => {
+      const tipo = m[1]
+        ? 'OJ-SDI1T'
+        : /especial|pleno/i.test(m[3])
+          ? 'OJ-TP/OE'
+          : canonSecao(m[3])
+      return tipo ? itemTst(m[0], tipo, m[2]) : null
+    },
+  )
+
+  // "OJ 191" SEM DIZER A SUBSEÇÃO. Vem por último, quando os padrões completos
+  // já consumiram o que era inequívoco. Não se adivinha aqui: quem resolve é a
+  // camada que tem os tetos de cada série. Um número baixo pode pertencer a
+  // quatro séries; um alto, a uma só.
+  consome(
+    /\b(?:OJ|orienta[çc][ãa]o\s+jurisprudencial)\s+(?:n[ºo.]?\s*)?(\d{1,3})\b(?!\s*d[ao]\s)/gi,
+    (m) => itemTst(m[0], 'OJ?', m[1]),
+  )
+
+  // "PN 119 do TST", "Precedente Normativo 119"
+  consome(
+    /\b(?:PN|precedente\s+normativo)\s+(?:n[ºo.]?\s*)?(\d{1,3})(?:\s+d[oe]\s+tst)?\b/gi,
+    (m) => itemTst(m[0], 'PN', m[1]),
+  )
+
   // Precedente qualificado do TST: "Tema 41 do TST", "IRR 41", "IAC 2 do TST".
   // O TST numera seus repetitivos como IRR, e é assim que a base guarda.
   //
@@ -1201,6 +1272,213 @@ async function enriqueceTemas(itens: Item[], tese: string | null, admin: any): P
 // ausência de um tema de repercussão geral não diz nada. Por isso nada aqui
 // devolve NAO_LOCALIZADO: fora da base, segue IDENTIFICADO.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// NÍVEL 1 — Súmulas, OJs e Precedentes Normativos do TST. Custo de IA: zero.
+//
+// Fonte: Livro de Súmulas do TST, 1.292 verbetes em sete séries, TODAS
+// COMPLETAS — então aqui, ao contrário dos temas, ausência é informativa.
+//
+// A situação vem do próprio documento. E há um estado que nenhuma outra base
+// tinha: CONVERTIDA. "Cancelada em decorrência da sua conversão na Súmula nº
+// 405" não é o mesmo que cancelada — o verbete caiu, mas o conteúdo migrou.
+// Quem cita a OJ convertida não invoca coisa inexistente: invoca pelo nome
+// antigo. Dizer "não existe" seria tão errado quanto confirmar.
+// ---------------------------------------------------------------------------
+async function enriqueceTstSumulas(
+  itens: Item[],
+  tese: string | null,
+  admin: any,
+): Promise<Item[]> {
+  const saida: Item[] = []
+  let limites: Record<string, number> | null = null
+  const limitesDe = async () => {
+    if (limites) return limites
+    const m: Record<string, number> = {}
+    try {
+      const { data } = await admin.rpc('tst_sumula_limites')
+      for (const l of data ?? []) m[l.tipo] = l.maximo
+    } catch {
+      /* migration ainda não aplicada */
+    }
+    limites = m
+    return limites
+  }
+
+  for (const it of itens) {
+    const marca = (it as any)._tstSum as string | undefined
+    if (!marca) {
+      saida.push(it)
+      continue
+    }
+    let [tipo, num] = marca.split(':')
+    delete (it as any)._tstSum
+
+    // CITAÇÃO SEM SUBSEÇÃO ("OJ 191"). Resolve-se pelos TETOS das séries, não
+    // por palpite: a SDI-1 vai até 421, a SDI-2 até 158, as transitórias até 79,
+    // a SDC até 38. Uma "OJ 191" só pode ser da SDI-1; uma "OJ 30" pode ser de
+    // quatro séries, e aí a citação está incompleta — dizer isso ao advogado é
+    // mais útil que escolher por ele, e é o tipo de imprecisão que a parte
+    // contrária aponta.
+    if (tipo === 'OJ?') {
+      const tetos = await limitesDe()
+      const candidatos = Object.entries(tetos)
+        .filter(([t, max]) => t.startsWith('OJ') && Number(num) <= max)
+        .map(([t]) => t)
+      if (candidatos.length === 0) {
+        saida.push({
+          ...it,
+          estado: 'NAO_LOCALIZADO',
+          observacao:
+            `Nenhuma série de Orientações Jurisprudenciais do TST chega ao número ${num}. ` +
+            `As séries estão completas na nossa base, por isso a ausência é conclusiva.`,
+        })
+        continue
+      }
+      if (candidatos.length > 1) {
+        saida.push({
+          ...it,
+          estado: 'IDENTIFICADO',
+          observacao:
+            `Citação incompleta: existe uma OJ ${num} em mais de uma subseção do TST ` +
+            `(${candidatos.join(', ')}), e são verbetes diferentes. Indique a subseção — ` +
+            `"OJ ${num} da SDI-1", por exemplo — para que eu confira o texto certo.`,
+        })
+        continue
+      }
+      tipo = candidatos[0]
+    }
+
+    let linha: any = null
+    try {
+      const { data } = await admin.rpc('tst_sumula', {
+        p_tipo: tipo,
+        p_numero: Number(num),
+        p_tese: tese || '',
+      })
+      linha = Array.isArray(data) ? data[0] : data
+    } catch {
+      /* migration ainda não aplicada: mantém o IDENTIFICADO */
+    }
+
+    const nome = (t: string, n: string | number) =>
+      t === 'SUM' ? `Súmula ${n} do TST` : t === 'PN' ? `Precedente Normativo ${n}` : `${t}-${n}`
+
+    if (!linha) {
+      // Série completa: número acima do teto é prova de inexistência.
+      const teto = (await limitesDe())[tipo]
+      if (teto && Number(num) > teto) {
+        saida.push({
+          ...it,
+          estado: 'NAO_LOCALIZADO',
+          observacao:
+            `O TST editou ${teto} verbetes nesta série. Não existe ${nome(tipo, num)}. ` +
+            `A série está completa na nossa base, por isso a ausência é conclusiva — ` +
+            `confira a citação: pode ser de outra subseção, ou número trocado.`,
+        })
+        continue
+      }
+      saida.push(it)
+      continue
+    }
+
+    const colhido = dataPt(linha.colhido_em) ?? 'data não registrada'
+    const fonte = `TST — Livro de Súmulas, OJs e PNs (pg ${linha.fonte_pagina}, colhido em ${colhido})`
+    const texto: string | null = linha.texto || null
+    const base = {
+      ...it,
+      o_que_decide: texto || linha.titulo || null,
+      url_oficial: linha.fonte_url || it.url_oficial,
+      resolucao: 'base_stf' as const,
+    }
+    const comoOTstEscreve = linha.titulo_bruto
+      ? ` Como o TST registra: ${citado(String(linha.titulo_bruto))}`
+      : ''
+
+    // CONVERTIDA — o verbete caiu, o conteúdo seguiu noutro lugar.
+    if (linha.situacao === 'convertida') {
+      saida.push({
+        ...base,
+        estado: 'VIGENCIA_COMPROMETIDA',
+        observacao:
+          `${nome(tipo, num)} foi CONVERTIDA: o verbete deixou de existir com esse nome, mas o ` +
+          `conteúdo migrou para outro. Não é que a tese tenha caído — mudou de endereço, e citar ` +
+          `pelo nome antigo pode ser contraditado.${comoOTstEscreve} Fonte: ${fonte}.`,
+      })
+      continue
+    }
+
+    if (linha.situacao === 'cancelada') {
+      saida.push({
+        ...base,
+        estado: 'VIGENCIA_COMPROMETIDA',
+        observacao:
+          `${nome(tipo, num)} está CANCELADA segundo o Livro de Súmulas do TST.` +
+          comoOTstEscreve +
+          ` Citá-la como vigente derruba o argumento. Fonte: ${fonte}.`,
+      })
+      continue
+    }
+
+    const ressalva =
+      linha.situacao === 'alterada'
+        ? ` Atenção: a redação deste verbete foi ALTERADA — o texto acima é o em vigor, e publicações anteriores trazem outra.`
+        : ''
+    const natureza =
+      linha.natureza === 'negativo'
+        ? ' Precedente NEGATIVO: o TST nega o direito nele tratado, não o afirma.'
+        : linha.natureza === 'positivo'
+          ? ' Precedente positivo: afirma o direito.'
+          : ''
+
+    if (!texto) {
+      saida.push({
+        ...base,
+        estado: 'IDENTIFICADO',
+        observacao:
+          `${nome(tipo, num)} existe, mas o Livro não reproduz o texto deste verbete.` +
+          comoOTstEscreve + ` Fonte: ${fonte}.`,
+      })
+      continue
+    }
+
+    if (!tese) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_TST',
+        observacao: `Texto conferido no Livro de Súmulas do TST. Fonte: ${fonte}.${ressalva}${natureza}`,
+      })
+      continue
+    }
+
+    const sim = Number(linha.sim ?? 0)
+    if (sim >= LIMIAR_TESE && mesmaPolaridade(tese, texto)) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_TST',
+        observacao: `O verbete existe e o texto oficial corresponde à tese alegada. Fonte: ${fonte}.${ressalva}${natureza}`,
+      })
+    } else if (sim >= LIMIAR_TESE) {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `A tese alegada usa quase as mesmas palavras do verbete, mas com NEGAÇÃO diferente — ` +
+          `e inverter a negação inverte o sentido. Por isso não confirmo. ` +
+          `Texto oficial: ${citado(texto)} Compare os dois antes de citar. Fonte: ${fonte}.`,
+      })
+    } else {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `O verbete existe, mas o que ele enuncia não corresponde à tese alegada. ` +
+          `Texto oficial: ${citado(texto)} Fonte: ${fonte}.`,
+      })
+    }
+  }
+  return saida
+}
+
 async function enriqueceTst(itens: Item[], tese: string | null, admin: any): Promise<Item[]> {
   const saida: Item[] = []
   for (const it of itens) {
@@ -1770,9 +2048,13 @@ Deno.serve(async (req: Request) => {
     if (modoLote) {
       const miolo = async () => {
         const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-        const det = await enriqueceTst(
-          await enriqueceTemas(
-            await enriqueceSumulas(det0, teseIntegral, admin),
+        const det = await enriqueceTstSumulas(
+          await enriqueceTst(
+            await enriqueceTemas(
+              await enriqueceSumulas(det0, teseIntegral, admin),
+              teseIntegral,
+              admin,
+            ),
             teseIntegral,
             admin,
           ),
@@ -1878,9 +2160,13 @@ Deno.serve(async (req: Request) => {
     const trabalho = async (send: (d: any) => void) => {
     // ---- 1) determinístico (sem custo de IA), com súmula do STJ lida na base
     const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-    const deterministicos = await enriqueceTst(
-      await enriqueceTemas(
-        await enriqueceSumulas(det0, teseIntegral, admin),
+    const deterministicos = await enriqueceTstSumulas(
+      await enriqueceTst(
+        await enriqueceTemas(
+          await enriqueceSumulas(det0, teseIntegral, admin),
+          teseIntegral,
+          admin,
+        ),
         teseIntegral,
         admin,
       ),
