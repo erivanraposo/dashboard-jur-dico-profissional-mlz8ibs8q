@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       agentes: {
@@ -254,6 +229,7 @@ export type Database = {
       }
       invocacoes: {
         Row: {
+          action: string | null
           agent_id: string
           created_at: string
           diagnostic_log: string | null
@@ -265,6 +241,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          action?: string | null
           agent_id: string
           created_at?: string
           diagnostic_log?: string | null
@@ -276,6 +253,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          action?: string | null
           agent_id?: string
           created_at?: string
           diagnostic_log?: string | null
@@ -346,20 +324,31 @@ export type Database = {
           full_name: string
           id: string
           oab_number: string
+          workspace_id: string
         }
         Insert: {
           created_at?: string
           full_name: string
           id?: string
           oab_number: string
+          workspace_id: string
         }
         Update: {
           created_at?: string
           full_name?: string
           id?: string
           oab_number?: string
+          workspace_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "lawyers_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       minutes: {
         Row: {
@@ -544,6 +533,74 @@ export type Database = {
           },
         ]
       }
+      precedent_verifications: {
+        Row: {
+          cache_read_tokens: number
+          cache_write_tokens: number
+          created_at: string
+          entrada: string
+          estimated_cost: number
+          id: string
+          input_tokens: number
+          modelo: string | null
+          n_citacoes: number
+          n_confirmado: number
+          n_divergente: number
+          n_nao_local: number
+          output_tokens: number
+          resultado: Json
+          tese_alegada: string | null
+          user_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          created_at?: string
+          entrada: string
+          estimated_cost?: number
+          id?: string
+          input_tokens?: number
+          modelo?: string | null
+          n_citacoes?: number
+          n_confirmado?: number
+          n_divergente?: number
+          n_nao_local?: number
+          output_tokens?: number
+          resultado?: Json
+          tese_alegada?: string | null
+          user_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          created_at?: string
+          entrada?: string
+          estimated_cost?: number
+          id?: string
+          input_tokens?: number
+          modelo?: string | null
+          n_citacoes?: number
+          n_confirmado?: number
+          n_divergente?: number
+          n_nao_local?: number
+          output_tokens?: number
+          resultado?: Json
+          tese_alegada?: string | null
+          user_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "precedent_verifications_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       process_attachments: {
         Row: {
           created_at: string
@@ -668,6 +725,383 @@ export type Database = {
           },
         ]
       }
+      stf_julgados: {
+        Row: {
+          arquivo: string | null
+          citacao: string
+          classe: string
+          colecao: string
+          confianca: string
+          data: string | null
+          fonte_pagina: number | null
+          fonte_url: string | null
+          id: string
+          ministro: string | null
+          numero: string
+          orgao: string | null
+          publicacao: string | null
+          redator_acordao: string | null
+          relator: string | null
+          sufixo: string | null
+          tema_rg: string | null
+        }
+        Insert: {
+          arquivo?: string | null
+          citacao: string
+          classe: string
+          colecao: string
+          confianca?: string
+          data?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          ministro?: string | null
+          numero: string
+          orgao?: string | null
+          publicacao?: string | null
+          redator_acordao?: string | null
+          relator?: string | null
+          sufixo?: string | null
+          tema_rg?: string | null
+        }
+        Update: {
+          arquivo?: string | null
+          citacao?: string
+          classe?: string
+          colecao?: string
+          confianca?: string
+          data?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          ministro?: string | null
+          numero?: string
+          orgao?: string | null
+          publicacao?: string | null
+          redator_acordao?: string | null
+          relator?: string | null
+          sufixo?: string | null
+          tema_rg?: string | null
+        }
+        Relationships: []
+      }
+      stf_sumulas: {
+        Row: {
+          confianca: string
+          data_aprovacao: string | null
+          enunciado: string
+          enunciado_fonte_data: string | null
+          fonte_arquivo: string | null
+          fonte_documento: string | null
+          fonte_pagina: number | null
+          fonte_url: string | null
+          id: string
+          n_precedentes: number
+          nota_situacao: string | null
+          numero: number
+          situacao: string
+          situacao_data: string | null
+          situacao_fonte: string | null
+          tipo: string
+        }
+        Insert: {
+          confianca?: string
+          data_aprovacao?: string | null
+          enunciado: string
+          enunciado_fonte_data?: string | null
+          fonte_arquivo?: string | null
+          fonte_documento?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          n_precedentes?: number
+          nota_situacao?: string | null
+          numero: number
+          situacao?: string
+          situacao_data?: string | null
+          situacao_fonte?: string | null
+          tipo?: string
+        }
+        Update: {
+          confianca?: string
+          data_aprovacao?: string | null
+          enunciado?: string
+          enunciado_fonte_data?: string | null
+          fonte_arquivo?: string | null
+          fonte_documento?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          n_precedentes?: number
+          nota_situacao?: string | null
+          numero?: number
+          situacao?: string
+          situacao_data?: string | null
+          situacao_fonte?: string | null
+          tipo?: string
+        }
+        Relationships: []
+      }
+      stf_temas: {
+        Row: {
+          classe: string | null
+          colhido_em: string
+          data_andamento: string | null
+          fonte_url: string | null
+          id: string
+          incidente: string | null
+          normalizada: boolean
+          numero: number
+          processo: string | null
+          tem_rg: boolean
+          tese: string
+          tese_bruta: string | null
+        }
+        Insert: {
+          classe?: string | null
+          colhido_em?: string
+          data_andamento?: string | null
+          fonte_url?: string | null
+          id?: string
+          incidente?: string | null
+          normalizada?: boolean
+          numero: number
+          processo?: string | null
+          tem_rg: boolean
+          tese: string
+          tese_bruta?: string | null
+        }
+        Update: {
+          classe?: string | null
+          colhido_em?: string
+          data_andamento?: string | null
+          fonte_url?: string | null
+          id?: string
+          incidente?: string | null
+          normalizada?: boolean
+          numero?: number
+          processo?: string | null
+          tem_rg?: boolean
+          tese?: string
+          tese_bruta?: string | null
+        }
+        Relationships: []
+      }
+      stj_sumulas: {
+        Row: {
+          confianca: string
+          data_julgamento: string | null
+          data_publicacao: string | null
+          enunciado: string
+          fonte_arquivo: string | null
+          fonte_documento: string | null
+          fonte_pagina: number | null
+          fonte_url: string | null
+          id: string
+          nota_situacao: string | null
+          numero: number
+          orgao: string | null
+          ramo: string | null
+          redacao_anterior: string | null
+          situacao: string
+          situacao_data: string | null
+          situacao_fonte: string | null
+          veiculo: string | null
+        }
+        Insert: {
+          confianca?: string
+          data_julgamento?: string | null
+          data_publicacao?: string | null
+          enunciado: string
+          fonte_arquivo?: string | null
+          fonte_documento?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          nota_situacao?: string | null
+          numero: number
+          orgao?: string | null
+          ramo?: string | null
+          redacao_anterior?: string | null
+          situacao?: string
+          situacao_data?: string | null
+          situacao_fonte?: string | null
+          veiculo?: string | null
+        }
+        Update: {
+          confianca?: string
+          data_julgamento?: string | null
+          data_publicacao?: string | null
+          enunciado?: string
+          fonte_arquivo?: string | null
+          fonte_documento?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          nota_situacao?: string | null
+          numero?: number
+          orgao?: string | null
+          ramo?: string | null
+          redacao_anterior?: string | null
+          situacao?: string
+          situacao_data?: string | null
+          situacao_fonte?: string | null
+          veiculo?: string | null
+        }
+        Relationships: []
+      }
+      stj_tese_julgados: {
+        Row: {
+          citacao: string | null
+          classe: string | null
+          data: string | null
+          id: string
+          monocratica: boolean
+          numero: string | null
+          orgao: string | null
+          relator: string | null
+          tese_id: string
+          tipo_data: string | null
+          uf: string | null
+        }
+        Insert: {
+          citacao?: string | null
+          classe?: string | null
+          data?: string | null
+          id?: string
+          monocratica?: boolean
+          numero?: string | null
+          orgao?: string | null
+          relator?: string | null
+          tese_id: string
+          tipo_data?: string | null
+          uf?: string | null
+        }
+        Update: {
+          citacao?: string | null
+          classe?: string | null
+          data?: string | null
+          id?: string
+          monocratica?: boolean
+          numero?: string | null
+          orgao?: string | null
+          relator?: string | null
+          tese_id?: string
+          tipo_data?: string | null
+          uf?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stj_tese_julgados_tese_id_fkey"
+            columns: ["tese_id"]
+            isOneToOne: false
+            referencedRelation: "stj_teses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stj_teses: {
+        Row: {
+          area: string | null
+          base_legal: string | null
+          edicao: number | null
+          fonte_arquivo: string | null
+          fonte_pagina: number | null
+          fonte_url: string | null
+          id: string
+          numero_tese: number | null
+          tema_repetitivo: string | null
+          tese_text: string
+        }
+        Insert: {
+          area?: string | null
+          base_legal?: string | null
+          edicao?: number | null
+          fonte_arquivo?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          numero_tese?: number | null
+          tema_repetitivo?: string | null
+          tese_text: string
+        }
+        Update: {
+          area?: string | null
+          base_legal?: string | null
+          edicao?: number | null
+          fonte_arquivo?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          numero_tese?: number | null
+          tema_repetitivo?: string | null
+          tese_text?: string
+        }
+        Relationships: []
+      }
+      tst_precedentes: {
+        Row: {
+          assunto: string | null
+          colhido_em: string
+          decisao: string | null
+          fonte_documento: string | null
+          fonte_pagina: number | null
+          fonte_url: string | null
+          id: string
+          numero: number
+          observacao_nugep: string | null
+          ocorrencias: number
+          processos: string
+          secoes: string[]
+          tese: string | null
+          tese_firmada: string | null
+          tipo: string
+          titulo: string | null
+          transito_julgado: string | null
+          tribunal: string | null
+        }
+        Insert: {
+          assunto?: string | null
+          colhido_em?: string
+          decisao?: string | null
+          fonte_documento?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          numero: number
+          observacao_nugep?: string | null
+          ocorrencias?: number
+          processos: string
+          secoes?: string[]
+          tese?: string | null
+          tese_firmada?: string | null
+          tipo: string
+          titulo?: string | null
+          transito_julgado?: string | null
+          tribunal?: string | null
+        }
+        Update: {
+          assunto?: string | null
+          colhido_em?: string
+          decisao?: string | null
+          fonte_documento?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          numero?: number
+          observacao_nugep?: string | null
+          ocorrencias?: number
+          processos?: string
+          secoes?: string[]
+          tese?: string | null
+          tese_firmada?: string | null
+          tipo?: string
+          titulo?: string | null
+          transito_julgado?: string | null
+          tribunal?: string | null
+        }
+        Relationships: []
+      }
       workspace_branding: {
         Row: {
           cabecalho_extra: string
@@ -739,24 +1173,85 @@ export type Database = {
           },
         ]
       }
+      workspace_invitations: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string
+          email: string
+          id: string
+          invited_by: string | null
+          role: string
+          status: string
+          workspace_id: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          invited_by?: string | null
+          role?: string
+          status?: string
+          workspace_id: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          invited_by?: string | null
+          role?: string
+          status?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_invitations_accepted_by_fkey"
+            columns: ["accepted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workspace_invitations_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workspace_invitations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspaces: {
         Row: {
           budget_mensal_usd: number
           created_at: string
           id: string
           name: string
+          plano: string
         }
         Insert: {
           budget_mensal_usd?: number
           created_at?: string
           id?: string
           name: string
+          plano?: string
         }
         Update: {
           budget_mensal_usd?: number
           created_at?: string
           id?: string
           name?: string
+          plano?: string
         }
         Relationships: []
       }
@@ -796,6 +1291,15 @@ export type Database = {
       }
     }
     Functions: {
+      admin_remove_member: { Args: { p_member: string }; Returns: undefined }
+      admin_set_member_role: {
+        Args: { p_member: string; p_role: string }
+        Returns: undefined
+      }
+      creditos_do_mes: { Args: never; Returns: Json }
+      creditos_do_plano: { Args: { p_plano: string }; Returns: number }
+      current_user_role: { Args: never; Returns: string }
+      current_workspace_id: { Args: never; Returns: string }
       get_agent_ranking: {
         Args: { end_date: string; start_date: string }
         Returns: {
@@ -824,6 +1328,131 @@ export type Database = {
           user_id: string
         }[]
       }
+      plano_do_workspace: { Args: { p_workspace: string }; Returns: string }
+      precedent_verifications_hoje: { Args: never; Returns: number }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
+      stf_lookup: {
+        Args: { p_classe?: string; p_numero: string }
+        Returns: {
+          arquivo: string
+          citacao: string
+          classe: string
+          colecao: string
+          confianca: string
+          data: string
+          fonte_pagina: number
+          fonte_url: string
+          ministro: string
+          numero: string
+          orgao: string
+          publicacao: string
+          redator_acordao: string
+          relator: string
+          sufixo: string
+          tema_rg: string
+        }[]
+      }
+      stf_sumula: {
+        Args: { p_numero: number; p_tese?: string; p_vinculante?: boolean }
+        Returns: {
+          data_aprovacao: string
+          enunciado: string
+          enunciado_fonte_data: string
+          fonte_arquivo: string
+          fonte_pagina: number
+          fonte_url: string
+          n_precedentes: number
+          nota_situacao: string
+          numero: number
+          sim: number
+          situacao: string
+          situacao_data: string
+          tipo: string
+        }[]
+      }
+      stf_tema: {
+        Args: { p_numero: number; p_tese?: string }
+        Returns: {
+          classe: string
+          colhido_em: string
+          data_andamento: string
+          fonte_url: string
+          numero: number
+          processo: string
+          sim: number
+          tem_rg: boolean
+          tese: string
+        }[]
+      }
+      stj_lookup: {
+        Args: { p_numero: string; p_tese: string; p_uf: string }
+        Returns: {
+          area: string
+          citacao: string
+          classe: string
+          data: string
+          edicao: number
+          fonte_pagina: number
+          fonte_url: string
+          nota_situacao: string
+          numero_tese: number
+          orgao: string
+          relator: string
+          sim: number
+          situacao: string
+          situacao_data: string
+          tese_text: string
+          tipo_data: string
+          uf: string
+        }[]
+      }
+      stj_sumula: {
+        Args: { p_numero: number; p_tese?: string }
+        Returns: {
+          area: string
+          data_publicacao: string
+          enunciado: string
+          fonte_arquivo: string
+          fonte_pagina: number
+          fonte_url: string
+          nota_situacao: string
+          numero_tese: number
+          redacao_anterior: string
+          sim: number
+          sim_anterior: number
+          situacao: string
+          situacao_data: string
+        }[]
+      }
+      sumula_limites: {
+        Args: never
+        Returns: {
+          base: string
+          maximo: number
+          ultima_publicacao: string
+        }[]
+      }
+      tst_precedente: {
+        Args: { p_numero: number; p_tese?: string; p_tipo: string }
+        Returns: {
+          colhido_em: string
+          fonte_pagina: number
+          fonte_url: string
+          numero: number
+          observacao_nugep: string
+          processos: string
+          secoes: string[]
+          sim: number
+          tese: string
+          tese_firmada: string
+          tipo: string
+          titulo: string
+          transito_julgado: string
+          tribunal: string
+        }[]
+      }
+      workspace_founder: { Args: { p_ws: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never
@@ -952,9 +1581,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
