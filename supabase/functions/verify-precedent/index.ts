@@ -65,6 +65,7 @@ type Estado =
   | 'CONFIRMADO_BASE_STJ' // conferido na Jurisprudência em Teses do STJ (compilação oficial)
   | 'CONFIRMADO_BASE_STF' // metadados conferidos na Coletânea Temática do STF (só metadados)
   | 'CONFIRMADO_BASE_TST' // conferido no Índice Temático de Precedentes do TST/SPR
+  | 'CONFIRMADO_BASE_TSE' // conferido na publicação oficial de Súmulas do TSE
   // O enunciado existe e é aquele mesmo, mas foi cancelado, revogado, superado ou
   // alterado. Não é confirmação nem divergência — é um terceiro aviso, e o mais
   // grave na prática: citar súmula morta derruba a peça.
@@ -180,6 +181,31 @@ function resolveDeterministico(texto: string): { itens: Item[]; resto: string } 
       resolucao: 'deterministica',
     }
   })
+
+  // Súmula do TSE. "Súmula 47 do TSE", "Súmula-TSE n. 47", e a forma por
+  // extenso — o Tribunal Superior Eleitoral aparece escrito assim em peça
+  // eleitoral com frequência maior que a sigla.
+  consome(
+    /\bs[úu]mula[-\s]*(?:TSE\s*)?n?[ºo.]?\s*(\d{1,3})\s+d[oe]\s+(?:TSE|tribunal\s+superior\s+eleitoral)\b|\bs[úu]mula-TSE\s+n\.?\s*(\d{1,3})\b/gi,
+    (m) => {
+      const num = m[1] || m[2]
+      return {
+        citacao: m[0].trim(),
+        tipo: 'sumula',
+        tribunal: 'TSE',
+        estado: 'IDENTIFICADO',
+        url_oficial:
+          'https://www.tse.jus.br/legislacao/codigo-eleitoral/sumulas/sumulas-do-tse',
+        url_busca: null,
+        url_lexml: urlLexml(`Súmula ${num} TSE`),
+        o_que_decide: null,
+        observacao:
+          'Súmula do TSE identificada sem consulta de IA. O sistema NÃO leu o texto — confira na publicação oficial.',
+        resolucao: 'deterministica',
+        _tseSum: String(num),
+      } as Item & { _tseSum: string }
+    },
+  )
 
   // Súmulas, OJs e Precedentes Normativos do TST. Sete séries, e a seção importa:
   // "OJ 191" sem dizer de qual subseção é citação incompleta — a SDI-1 e a SDI-2
@@ -1273,6 +1299,170 @@ async function enriqueceTemas(itens: Item[], tese: string | null, admin: any): P
 // devolve NAO_LOCALIZADO: fora da base, segue IDENTIFICADO.
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
+// NÍVEL 1 — Súmulas do TSE. Custo de IA: zero.
+//
+// Série completa de 1 a 73, então a ausência é conclusiva: não existe Súmula 74.
+//
+// O QUE ESTA BASE TEM DE PRÓPRIO é a redação anterior das quatro alteradas. A
+// Súmula 6 dizia "É inelegível, para o cargo de prefeito, o cônjuge e os
+// parentes ... AINDA QUE este haja renunciado ao cargo há mais de seis meses do
+// pleito"; hoje diz "SALVO SE este, reelegível, tenha falecido, renunciado ou se
+// afastado definitivamente do cargo até seis meses antes do pleito" — quase o
+// contrário na parte final.
+//
+// Por isso a tese é comparada com as DUAS redações. Quando casa melhor com a
+// anterior, a resposta não é um "não confere" seco: é dizer ao advogado que ele
+// está com a versão superada na mão. Texto legítimo, publicado pelo TSE, que já
+// não vale — o caso que nenhum detector de alucinação pega, porque o texto
+// existe e soa correto.
+// ---------------------------------------------------------------------------
+async function enriqueceTseSumulas(
+  itens: Item[],
+  tese: string | null,
+  admin: any,
+): Promise<Item[]> {
+  const saida: Item[] = []
+  let teto: number | null = null
+
+  for (const it of itens) {
+    const num = (it as any)._tseSum as string | undefined
+    if (!num) {
+      saida.push(it)
+      continue
+    }
+    delete (it as any)._tseSum
+
+    let linha: any = null
+    try {
+      const { data } = await admin.rpc('tse_sumula', {
+        p_numero: Number(num),
+        p_tese: tese || '',
+      })
+      linha = Array.isArray(data) ? data[0] : data
+    } catch {
+      /* migration ainda não aplicada: mantém o IDENTIFICADO */
+    }
+
+    if (!linha) {
+      if (teto === null) {
+        try {
+          const { data } = await admin.rpc('tse_sumula_limite')
+          teto = Number(data) || 0
+        } catch {
+          teto = 0
+        }
+      }
+      if (teto && Number(num) > teto) {
+        saida.push({
+          ...it,
+          estado: 'NAO_LOCALIZADO',
+          observacao:
+            `O TSE editou ${teto} súmulas. Não existe Súmula ${num} do TSE. A série está ` +
+            `completa na nossa base, por isso a ausência é conclusiva — confira o número, ` +
+            `ou o tribunal: pode ser súmula do STF ou do STJ.`,
+        })
+        continue
+      }
+      saida.push(it)
+      continue
+    }
+
+    const colhido = dataPt(linha.colhido_em) ?? 'data não registrada'
+    const fonte = `TSE — Súmulas do TSE (pg ${linha.fonte_pagina}, colhido em ${colhido})`
+    const base = {
+      ...it,
+      o_que_decide: linha.enunciado || null,
+      url_oficial: linha.fonte_url || it.url_oficial,
+      resolucao: 'base_stf' as const,
+    }
+
+    if (linha.situacao === 'cancelada') {
+      saida.push({
+        ...base,
+        estado: 'VIGENCIA_COMPROMETIDA',
+        observacao:
+          `A Súmula ${num} do TSE está CANCELADA. ` +
+          (linha.nota_cancelamento ? `${linha.nota_cancelamento} ` : '') +
+          `Citá-la como vigente derruba o argumento. Fonte: ${fonte}.`,
+      })
+      continue
+    }
+
+    const sim = Number(linha.sim ?? 0)
+    const simOrig = Number(linha.sim_original ?? 0)
+    const alterada = linha.situacao === 'alterada'
+
+    // A TESE CASA MELHOR COM A REDAÇÃO ANTERIOR. É a descoberta que justifica
+    // guardar as duas: não é citação falsa nem tese errada — é a versão certa
+    // de um texto que mudou.
+    if (alterada && linha.redacao_original && simOrig >= LIMIAR_TESE && simOrig > sim) {
+      saida.push({
+        ...base,
+        estado: 'VIGENCIA_COMPROMETIDA',
+        observacao:
+          `A tese alegada corresponde à REDAÇÃO ANTERIOR da Súmula ${num} do TSE, não à que ` +
+          `está em vigor. O texto que o senhor cita foi mesmo publicado pelo TSE — e foi ` +
+          `substituído${linha.origem_redacao_atual ? ` por ${linha.origem_redacao_atual}` : ''}. ` +
+          `Redação em vigor: ${citado(String(linha.enunciado))} ` +
+          `Redação anterior: ${citado(String(linha.redacao_original))} Fonte: ${fonte}.`,
+      })
+      continue
+    }
+
+    const ressalva = alterada
+      ? ` Atenção: esta súmula teve a redação ALTERADA${
+          linha.origem_redacao_atual ? ` (${linha.origem_redacao_atual})` : ''
+        } — o texto acima é o em vigor, e publicações anteriores trazem outra.`
+      : ''
+    const comNotas =
+      Array.isArray(linha.notas) && linha.notas.length
+        ? ` O TSE registra ${linha.notas.length} nota(s) de evolução jurisprudencial sobre este verbete — ` +
+          `são comentários do tribunal, não parte do enunciado.`
+        : ''
+
+    if (!linha.enunciado) {
+      saida.push({ ...base, estado: 'IDENTIFICADO' })
+      continue
+    }
+
+    if (!tese) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_TSE',
+        observacao: `Texto conferido na publicação oficial do TSE. Fonte: ${fonte}.${ressalva}${comNotas}`,
+      })
+      continue
+    }
+
+    if (sim >= LIMIAR_TESE && mesmaPolaridade(tese, String(linha.enunciado))) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_TSE',
+        observacao: `A súmula existe e o texto oficial corresponde à tese alegada. Fonte: ${fonte}.${ressalva}${comNotas}`,
+      })
+    } else if (sim >= LIMIAR_TESE) {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `A tese alegada usa quase as mesmas palavras da súmula, mas com NEGAÇÃO diferente — ` +
+          `e inverter a negação inverte o sentido. Texto oficial: ${citado(String(linha.enunciado))} ` +
+          `Fonte: ${fonte}.`,
+      })
+    } else {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `A súmula existe, mas o que ela enuncia não corresponde à tese alegada. ` +
+          `Texto oficial: ${citado(String(linha.enunciado))} Fonte: ${fonte}.${ressalva}`,
+      })
+    }
+  }
+  return saida
+}
+
+// ---------------------------------------------------------------------------
 // NÍVEL 1 — Súmulas, OJs e Precedentes Normativos do TST. Custo de IA: zero.
 //
 // Fonte: Livro de Súmulas do TST, 1.292 verbetes em sete séries, TODAS
@@ -2048,10 +2238,14 @@ Deno.serve(async (req: Request) => {
     if (modoLote) {
       const miolo = async () => {
         const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-        const det = await enriqueceTstSumulas(
-          await enriqueceTst(
-            await enriqueceTemas(
-              await enriqueceSumulas(det0, teseIntegral, admin),
+        const det = await enriqueceTseSumulas(
+          await enriqueceTstSumulas(
+            await enriqueceTst(
+              await enriqueceTemas(
+                await enriqueceSumulas(det0, teseIntegral, admin),
+                teseIntegral,
+                admin,
+              ),
               teseIntegral,
               admin,
             ),
@@ -2160,10 +2354,14 @@ Deno.serve(async (req: Request) => {
     const trabalho = async (send: (d: any) => void) => {
     // ---- 1) determinístico (sem custo de IA), com súmula do STJ lida na base
     const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-    const deterministicos = await enriqueceTstSumulas(
-      await enriqueceTst(
-        await enriqueceTemas(
-          await enriqueceSumulas(det0, teseIntegral, admin),
+    const deterministicos = await enriqueceTseSumulas(
+      await enriqueceTstSumulas(
+        await enriqueceTst(
+          await enriqueceTemas(
+            await enriqueceSumulas(det0, teseIntegral, admin),
+            teseIntegral,
+            admin,
+          ),
           teseIntegral,
           admin,
         ),

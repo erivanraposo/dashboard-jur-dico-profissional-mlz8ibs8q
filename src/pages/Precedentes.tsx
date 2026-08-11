@@ -24,6 +24,7 @@ type Estado =
   | 'CONFIRMADO_BASE_STJ'
   | 'CONFIRMADO_BASE_STF'
   | 'CONFIRMADO_BASE_TST'
+  | 'CONFIRMADO_BASE_TSE'
   | 'VIGENCIA_COMPROMETIDA'
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
@@ -78,6 +79,13 @@ const ESTADOS: Record<Estado, { rotulo: string; cls: string; Icone: any; ajuda: 
     Icone: ShieldCheck,
     ajuda:
       'Tese conferida no Índice Temático de Precedentes publicado pelo próprio TST, que reúne os incidentes de recursos repetitivos e os temas de repercussão geral de interesse trabalhista. Quando o índice registra trânsito em julgado, a data aparece na observação.',
+  },
+  CONFIRMADO_BASE_TSE: {
+    rotulo: 'Confirmado — base do TSE',
+    cls: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    Icone: ShieldCheck,
+    ajuda:
+      'Enunciado conferido na publicação oficial de Súmulas do TSE. A série está completa (1 a 73), então número acima disso é prova de que a súmula não existe. Quatro súmulas tiveram a redação alterada e guardamos as duas versões: se a tese corresponder à anterior, o aviso é de que o texto citado é oficial mas já não vale.',
   },
   CONFIRMADO_REPOSITORIO: {
     rotulo: 'Confirmado — repositório oficial',
