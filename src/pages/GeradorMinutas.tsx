@@ -76,6 +76,16 @@ import * as _pdfFonts from 'pdfmake/build/vfs_fonts'
 import htmlToPdfmake from 'html-to-pdfmake'
 import DOMPurify from 'dompurify'
 import { PDFDocument } from 'pdf-lib'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 ;(pdfMake as any).vfs =
   (_pdfFonts as any).pdfMake?.vfs ||
@@ -465,6 +475,8 @@ export default function GeradorMinutas() {
   const [minuteType, setMinuteType] = useState<string>('')
   // 'criar' = fluxo de sempre. 'revisar' = já tenho a peça, quero uma leitura.
   const [modo, setModo] = useState<'criar' | 'revisar'>('criar')
+  const [avisoSemDados, setAvisoSemDados] = useState(false)
+  const [acordeaoMeta, setAcordeaoMeta] = useState<string>('')
   const navigate = useNavigate()
   // Instruções livres do usuário para orientar os agentes na análise
   // (ex.: "correlacione os recibos com o relatório anexo", "verifique o ponto X")
@@ -1204,7 +1216,27 @@ export default function GeradorMinutas() {
     return `Processo: ${proc.case_number} - Cliente: ${proc.client_name}\nÁrea: ${proc.area}\nDescrição: ${proc.description || 'N/A'}`
   }
 
-  const handleAnalyze = async () => {
+  // AVISO ANTES, NÃO DEPOIS.
+  //
+  // O validador de aderência reprova o documento quando não consegue confrontá-lo
+  // com nada — "Metadados do caso completamente vazios (Cliente: -, Comarca: -,
+  // Objeto: -, Pedido: -)" — e o texto sai cheio de [NOME DO CLIENTE] e
+  // [A VERIFICAR]. O portão acerta; a HORA é que estava errada: o advogado
+  // descobria depois de esperar a geração inteira.
+  //
+  // E o ponto que Erivan nomeou em 11/08/2026: o LexAxis LÊ O QUE ESTÁ ANEXADO.
+  // Não busca processo, não consulta tribunal, não completa lacuna. Então a
+  // ausência desses dados é previsível ANTES de gerar — e dizê-la antes custa
+  // uma caixa de diálogo, enquanto dizê-la depois custa a geração inteira.
+  const camposDoCaso = [
+    ['cliente', clientName],
+    ['comarca', comarca],
+    ['objeto', objeto],
+    ['pedido', pedido],
+  ] as const
+  const faltantesDoCaso = camposDoCaso.filter(([, v]) => !String(v || '').trim()).map(([k]) => k)
+
+  const handleAnalyze = async (ignorarAvisoDeDados = false) => {
     // FASE B: autos em modo digest precisam terminar a ingestão antes da análise
     // (sem isso as partes iriam por visão integral e estourariam o contexto).
     if (attachments.some((a) => a.digestStatus === 'processing')) {
@@ -1284,6 +1316,13 @@ export default function GeradorMinutas() {
         description: 'Selecione pelo menos um Agente de IA.',
         variant: 'destructive',
       })
+    }
+
+    // Só na porta de CRIAR: quem manda revisar peça pronta não está produzindo
+    // documento novo e não precisa dos metadados do caso.
+    if (modo === 'criar' && !ignorarAvisoDeDados && faltantesDoCaso.length === camposDoCaso.length) {
+      setAvisoSemDados(true)
+      return
     }
 
     setLoading(true)
@@ -4213,6 +4252,8 @@ export default function GeradorMinutas() {
                       <Accordion
                         type="single"
                         collapsible
+                        value={acordeaoMeta}
+                        onValueChange={setAcordeaoMeta}
                         className="w-full bg-muted/20 border rounded-md"
                       >
                         <AccordionItem value="metadata" className="border-b-0 px-3">
@@ -4552,8 +4593,12 @@ export default function GeradorMinutas() {
                         </p>
                       )}
                     </div>
+                    {/* A arrow em onClick é obrigatória: sem ela o React passa o
+                        EVENTO como primeiro argumento, e evento é sempre
+                        verdadeiro — ligaria `ignorarAvisoDeDados` em todo clique
+                        e o aviso jamais apareceria. */}
                     <Button
-                      onClick={handleAnalyze}
+                      onClick={() => handleAnalyze()}
                       disabled={
                         loading ||
                         applying ||
@@ -4583,6 +4628,32 @@ export default function GeradorMinutas() {
                         <Sparkles className="w-5 h-5" />
                         <span>{suggestions.length} sugestões da IA prontas</span>
                       </div>
+
+                      {/* O PASSO QUE NINGUÉM CONTAVA.
+                          "Analisar com IA" produz SUGESTÕES; a peça só é escrita
+                          no editor ao clicar em "Reescrever e Aplicar Todas". E,
+                          ao terminar a análise, o painel salta para esta aba —
+                          levando embora a aba Configuração, onde os anexos estão
+                          listados. O usuário via os agentes trabalharem, o painel
+                          trocar e o editor continuar com "Nova Peça Jurídica":
+                          concluía que o arquivo e o documento tinham sumido.
+                          Relatado por Fernando Faria em 11/08/2026, e Erivan
+                          confirmou já ter tido a mesma dúvida. Nada havia se
+                          perdido — faltava dizer o que tinha acontecido. */}
+                      <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+                        <p className="font-semibold">As sugestões ainda não estão no documento.</p>
+                        <p className="mt-1">
+                          Clique em <strong>Reescrever e Aplicar Todas</strong> para que a peça seja
+                          redigida no editor à esquerda. Até lá, o editor continua como estava.
+                        </p>
+                        {attachments.length > 0 && (
+                          <p className="mt-1">
+                            Seus {attachments.length} anexo(s) continuam na aba{' '}
+                            <strong>Configuração</strong> — nada foi apagado.
+                          </p>
+                        )}
+                      </div>
+
                       <Button
                         onClick={() => handleApplySuggestions()}
                         disabled={
@@ -4635,6 +4706,57 @@ export default function GeradorMinutas() {
           </Card>
         </div>
       )}
+
+      {/* Aviso ANTES de gerar sem os dados do caso. O validador já reprovava
+          documentos assim — mas depois de o advogado esperar a geração inteira. */}
+      <AlertDialog open={avisoSemDados} onOpenChange={setAvisoSemDados}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Faltam os dados do caso</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>
+                  Você não informou <strong>cliente</strong>, <strong>comarca</strong>,{' '}
+                  <strong>objeto</strong> nem <strong>pedido</strong>.
+                </p>
+                <p>
+                  O LexAxis <strong>lê apenas o que está anexado</strong>. Ele não consulta
+                  tribunais, não busca autos e não completa dado que falta — se a informação não
+                  veio, ela não aparece na peça.
+                </p>
+                <p>
+                  Sem esses campos, o documento sai com marcadores como{' '}
+                  <span className="font-mono text-xs">[NOME DO CLIENTE]</span> e{' '}
+                  <span className="font-mono text-xs">[A VERIFICAR]</span>, e a validação final
+                  tende a reprová-lo por não haver com o que confrontar o texto.
+                </p>
+                <p className="text-muted-foreground">
+                  Se os dados estiverem nos anexos, pode seguir — o preenchimento manual serve para
+                  o que não está lá.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => {
+                setAvisoSemDados(false)
+                setAcordeaoMeta('metadata')
+              }}
+            >
+              Preencher agora
+            </AlertDialogAction>
+            <AlertDialogCancel
+              onClick={() => {
+                setAvisoSemDados(false)
+                setTimeout(() => handleAnalyze(true), 0)
+              }}
+            >
+              Gerar assim mesmo
+            </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
