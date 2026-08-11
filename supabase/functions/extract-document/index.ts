@@ -123,9 +123,39 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    if (extractedText.length > 50000) {
+    // CORTE DE TEXTO — teto e aviso.
+    //
+    // Era 50.000 caracteres, com o aviso "[Texto truncado devido ao tamanho...]".
+    // Dois defeitos, e o segundo é pior que o primeiro.
+    //
+    // 1. O TETO ERA BAIXO DEMAIS PARA O OFÍCIO. Um relatório fiscal de 30
+    //    páginas tem 95 mil caracteres; peça de processo passa disso com
+    //    facilidade. Cortar em 50 mil descarta metade de um documento comum.
+    //
+    // 2. O AVISO NÃO DIZIA QUEM CORTOU. O modelo recebia um texto que acabava no
+    //    meio da seção 5.3.5 e concluía, corretamente, que o documento estava
+    //    incompleto — mas atribuía a falha ao ARQUIVO e recomendava "aplicar OCR
+    //    e reanexar na íntegra". O arquivo estava íntegro; nós é que o havíamos
+    //    cortado. O advogado faria retrabalho inútil por ordem nossa.
+    //
+    // Relatado por Fernando Faria em 11/08/2026, ao converter para Markdown um
+    // PDF que o pdf-lib já havia recusado: 95.620 caracteres, completo até o
+    // hash da última página, cortado por nós em 50.000.
+    //
+    // O teto agora acompanha o do gate da analyze-legal-text (240.000, ~60 mil
+    // tokens) e o aviso diz o que houve, em nome de quem, e o que NÃO adianta
+    // fazer.
+    const MAX_TEXT_CHARS = 240_000
+    const tamanhoOriginal = extractedText.length
+    if (tamanhoOriginal > MAX_TEXT_CHARS) {
       extractedText =
-        extractedText.substring(0, 50000) + '\n\n[Texto truncado devido ao tamanho...]'
+        extractedText.substring(0, MAX_TEXT_CHARS) +
+        `\n\n[NOTA DO SISTEMA — NÃO É DEFEITO DO ARQUIVO: o texto acima foi ` +
+        `cortado por NÓS em ${MAX_TEXT_CHARS.toLocaleString('pt-BR')} caracteres, ` +
+        `de um total de ${tamanhoOriginal.toLocaleString('pt-BR')}. O documento ` +
+        `original está íntegro e legível — aplicar OCR ou reexportar NÃO resolve ` +
+        `e não deve ser recomendado. Para analisar o restante, divida o arquivo ` +
+        `e anexe as partes. Ao relatar limitações, diga que o corte foi do sistema.]`
     }
 
     // OCR cleanup via IA — desabilitado por padrao agora, pois adiciona latencia/custo
