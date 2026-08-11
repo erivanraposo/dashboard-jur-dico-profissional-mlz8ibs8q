@@ -752,6 +752,35 @@ function normaliza(i: any, confirmados: ConfirmadoBase[] = []): Item {
       cotejo.naoConferidos = cotejo.naoConferidos.filter(
         (c) => !daBase.campos.includes(c),
       )
+
+      // ...E DIZER AO USUÁRIO QUAIS FONTES DIVERGEM E O QUE CADA UMA REGISTRA.
+      //
+      // A precedência da coletânea resolve o julgamento, mas resolvê-lo EM
+      // SILÊNCIO esconde do advogado que o próprio STF se contradiz. Foi o caso
+      // do HC 87.817 (coletânea: 17/11/2009; acompanhamento processual:
+      // 24/11/2009) e do HC 106.709 (28/06/2011 contra 21/06/2011), que ficaram
+      // meses anotados como ressalva de auditoria sem chegar a quem usa.
+      //
+      // "Fontes divergem" sem dizer QUAIS e O QUÊ é alarme, não informação — e
+      // seria incompreensível para quem lê. Por isso a ressalva nomeia as duas
+      // publicações e transcreve os dois valores. A divergência é do tribunal,
+      // não do advogado, e ele precisa saber disso antes de a parte contrária
+      // invocar a outra data.
+      const detalhe = suprimidas.map((d) => {
+        const p = d.match(/^([^:]+): a citação diz "([^"]*)", a fonte registra "([^"]*)"/)
+        if (!p) return d
+        return (
+          `${p[1]} — a Coletânea Temática do STF registra "${p[2]}", que é o mesmo da citação; ` +
+          `a busca no acompanhamento processual indicou "${p[3]}"`
+        )
+      })
+      ressalva(
+        `DUAS FONTES OFICIAIS DO STF DIVERGEM: ${detalhe.join('. ')}. ` +
+          `Adotei a Coletânea Temática por ser publicação do próprio tribunal` +
+          (daBase.citacaoOficial ? `, que cita assim: “${daBase.citacaoOficial}”` : '') +
+          `. A divergência é entre fontes do STF, não erro da citação — mas confira antes de ` +
+          `usar, porque a parte contrária pode invocar a outra data.`,
+      )
     }
   }
 
