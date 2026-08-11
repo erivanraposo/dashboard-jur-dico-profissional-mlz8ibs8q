@@ -135,8 +135,38 @@ type PreparedPdf = { files: { file: File; pages: number }[]; totalPages: number 
 // de CPU da Edge Function em arquivos grandes).
 async function preparePdf(file: File): Promise<PreparedPdf> {
   const srcBytes = await file.arrayBuffer()
-  const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true })
-  const totalPages = srcDoc.getPageCount()
+
+  // O pdf-lib SÓ DECIDE SE PRECISA DIVIDIR. Quem lê o documento é o modelo, com
+  // motor próprio. Havia aqui um erro grave de consequência: PDF que o pdf-lib
+  // não conseguisse ABRIR era tratado como ilegível e o advogado recebia
+  // "documento ilegível, aplique OCR" — sobre um arquivo íntegro, com camada de
+  // texto, que o modelo leria sem dificuldade.
+  //
+  // Relatado por Fernando Faria em 11/08/2026: relatório fiscal da Receita
+  // (e-Processo, PDF 1.7, 30 pgs, 543 KB, 74.630 caracteres de texto) recusado
+  // com "Expected instance of PDFDict, but got instance of undefined" — erro do
+  // pdf-lib ao percorrer a estrutura, não do arquivo. O documento cabia com
+  // folga nos dois limites e nem precisaria ser dividido.
+  //
+  // Se não conseguimos contar as páginas, seguimos com o arquivo INTEIRO quando
+  // ele cabe no limite de tamanho. Perde-se a divisão, não a leitura.
+  // PDFDocument não expõe construtor público, então InstanceType não se aplica.
+  let srcDoc: Awaited<ReturnType<typeof PDFDocument.load>> | null = null
+  let totalPages = 0
+  try {
+    srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true })
+    totalPages = srcDoc.getPageCount()
+  } catch (e) {
+    console.warn('[preparePdf] pdf-lib não abriu o arquivo; segue inteiro:', e)
+    if (file.size > PDF_SIZE_LIMIT) {
+      throw new Error(
+        `não foi possível ler a estrutura deste PDF para dividi-lo, e ele tem ` +
+          `${(file.size / 1024 / 1024).toFixed(1)} MB — acima do limite de envio. ` +
+          `Reexporte o arquivo (imprimir para PDF resolve na maioria dos casos) e anexe de novo.`,
+      )
+    }
+    return { files: [{ file, pages: 0 }], totalPages: 0 }
+  }
 
   const needsSplit = totalPages > PDF_PAGES_PER_PART || file.size > PDF_SIZE_LIMIT
   if (!needsSplit) return { files: [{ file, pages: totalPages }], totalPages }

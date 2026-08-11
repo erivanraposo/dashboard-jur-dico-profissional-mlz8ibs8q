@@ -549,9 +549,38 @@ async function prepareAttachmentsForVision(
           }
         }
 
-        // Conta paginas e decide se precisa splittar
-        const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true })
-        const totalPages = srcDoc.getPageCount()
+        // Conta paginas e decide se precisa splittar.
+        //
+        // O pdf-lib SÓ DECIDE SE PRECISA DIVIDIR — quem lê o documento é o
+        // modelo, com motor próprio. Falha aqui NÃO significa documento
+        // ilegível, e tratá-la assim custou caro: o erro caía no catch geral,
+        // virava "[Erro ao processar ...]" dentro do contexto, e o modelo
+        // devolvia ao advogado "DOCUMENTO ILEGÍVEL, aplique OCR e reanexe" —
+        // sobre um arquivo íntegro que ele leria sem dificuldade.
+        //
+        // Relatado por Fernando Faria em 11/08/2026: relatório fiscal da
+        // Receita (e-Processo, PDF 1.7, 30 pgs, 543 KB, 74.630 caracteres de
+        // texto) recusado com "Expected instance of PDFDict, but got instance
+        // of undefined". O arquivo cabia com folga nos dois limites e nem
+        // precisaria ser dividido — só não passou pelo contador de páginas.
+        let srcDoc: any = null
+        let totalPages = 0
+        try {
+          srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true })
+          totalPages = srcDoc.getPageCount()
+        } catch (e: any) {
+          console.warn(
+            `[prepareAttachmentsForVision] pdf-lib não abriu ${baseName} (${e?.message}); segue inteiro`,
+          )
+          sendEvent({ status: `PDF ${baseName}: estrutura não lida, enviando inteiro...` })
+          const fileId = await uploadToAnthropicFilesApi(bytes, baseName, anthropicKey)
+          documentBlocks.push({
+            type: 'document',
+            source: { type: 'file', file_id: fileId },
+            title: baseName,
+          })
+          continue
+        }
 
         if (totalPages <= PAGES_PER_CHUNK) {
           // Cabe inteiro: upload direto
