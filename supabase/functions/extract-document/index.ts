@@ -123,6 +123,67 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    // CAMADA DE TEXTO DANIFICADA — o terceiro caso, e o único em que OCR é a
+    // resposta certa.
+    //
+    // Há três situações distintas, e confundi-las custou caro esta semana:
+    //   1. texto íntegro            -> usar (e NÃO recomendar OCR)
+    //   2. texto cortado por nós    -> dizer que o corte foi nosso
+    //   3. TEXTO INDECIFRÁVEL       -> aqui, e só aqui, OCR resolve
+    //
+    // O caso 3 apareceu no auto de infração que Fernando Faria anexou em
+    // 11/08/2026: PDF do e-Processo cujo conteúdo é desenhado com fonte Type3
+    // SEM tabela ToUnicode. Type3 desenha os glifos em vez de codificá-los —
+    // sem o mapeamento, não existe como saber que letra cada desenho
+    // representa. O texto sai assim:
+    //
+    //   !!""#$%&'& ()%&% #!! *+,-./0.1234567- 89:;*<.=>?@1A?BC1D>1*<
+    //
+    // onde a página mostra "MINISTÉRIO DA ECONOMIA / Auto de Infração". Nas 5
+    // páginas do formulário, 55 dos 55 spans de conteúdo estavam nessa fonte;
+    // as 2 páginas de autenticação, em Helvetica, saíram perfeitas.
+    //
+    // E AQUI CONVERTER PARA MARKDOWN PIORA: joga fora a imagem da página, que é
+    // legível, e preserva o texto, que não é. É o oposto do que ajudou no caso 2.
+    //
+    // DUAS CONDIÇÕES, nunca uma. Só a proporção de símbolos daria falso
+    // positivo em tabela de valores e em código de autenticação — o
+    // "EP10.0826.18163.9ABA" desta mesma peça foi marcado como lixo por um
+    // detector que só olhava símbolos.
+    const diagnostico = (t: string) => {
+      const letras = (t.match(/\p{L}/gu) || []).length
+      const simbolos = (t.match(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g) || []).length
+      const palavrasPt = (
+        t.match(/\b(?:de|da|do|em|para|com|que|n[ãa]o|por|dos|das|no|na|os|as|ao|à|uma?)\b/gi) || []
+      ).length
+      const propSimbolos = simbolos / Math.max(1, letras + simbolos)
+      const ptPorMil = (palavrasPt / Math.max(1, t.length)) * 1000
+      return {
+        suspeito: t.length > 800 && propSimbolos > 0.18 && ptPorMil < 12,
+        propSimbolos,
+        ptPorMil,
+      }
+    }
+
+    const d = diagnostico(extractedText)
+    if (d.suspeito) {
+      console.warn(
+        `[extract-document] camada de texto suspeita em ${file_path}: ` +
+          `${(d.propSimbolos * 100).toFixed(0)}% símbolos, ${d.ptPorMil.toFixed(1)} palavras/mil`,
+      )
+      extractedText =
+        `[ALERTA DO SISTEMA — CAMADA DE TEXTO ILEGÍVEL, E DESTA VEZ O OCR RESOLVE: o texto ` +
+        `extraído deste arquivo veio indecifrável (${(d.propSimbolos * 100).toFixed(0)}% de ` +
+        `símbolos onde deveria haver letras). A causa típica é o documento ter sido gerado com ` +
+        `fontes que DESENHAM os caracteres sem informar quais são — comum em PDF de sistema ` +
+        `oficial, como o e-Processo da Receita Federal. O conteúdo está visível na página, mas ` +
+        `não recuperável como texto.\n` +
+        `O QUE FAZER: anexe o PDF ORIGINAL em vez de uma conversão para texto ou Markdown — a ` +
+        `imagem da página é legível e a conversão descarta justamente ela. Se já for o PDF, ` +
+        `aplicar OCR resolve. NÃO trate o conteúdo abaixo como o teor do documento.]\n\n` +
+        extractedText
+    }
+
     // CORTE DE TEXTO — teto e aviso.
     //
     // Era 50.000 caracteres, com o aviso "[Texto truncado devido ao tamanho...]".
