@@ -66,6 +66,7 @@ type Estado =
   | 'CONFIRMADO_BASE_STF' // metadados conferidos na Coletânea Temática do STF (só metadados)
   | 'CONFIRMADO_BASE_TST' // conferido no Índice Temático de Precedentes do TST/SPR
   | 'CONFIRMADO_BASE_TSE' // conferido na publicação oficial de Súmulas do TSE
+  | 'CONFIRMADO_BASE_CARF' // conferido no Quadro Geral de Súmulas do CARF
   // O enunciado existe e é aquele mesmo, mas foi cancelado, revogado, superado ou
   // alterado. Não é confirmação nem divergência — é um terceiro aviso, e o mais
   // grave na prática: citar súmula morta derruba a peça.
@@ -181,6 +182,31 @@ function resolveDeterministico(texto: string): { itens: Item[]; resto: string } 
       resolucao: 'deterministica',
     }
   })
+
+  // Súmula do CARF. "Súmula CARF nº 17", "Súmula 17 do CARF". Aceita o sinal de
+  // grau (°) além do ordinal (º): é assim que o próprio quadro geral escreve a
+  // Súmula 17, e um caractere trocado bastaria para não reconhecer a citação.
+  consome(
+    /\bs[úu]mula\s+CARF\s+n?[ºo°.]?\s*(\d{1,3})\b|\bs[úu]mula\s+n?[ºo°.]?\s*(\d{1,3})\s+d[oe]\s+CARF\b/gi,
+    (m) => {
+      const num = m[1] || m[2]
+      return {
+        citacao: m[0].trim(),
+        tipo: 'sumula',
+        tribunal: 'CARF',
+        estado: 'IDENTIFICADO',
+        url_oficial:
+          'https://carf.economia.gov.br/jurisprudencia/sumulas-carf/quadro-geral-de-sumulas-1',
+        url_busca: null,
+        url_lexml: urlLexml(`Súmula ${num} CARF`),
+        o_que_decide: null,
+        observacao:
+          'Súmula do CARF identificada sem consulta de IA. O sistema NÃO leu o texto — confira no Quadro Geral.',
+        resolucao: 'deterministica',
+        _carfSum: String(num),
+      } as Item & { _carfSum: string }
+    },
+  )
 
   // Súmula do TSE. "Súmula 47 do TSE", "Súmula-TSE n. 47", e a forma por
   // extenso — o Tribunal Superior Eleitoral aparece escrito assim em peça
@@ -1299,6 +1325,156 @@ async function enriqueceTemas(itens: Item[], tese: string | null, admin: any): P
 // devolve NAO_LOCALIZADO: fora da base, segue IDENTIFICADO.
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
+// NÍVEL 1 — Súmulas do CARF. Custo de IA: zero.
+//
+// Série completa de 1 a 217, então a ausência é conclusiva.
+//
+// ESTA BASE RESPONDE UMA PERGUNTA QUE AS OUTRAS NÃO TÊM. Súmula do CARF com
+// efeito vinculante OBRIGA A ADMINISTRAÇÃO TRIBUTÁRIA (art. 72 do RICARF) —
+// 118 das 217 estão nessa condição. Para quem recorre ao próprio CARF, saber se
+// a súmula apenas EXISTE ou se ela OBRIGA O JULGADOR muda a peça inteira: uma é
+// argumento, a outra é fundamento que o relator não pode contrariar.
+//
+// E é por isso que confirmar uma revogada seria o pior erro possível aqui: quem
+// a invoca perde o argumento diante de quem conhece a revogação melhor que ele.
+// ---------------------------------------------------------------------------
+async function enriqueceCarfSumulas(
+  itens: Item[],
+  tese: string | null,
+  admin: any,
+): Promise<Item[]> {
+  const saida: Item[] = []
+  let teto: number | null = null
+
+  for (const it of itens) {
+    const num = (it as any)._carfSum as string | undefined
+    if (!num) {
+      saida.push(it)
+      continue
+    }
+    delete (it as any)._carfSum
+
+    let linha: any = null
+    try {
+      const { data } = await admin.rpc('carf_sumula', {
+        p_numero: Number(num),
+        p_tese: tese || '',
+      })
+      linha = Array.isArray(data) ? data[0] : data
+    } catch {
+      /* migration ainda não aplicada: mantém o IDENTIFICADO */
+    }
+
+    if (!linha) {
+      if (teto === null) {
+        try {
+          const { data } = await admin.rpc('carf_sumula_limite')
+          teto = Number(data) || 0
+        } catch {
+          teto = 0
+        }
+      }
+      if (teto && Number(num) > teto) {
+        saida.push({
+          ...it,
+          estado: 'NAO_LOCALIZADO',
+          observacao:
+            `O CARF editou ${teto} súmulas. Não existe Súmula CARF nº ${num}. A série está ` +
+            `completa na nossa base, por isso a ausência é conclusiva — confira o número.`,
+        })
+        continue
+      }
+      saida.push(it)
+      continue
+    }
+
+    const colhido = dataPt(linha.colhido_em) ?? 'data não registrada'
+    const fonte = `CARF — Quadro Geral de Súmulas (colhido em ${colhido})`
+    const base = {
+      ...it,
+      o_que_decide: linha.enunciado || null,
+      url_oficial: linha.fonte_url || it.url_oficial,
+      resolucao: 'base_stf' as const,
+    }
+    const comoOCarfEscreve = Array.isArray(linha.notas) && linha.notas.length
+      ? ` Como o CARF registra: ${citado(String(linha.notas.join(' ')))}`
+      : ''
+
+    if (linha.situacao === 'revogada') {
+      saida.push({
+        ...base,
+        estado: 'VIGENCIA_COMPROMETIDA',
+        observacao:
+          `A Súmula CARF nº ${num} está REVOGADA.${comoOCarfEscreve} Invocá-la em recurso ao ` +
+          `próprio CARF derruba o argumento — o relator conhece a revogação. Fonte: ${fonte}.`,
+      })
+      continue
+    }
+
+    if (linha.situacao === 'vinculante_revogado') {
+      saida.push({
+        ...base,
+        estado: 'VIGENCIA_COMPROMETIDA',
+        observacao:
+          `A Súmula CARF nº ${num} CONTINUA VÁLIDA, mas PERDEU O EFEITO VINCULANTE: ela já não ` +
+          `obriga a administração tributária. Segue servindo como argumento, não como fundamento ` +
+          `que o julgador não possa contrariar.${comoOCarfEscreve} Fonte: ${fonte}.`,
+      })
+      continue
+    }
+
+    // A FORÇA, não só a existência. É o que esta base acrescenta.
+    const forca = linha.vinculante
+      ? ` Esta súmula é VINCULANTE${
+          linha.portaria_vinculante ? ` (${linha.portaria_vinculante})` : ''
+        } — obriga a administração tributária, nos termos do art. 72 do RICARF.`
+      : ` Atenção: esta súmula NÃO tem efeito vinculante. Orienta o CARF, mas não obriga a ` +
+        `administração — é argumento, não fundamento incontrastável.`
+
+    if (!linha.enunciado) {
+      saida.push({ ...base, estado: 'IDENTIFICADO' })
+      continue
+    }
+
+    if (!tese) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_CARF',
+        observacao: `Texto conferido no Quadro Geral de Súmulas do CARF. Fonte: ${fonte}.${forca}`,
+      })
+      continue
+    }
+
+    const sim = Number(linha.sim ?? 0)
+    if (sim >= LIMIAR_TESE && mesmaPolaridade(tese, String(linha.enunciado))) {
+      saida.push({
+        ...base,
+        estado: 'CONFIRMADO_BASE_CARF',
+        observacao: `A súmula existe e o texto oficial corresponde à tese alegada. Fonte: ${fonte}.${forca}`,
+      })
+    } else if (sim >= LIMIAR_TESE) {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `A tese alegada usa quase as mesmas palavras da súmula, mas com NEGAÇÃO diferente — ` +
+          `e inverter a negação inverte o sentido. Texto oficial: ${citado(String(linha.enunciado))} ` +
+          `Fonte: ${fonte}.`,
+      })
+    } else {
+      saida.push({
+        ...base,
+        estado: 'DIVERGENTE',
+        observacao:
+          `A súmula existe, mas o que ela enuncia não corresponde à tese alegada. ` +
+          `Texto oficial: ${citado(String(linha.enunciado))} Fonte: ${fonte}.`,
+      })
+    }
+  }
+  return saida
+}
+
+// ---------------------------------------------------------------------------
 // NÍVEL 1 — Súmulas do TSE. Custo de IA: zero.
 //
 // Série completa de 1 a 73, então a ausência é conclusiva: não existe Súmula 74.
@@ -1402,7 +1578,14 @@ async function enriqueceTseSumulas(
         observacao:
           `A tese alegada corresponde à REDAÇÃO ANTERIOR da Súmula ${num} do TSE, não à que ` +
           `está em vigor. O texto que o senhor cita foi mesmo publicado pelo TSE — e foi ` +
-          `substituído${linha.origem_redacao_atual ? ` por ${linha.origem_redacao_atual}` : ''}. ` +
+          // A origem vem da publicação já com ponto final ("...no PA n. 32345."),
+          // e acrescentar o nosso produzia "32345..". O texto é lido por advogado
+          // como transcrição — pontuação dobrada denuncia montagem automática.
+          `substituído${
+            linha.origem_redacao_atual
+              ? ` por ${String(linha.origem_redacao_atual).replace(/\s*\.\s*$/, '')}`
+              : ''
+          }. ` +
           `Redação em vigor: ${citado(String(linha.enunciado))} ` +
           `Redação anterior: ${citado(String(linha.redacao_original))} Fonte: ${fonte}.`,
       })
@@ -2238,11 +2421,15 @@ Deno.serve(async (req: Request) => {
     if (modoLote) {
       const miolo = async () => {
         const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-        const det = await enriqueceTseSumulas(
-          await enriqueceTstSumulas(
-            await enriqueceTst(
-              await enriqueceTemas(
-                await enriqueceSumulas(det0, teseIntegral, admin),
+        const det = await enriqueceCarfSumulas(
+          await enriqueceTseSumulas(
+            await enriqueceTstSumulas(
+              await enriqueceTst(
+                await enriqueceTemas(
+                  await enriqueceSumulas(det0, teseIntegral, admin),
+                  teseIntegral,
+                  admin,
+                ),
                 teseIntegral,
                 admin,
               ),
@@ -2354,11 +2541,15 @@ Deno.serve(async (req: Request) => {
     const trabalho = async (send: (d: any) => void) => {
     // ---- 1) determinístico (sem custo de IA), com súmula do STJ lida na base
     const { itens: det0, resto: r0 } = resolveDeterministico(texto)
-    const deterministicos = await enriqueceTseSumulas(
-      await enriqueceTstSumulas(
-        await enriqueceTst(
-          await enriqueceTemas(
-            await enriqueceSumulas(det0, teseIntegral, admin),
+    const deterministicos = await enriqueceCarfSumulas(
+      await enriqueceTseSumulas(
+        await enriqueceTstSumulas(
+          await enriqueceTst(
+            await enriqueceTemas(
+              await enriqueceSumulas(det0, teseIntegral, admin),
+              teseIntegral,
+              admin,
+            ),
             teseIntegral,
             admin,
           ),

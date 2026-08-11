@@ -25,6 +25,7 @@ type Estado =
   | 'CONFIRMADO_BASE_STF'
   | 'CONFIRMADO_BASE_TST'
   | 'CONFIRMADO_BASE_TSE'
+  | 'CONFIRMADO_BASE_CARF'
   | 'VIGENCIA_COMPROMETIDA'
   | 'DIVERGENTE'
   | 'NAO_LOCALIZADO'
@@ -79,6 +80,13 @@ const ESTADOS: Record<Estado, { rotulo: string; cls: string; Icone: any; ajuda: 
     Icone: ShieldCheck,
     ajuda:
       'Tese conferida no Índice Temático de Precedentes publicado pelo próprio TST, que reúne os incidentes de recursos repetitivos e os temas de repercussão geral de interesse trabalhista. Quando o índice registra trânsito em julgado, a data aparece na observação.',
+  },
+  CONFIRMADO_BASE_CARF: {
+    rotulo: 'Confirmado — base do CARF',
+    cls: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    Icone: ShieldCheck,
+    ajuda:
+      'Enunciado conferido no Quadro Geral de Súmulas do CARF. A série está completa (1 a 217). Esta base responde algo que as outras não têm: se a súmula é VINCULANTE, ela obriga a administração tributária (art. 72 do RICARF) — 118 das 217 estão nessa condição. A observação diz sempre qual é o caso.',
   },
   CONFIRMADO_BASE_TSE: {
     rotulo: 'Confirmado — base do TSE',
