@@ -4,6 +4,7 @@ import pdf from 'npm:pdf-parse@1.1.1'
 import * as XLSX from 'npm:xlsx@0.18.5'
 import mammoth from 'npm:mammoth@1.8.0'
 import { Buffer } from 'node:buffer'
+import { confereAritmetica, notaDaConferencia } from '../_shared/aritmetica-fiscal.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -182,6 +183,23 @@ Deno.serve(async (req: Request) => {
         `imagem da página é legível e a conversão descarta justamente ela. Se já for o PDF, ` +
         `aplicar OCR resolve. NÃO trate o conteúdo abaixo como o teor do documento.]\n\n` +
         extractedText
+    }
+
+    // CONFERÊNCIA ARITMÉTICA. Determinística, sem IA, custo zero — e roda antes
+    // do corte, para conferir o documento inteiro e não só o pedaço que couber.
+    try {
+      const conf = confereAritmetica(extractedText)
+      const nota = notaDaConferencia(conf)
+      if (nota) {
+        console.log(
+          `[extract-document] aritmética em ${file_path}: ${conf.estado} ` +
+            `(${conf.conferem}/${conf.linhas.length} linhas fecham)`,
+        )
+        extractedText = `${nota}\n\n${extractedText}`
+      }
+    } catch (e) {
+      // Conferência é acréscimo: nunca pode impedir a entrega do texto.
+      console.error('[extract-document] falha na conferência aritmética:', e)
     }
 
     // CORTE DE TEXTO — teto e aviso.
