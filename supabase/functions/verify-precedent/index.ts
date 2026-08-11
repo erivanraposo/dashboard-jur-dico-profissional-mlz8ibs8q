@@ -2222,9 +2222,17 @@ Deno.serve(async (req: Request) => {
       tese_alegada: tese || null,
       n_citacoes: itens.length,
       resultado: itens,
+      // Um contador por FAMÍLIA de estado, e a soma tem de fechar com
+      // n_citacoes. Entre 30/07 e 11/08 não fechava: VIGENCIA_COMPROMETIDA e
+      // IDENTIFICADO ficaram sem coluna, e 7 das 29 citações verificadas não
+      // apareciam em medição nenhuma — justamente o alerta que distingue este
+      // produto de um detector. A view vw_precver_integridade denuncia o dia em
+      // que isso se repetir.
       n_confirmado: itens.filter((i) => i.estado.startsWith('CONFIRMADO')).length,
       n_divergente: conta('DIVERGENTE'),
       n_nao_local: conta('NAO_LOCALIZADO'),
+      n_identificado: conta('IDENTIFICADO'),
+      n_vigencia_comprometida: conta('VIGENCIA_COMPROMETIDA'),
       input_tokens: uso.input_tokens ?? 0,
       output_tokens: uso.output_tokens ?? 0,
       cache_read_tokens: uso.cache_read_input_tokens ?? 0,
