@@ -1,6 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { PDFDocument } from 'npm:pdf-lib@1.17.1'
+import { registraAcesso } from '../_shared/registro-acesso.ts'
 import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
 
 const corsHeaders = {
@@ -471,6 +472,11 @@ async function prepareAttachmentsForVision(
   paths: string[],
   anthropicKey: string,
   sendEvent: (data: any) => void,
+  // Registro de acesso: recebidos de fora porque esta função não tem contexto de
+  // autenticação próprio. Opcionais — faltando, a leitura segue e o registro
+  // apenas não acontece, o que é preferível a interromper o trabalho.
+  adminAcesso?: any,
+  userIdAcesso?: string | null,
 ): Promise<{ documentBlocks: any[]; textContext: string; digestContext: string }> {
   const MAX_PDF_BYTES = 32 * 1024 * 1024 // limite Anthropic por documento
   const PAGES_PER_CHUNK = 80 // <100 (limite Anthropic) com folga
@@ -519,6 +525,17 @@ async function prepareAttachmentsForVision(
           textContext += `\n\n[Falha ao baixar ${path}: ${dlErr?.message || 'desconhecido'}]\n`
           continue
         }
+
+        // Registro de acesso: aqui a leitura é a mais sensível de todas, porque
+        // o documento vai INTEIRO para o modelo. Nunca derruba a operação.
+        await registraAcesso(adminAcesso, {
+          filePath: path,
+          acao: 'analise',
+          origem: 'analyze-legal-text',
+          userId: userIdAcesso,
+          bytes: fileData.size,
+          detalhe: 'enviado à API do modelo para análise',
+        })
         if (fileData.size > MAX_PDF_BYTES) {
           textContext += `\n\n[PDF ${path} excede 32 MB (${(fileData.size / 1024 / 1024).toFixed(1)} MB) — limite da API Anthropic. Reduza o arquivo.]\n`
           continue
@@ -936,6 +953,12 @@ Critérios:
               finalAttachments,
               anthropicKeyForUpload,
               sendEvent,
+              createClient(
+                Deno.env.get('SUPABASE_URL') ?? '',
+                Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+                { auth: { persistSession: false } },
+              ),
+              user?.id ?? null,
             )
             documentBlocks = prepared.documentBlocks
             additionalContext += prepared.textContext

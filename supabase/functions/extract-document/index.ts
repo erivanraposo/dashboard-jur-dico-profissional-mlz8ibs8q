@@ -5,6 +5,7 @@ import * as XLSX from 'npm:xlsx@0.18.5'
 import mammoth from 'npm:mammoth@1.8.0'
 import { Buffer } from 'node:buffer'
 import { confereAritmetica, notaDaConferencia } from '../_shared/aritmetica-fiscal.ts'
+import { registraAcesso } from '../_shared/registro-acesso.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -79,6 +80,23 @@ Deno.serve(async (req: Request) => {
           (downloadError?.message || 'Unknown error'),
       )
     }
+
+    // REGISTRO DE ACESSO. Depois do download bem-sucedido: o que interessa
+    // auditar é leitura consumada, não tentativa. Grava com service_role porque
+    // a tabela não aceita inserção de `authenticated` — assim o registro não
+    // pode ser forjado nem suprimido pelo navegador. Nunca derruba a operação.
+    const admin = createClient(
+      supabaseUrl,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { persistSession: false } },
+    )
+    await registraAcesso(admin, {
+      filePath: file_path,
+      acao: 'extracao',
+      origem: 'extract-document',
+      userId: user.id,
+      bytes: fileData.size,
+    })
 
     let extractedText = ''
     const lowerPath = file_path.toLowerCase()

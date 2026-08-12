@@ -1,5 +1,6 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { registraAcesso } from '../_shared/registro-acesso.ts'
 
 // ============================================================================
 // INGEST-DOCUMENT — Fase B (ingestão com digests)
@@ -234,6 +235,26 @@ Deno.serve(async (req: Request) => {
       .from('process-attachments')
       .download(att.file_path)
     if (dlErr || !fileData) throw new Error(`Falha ao baixar ${att.file_path}: ${dlErr?.message}`)
+
+    // Registro de acesso: o digest lê o documento inteiro e o envia ao modelo.
+    // Nunca derruba a operação.
+    await registraAcesso(
+      createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+        { auth: { persistSession: false } },
+      ),
+      {
+        filePath: att.file_path,
+        fileName: att.file_name,
+        acao: 'digest',
+        origem: 'ingest-document',
+        userId: user?.id ?? null,
+        bytes: fileData.size,
+        detalhe: 'lido para produzir resumo do documento',
+      },
+    )
+
     const bytes = new Uint8Array(await fileData.arrayBuffer())
 
     // 6. Files API
