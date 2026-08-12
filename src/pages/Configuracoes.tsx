@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { supabase } from '@/lib/supabase/client'
 import AdvogadosSection from '@/components/AdvogadosSection'
+import AnexosSemProcessoSection from '@/components/AnexosSemProcessoSection'
 import {
   Settings,
   Upload,
@@ -259,6 +260,8 @@ export default function Configuracoes() {
       </div>
 
       {isOwner && <AdvogadosSection />}
+
+      {isOwner && <AnexosSemProcessoSection />}
 
       <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-6 items-start">
         <div className="space-y-6">

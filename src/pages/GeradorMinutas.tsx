@@ -1147,17 +1147,28 @@ export default function GeradorMinutas() {
     if (toDelete.length === 0) return // nada a excluir do sistema
 
     try {
+      // ARQUIVO PRIMEIRO, LINHA DEPOIS — a ordem não é indiferente.
+      //
+      // Era o contrário, e sem transação: apagava-se a linha e só então o
+      // arquivo. Falha no segundo passo produzia ÓRFÃO — arquivo sem registro,
+      // que não aparece em lugar nenhum, não some com o processo e não é
+      // alcançado por nenhuma eliminação. A auditoria de 12/08 encontrou 104
+      // deles, 40 MB.
+      //
+      // Nesta ordem, a falha deixa linha sem arquivo: visível na interface,
+      // detectável por consulta e corrigível. Resíduo visível é melhor que
+      // resíduo invisível.
       const paths = toDelete.map((a) => a.path)
+      const { error: storageError } = await supabase.storage
+        .from('process-attachments')
+        .remove(paths)
+      if (storageError) throw storageError
+
       const { error: dbError } = await supabase
         .from('process_attachments')
         .delete()
         .in('file_path', paths)
       if (dbError) throw dbError
-
-      const { error: storageError } = await supabase.storage
-        .from('process-attachments')
-        .remove(paths)
-      if (storageError) throw storageError
 
       toast({
         title: 'Anexos limpos',
