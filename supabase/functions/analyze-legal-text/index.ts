@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { PDFDocument } from 'npm:pdf-lib@1.17.1'
 import { registraAcesso } from '../_shared/registro-acesso.ts'
+import { confereAritmetica, notaDaConferencia } from '../_shared/aritmetica-fiscal.ts'
 import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
 
 const corsHeaders = {
@@ -467,6 +468,52 @@ async function uploadToAnthropicFilesApi(
   return data.id
 }
 
+/**
+ * Conferência aritmética de PDF que vai INTEIRO para o modelo.
+ *
+ * DEFEITO QUE ISTO CORRIGE: a conferência foi implementada em 11/08 dentro da
+ * extract-document — onde havia texto. Mas o fluxo separa por FORMATO: PDF sobe
+ * direto à API do modelo e NÃO passa por lá; só `.md`, `.docx`, `.txt` e `.csv`
+ * passam.
+ *
+ * Ou seja: a verificação criada para pegar o erro de OCR do auto de infração de
+ * Fernando Faria não teria pego esse erro no fluxo normal. Só pegaria se o
+ * arquivo fosse convertido para Markdown — que foi o caminho excepcional tomado
+ * para diagnosticar outra coisa. Construí a verificação onde havia texto, não
+ * onde estavam os documentos que ela existe para conferir.
+ *
+ * POR QUE CHAMAR A extract-document EM VEZ DE EXTRAIR AQUI: pdf-parse consome
+ * CPU, e este isolate já morreu por limite de CPU em 06/07/2026 com pdf-lib.
+ * Invocar a outra função joga esse custo para OUTRO isolate, com orçamento
+ * próprio. O PDF continua indo inteiro ao modelo como antes; isto roda ao lado,
+ * sem custo de IA.
+ *
+ * Só a NOTA entra no contexto — nunca o texto extraído. O modelo já está lendo o
+ * documento; repetir o conteúdo dobraria tokens e poderia conflitar com o que
+ * ele lê da própria página.
+ */
+async function confereContasDoPdf(
+  supabase: any,
+  path: string,
+  baseName: string,
+  acrescenta: (t: string) => void,
+): Promise<void> {
+  try {
+    const { data, error } = await supabase.functions.invoke('extract-document', {
+      body: { file_path: path },
+    })
+    if (error || !data?.text) return
+    const nota = notaDaConferencia(confereAritmetica(String(data.text)))
+    if (nota) {
+      console.log(`[conferencia-aritmetica] ${baseName}: achado`)
+      acrescenta(`\n\n--- Conferência aritmética de ${baseName} ---\n${nota}\n`)
+    }
+  } catch (e) {
+    // Conferência é acréscimo: jamais impede a análise do documento.
+    console.error('[conferencia-aritmetica] falhou (a análise segue):', e)
+  }
+}
+
 async function prepareAttachmentsForVision(
   supabase: any,
   paths: string[],
@@ -562,6 +609,7 @@ async function prepareAttachmentsForVision(
               title: baseName,
             })
             sendEvent({ status: `PDF ${baseName}: uploaded (file_id=${fileId.slice(0, 16)}...)` })
+            await confereContasDoPdf(supabase, path, baseName, (t) => (textContext += t))
             continue
           }
         }
@@ -609,6 +657,7 @@ async function prepareAttachmentsForVision(
             title: baseName,
           })
           sendEvent({ status: `PDF ${baseName}: uploaded (file_id=${fileId.slice(0, 16)}...)` })
+          await confereContasDoPdf(supabase, path, baseName, (t) => (textContext += t))
         } else {
           // Splitta em chunks e faz upload de cada chunk em paralelo
           const numChunks = Math.ceil(totalPages / PAGES_PER_CHUNK)
@@ -647,6 +696,9 @@ async function prepareAttachmentsForVision(
             })
           }
           sendEvent({ status: `PDF ${baseName}: ${numChunks} partes uploaded.` })
+          // Confere sobre o documento INTEIRO, não parte a parte: a soma que
+          // fecha o total costuma atravessar a divisão.
+          await confereContasDoPdf(supabase, path, baseName, (t) => (textContext += t))
         }
       } else {
         // Formatos textuais: usa extract-document (texto puro)
