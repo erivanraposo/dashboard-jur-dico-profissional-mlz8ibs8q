@@ -1884,10 +1884,42 @@ export default function GeradorMinutas() {
         const gate = gateResp?.gate
         if (gate && gate.liberar === false) {
           const desvios = Array.isArray(gate.desvios) ? gate.desvios.join('\n• ') : ''
-          const manter = window.confirm(
-            `A VALIDAÇÃO REPROVOU O DOCUMENTO QUE ACABOU DE SER GERADO (esta avaliação é sobre o texto produzido, não sobre os seus anexos):\n\n• ${desvios}\n\nO texto gerado pode não corresponder ao tipo de minuta "${minuteType}", ao caso ou às suas instruções.\n\nOK = manter mesmo assim (com ressalvas) | Cancelar = descartar e restaurar o conteúdo anterior`,
+          // O DESTRUTIVO NÃO PODE SER O PADRÃO.
+          //
+          // Antes: "OK = manter | Cancelar = descartar". Em qualquer caixa de
+          // diálogo, Cancelar significa "não faça nada" — e aqui significava
+          // DESTRUIR a peça recém-escrita. Pior: Esc e clique fora acionam
+          // Cancelar, então bastava um reflexo para perder o trabalho.
+          //
+          // Foi o que Fernando Faria relatou em 10/08/2026: "a plataforma
+          // começou a escrever a peça, mas por algum motivo a peça sumiu antes
+          // de ter a oportunidade de fazer o download". A peça não sumiu — foi
+          // descartada pelo próprio diálogo, no botão que parecia o seguro.
+          //
+          // Agora o padrão MANTÉM. Descartar exige o clique afirmativo, e a
+          // reprovação deixou de ser tratada como veredito: o texto continua no
+          // editor, com ressalva, e quem decide é quem assina.
+          const descartar = window.confirm(
+            `A VALIDAÇÃO APONTOU PROBLEMAS NO DOCUMENTO QUE ACABOU DE SER GERADO ` +
+              `(a avaliação é sobre o texto produzido, não sobre os seus anexos):\n\n• ${desvios}\n\n` +
+              `O texto pode não corresponder ao tipo de minuta "${minuteType}", ao caso ou às suas ` +
+              `instruções. Ele CONTINUA NO EDITOR e você pode revisá-lo, corrigi-lo ou baixá-lo.\n\n` +
+              `OK = DESCARTAR o texto gerado e restaurar o que havia antes\n` +
+              `Cancelar = MANTER o texto no editor (recomendado)`,
           )
-          if (!manter) {
+          if (descartar) {
+            // GUARDA O DESCARTADO ANTES DE SOBRESCREVER. O rascunho local era a
+            // única cópia do texto gerado fora do banco, e o descarte a
+            // apagava — sem volta. Peça reprovada ainda é trabalho feito, e a
+            // reprovação pode ser do validador, não do texto.
+            try {
+              localStorage.setItem(
+                'lexcontrol_gerador_descartado',
+                JSON.stringify({ em: new Date().toISOString(), conteudo: content }),
+              )
+            } catch {
+              /* cota de armazenamento: o descarte segue mesmo assim */
+            }
             setContent(originalContent)
             localStorage.setItem('lexcontrol_gerador_draft', originalContent)
             if (currentMinuteId) {
@@ -1898,7 +1930,9 @@ export default function GeradorMinutas() {
             }
             toast({
               title: 'Documento descartado',
-              description: 'O conteúdo anterior foi restaurado no editor e na minuta salva.',
+              description:
+                'O conteúdo anterior foi restaurado. O texto descartado ficou guardado nesta ' +
+                'máquina até a próxima geração — se descartou por engano, avise antes de gerar outra.',
               variant: 'destructive',
             })
           } else {
