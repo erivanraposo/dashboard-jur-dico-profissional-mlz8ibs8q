@@ -43,6 +43,24 @@ const tamanho = (b: number | null) => {
   return `${(b / 1024 / 1024).toFixed(1)} MB`
 }
 
+// PRAZO DE RETENÇÃO — 45 dias para anexo SEM processo.
+//
+// Anexo vinculado a processo não tem prazo: vive e morre com o processo, que é o
+// comportamento esperado num escritório. O prazo existe só para o que não tem
+// dono — que foi como 813 MB se acumularam sem que ninguém soubesse.
+//
+// 45 dias e não 15 ou 30: prazo processual comum é de 15 dias ÚTEIS, cerca de
+// três semanas corridas. Quem anexa os autos no início do prazo e volta ao fim
+// dele não pode perder o material. 45 cobrem o prazo inteiro com folga.
+//
+// E o prazo só é legítimo se aparecer ANTES — por isso a contagem fica visível
+// desde o primeiro dia, não apenas quando falta pouco.
+const PRAZO_DIAS = 45
+const AVISO_DIAS = 7
+
+const diasDeVida = (criadoEm: string) =>
+  Math.floor((Date.now() - new Date(criadoEm).getTime()) / 86400000)
+
 export default function AnexosSemProcessoSection() {
   const { toast } = useToast()
   const [anexos, setAnexos] = useState<Anexo[]>([])
@@ -121,9 +139,10 @@ export default function AnexosSemProcessoSection() {
           )}
         </CardTitle>
         <CardDescription>
-          Arquivos enviados para análise sem que um processo fosse selecionado. Ficam guardados e
-          não aparecem em processo nenhum — nem são removidos quando um processo é apagado. Confira
-          o que ainda é útil e remova o resto.
+          Arquivos enviados para análise sem que um processo fosse selecionado. Não aparecem em
+          processo nenhum e são <strong>eliminados {PRAZO_DIAS} dias após o envio</strong>. Para
+          guardar em definitivo, vincule o arquivo a um processo — aí ele passa a acompanhar o
+          processo e não expira.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -139,6 +158,7 @@ export default function AnexosSemProcessoSection() {
               <TableRow>
                 <TableHead>Arquivo</TableHead>
                 <TableHead className="w-28">Enviado em</TableHead>
+                <TableHead className="w-32">Prazo</TableHead>
                 <TableHead className="w-24">Tamanho</TableHead>
                 <TableHead className="w-28 text-right">Ações</TableHead>
               </TableRow>
@@ -149,6 +169,20 @@ export default function AnexosSemProcessoSection() {
                   <TableCell className="font-medium break-all">{a.file_name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(a.created_at).toLocaleDateString('pt-BR')}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {(() => {
+                      const restam = PRAZO_DIAS - diasDeVida(a.created_at)
+                      if (restam <= 0)
+                        return <span className="text-destructive font-medium">expirado</span>
+                      if (restam <= AVISO_DIAS)
+                        return (
+                          <span className="text-destructive font-medium">
+                            {restam} {restam === 1 ? 'dia' : 'dias'}
+                          </span>
+                        )
+                      return <span className="text-muted-foreground">{restam} dias</span>
+                    })()}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {tamanho(a.file_size)}
