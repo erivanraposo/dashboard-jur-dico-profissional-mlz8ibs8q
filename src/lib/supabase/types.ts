@@ -71,6 +71,54 @@ export type Database = {
         }
         Relationships: []
       }
+      carf_sumulas: {
+        Row: {
+          aprovada_em: string | null
+          colhido_em: string
+          enunciado: string | null
+          fonte_url: string | null
+          id: string
+          notas: string[]
+          numero: number
+          orgao: string | null
+          portaria_vinculante: string | null
+          precedentes: string | null
+          situacao: string
+          url_portaria: string | null
+          vinculante: boolean
+        }
+        Insert: {
+          aprovada_em?: string | null
+          colhido_em?: string
+          enunciado?: string | null
+          fonte_url?: string | null
+          id?: string
+          notas?: string[]
+          numero: number
+          orgao?: string | null
+          portaria_vinculante?: string | null
+          precedentes?: string | null
+          situacao?: string
+          url_portaria?: string | null
+          vinculante?: boolean
+        }
+        Update: {
+          aprovada_em?: string | null
+          colhido_em?: string
+          enunciado?: string | null
+          fonte_url?: string | null
+          id?: string
+          notas?: string[]
+          numero?: number
+          orgao?: string | null
+          portaria_vinculante?: string | null
+          precedentes?: string | null
+          situacao?: string
+          url_portaria?: string | null
+          vinculante?: boolean
+        }
+        Relationships: []
+      }
       clipped_cases: {
         Row: {
           created_at: string
@@ -157,6 +205,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      document_access_log: {
+        Row: {
+          acao: string
+          attachment_id: string | null
+          bytes: number | null
+          created_at: string
+          detalhe: string | null
+          file_name: string | null
+          file_path: string
+          id: number
+          origem: string
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          acao: string
+          attachment_id?: string | null
+          bytes?: number | null
+          created_at?: string
+          detalhe?: string | null
+          file_name?: string | null
+          file_path: string
+          id?: number
+          origem: string
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          acao?: string
+          attachment_id?: string | null
+          bytes?: number | null
+          created_at?: string
+          detalhe?: string | null
+          file_name?: string | null
+          file_path?: string
+          id?: number
+          origem?: string
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: []
       }
       document_digests: {
         Row: {
@@ -546,7 +636,9 @@ export type Database = {
           n_citacoes: number
           n_confirmado: number
           n_divergente: number
+          n_identificado: number
           n_nao_local: number
+          n_vigencia_comprometida: number
           output_tokens: number
           resultado: Json
           tese_alegada: string | null
@@ -565,7 +657,9 @@ export type Database = {
           n_citacoes?: number
           n_confirmado?: number
           n_divergente?: number
+          n_identificado?: number
           n_nao_local?: number
+          n_vigencia_comprometida?: number
           output_tokens?: number
           resultado?: Json
           tese_alegada?: string | null
@@ -584,7 +678,9 @@ export type Database = {
           n_citacoes?: number
           n_confirmado?: number
           n_divergente?: number
+          n_identificado?: number
           n_nao_local?: number
+          n_vigencia_comprometida?: number
           output_tokens?: number
           resultado?: Json
           tese_alegada?: string | null
@@ -605,6 +701,7 @@ export type Database = {
         Row: {
           created_at: string
           digest_status: string | null
+          expira_avisado_em: string | null
           file_name: string
           file_path: string
           file_size: number
@@ -616,6 +713,7 @@ export type Database = {
         Insert: {
           created_at?: string
           digest_status?: string | null
+          expira_avisado_em?: string | null
           file_name: string
           file_path: string
           file_size: number
@@ -627,6 +725,7 @@ export type Database = {
         Update: {
           created_at?: string
           digest_status?: string | null
+          expira_avisado_em?: string | null
           file_name?: string
           file_path?: string
           file_size?: number
@@ -1039,6 +1138,66 @@ export type Database = {
         }
         Relationships: []
       }
+      tse_sumulas: {
+        Row: {
+          colhido_em: string
+          composicao: string | null
+          enunciado: string | null
+          fonte_documento: string | null
+          fonte_pagina: number | null
+          fonte_url: string | null
+          id: string
+          marca: string | null
+          nota_cancelamento: string | null
+          notas: string[]
+          numero: number
+          origem_redacao_atual: string | null
+          publicacao: string | null
+          redacao_original: string | null
+          referencias: string | null
+          situacao: string
+          titulo_bruto: string
+        }
+        Insert: {
+          colhido_em?: string
+          composicao?: string | null
+          enunciado?: string | null
+          fonte_documento?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          marca?: string | null
+          nota_cancelamento?: string | null
+          notas?: string[]
+          numero: number
+          origem_redacao_atual?: string | null
+          publicacao?: string | null
+          redacao_original?: string | null
+          referencias?: string | null
+          situacao?: string
+          titulo_bruto: string
+        }
+        Update: {
+          colhido_em?: string
+          composicao?: string | null
+          enunciado?: string | null
+          fonte_documento?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          id?: string
+          marca?: string | null
+          nota_cancelamento?: string | null
+          notas?: string[]
+          numero?: number
+          origem_redacao_atual?: string | null
+          publicacao?: string | null
+          redacao_original?: string | null
+          referencias?: string | null
+          situacao?: string
+          titulo_bruto?: string
+        }
+        Relationships: []
+      }
       tst_precedentes: {
         Row: {
           assunto: string | null
@@ -1099,6 +1258,57 @@ export type Database = {
           titulo?: string | null
           transito_julgado?: string | null
           tribunal?: string | null
+        }
+        Relationships: []
+      }
+      tst_sumulas: {
+        Row: {
+          colhido_em: string
+          fonte_documento: string | null
+          fonte_pagina: number | null
+          fonte_url: string | null
+          historico: string | null
+          id: string
+          marcas: string[]
+          natureza: string | null
+          numero: number
+          situacao: string
+          texto: string | null
+          tipo: string
+          titulo: string | null
+          titulo_bruto: string
+        }
+        Insert: {
+          colhido_em?: string
+          fonte_documento?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          historico?: string | null
+          id?: string
+          marcas?: string[]
+          natureza?: string | null
+          numero: number
+          situacao?: string
+          texto?: string | null
+          tipo: string
+          titulo?: string | null
+          titulo_bruto: string
+        }
+        Update: {
+          colhido_em?: string
+          fonte_documento?: string | null
+          fonte_pagina?: number | null
+          fonte_url?: string | null
+          historico?: string | null
+          id?: string
+          marcas?: string[]
+          natureza?: string | null
+          numero?: number
+          situacao?: string
+          texto?: string | null
+          tipo?: string
+          titulo?: string | null
+          titulo_bruto?: string
         }
         Relationships: []
       }
@@ -1234,6 +1444,7 @@ export type Database = {
       workspaces: {
         Row: {
           budget_mensal_usd: number
+          busca_externa: boolean
           created_at: string
           id: string
           name: string
@@ -1241,6 +1452,7 @@ export type Database = {
         }
         Insert: {
           budget_mensal_usd?: number
+          busca_externa?: boolean
           created_at?: string
           id?: string
           name: string
@@ -1248,6 +1460,7 @@ export type Database = {
         }
         Update: {
           budget_mensal_usd?: number
+          busca_externa?: boolean
           created_at?: string
           id?: string
           name?: string
@@ -1257,6 +1470,30 @@ export type Database = {
       }
     }
     Views: {
+      vw_precver_integridade: {
+        Row: {
+          dia: string | null
+          id: string | null
+          n_citacoes: number | null
+          nao_contados: number | null
+          somados: number | null
+        }
+        Insert: {
+          dia?: never
+          id?: string | null
+          n_citacoes?: number | null
+          nao_contados?: never
+          somados?: never
+        }
+        Update: {
+          dia?: never
+          id?: string | null
+          n_citacoes?: number | null
+          nao_contados?: never
+          somados?: never
+        }
+        Relationships: []
+      }
       vw_recent_invocations: {
         Row: {
           agent_id: string | null
@@ -1291,11 +1528,64 @@ export type Database = {
       }
     }
     Functions: {
+      acessos_do_documento: {
+        Args: { p_file_path: string }
+        Returns: {
+          acao: string
+          detalhe: string
+          origem: string
+          quando: string
+          quem: string
+        }[]
+      }
       admin_remove_member: { Args: { p_member: string }; Returns: undefined }
       admin_set_member_role: {
         Args: { p_member: string; p_role: string }
         Returns: undefined
       }
+      anexos_a_expirar: {
+        Args: { p_dias_aviso?: number }
+        Returns: {
+          created_at: string
+          dias_restantes: number
+          file_name: string
+          file_path: string
+          file_size: number
+          id: string
+          ja_avisado: boolean
+        }[]
+      }
+      anexos_expirados: {
+        Args: { p_dias?: number }
+        Returns: {
+          created_at: string
+          dias_de_vida: number
+          file_name: string
+          file_path: string
+          file_size: number
+          id: string
+          workspace_id: string
+        }[]
+      }
+      carf_sumula: {
+        Args: { p_numero: number; p_tese?: string }
+        Returns: {
+          aprovada_em: string
+          colhido_em: string
+          enunciado: string
+          fonte_url: string
+          notas: string[]
+          numero: number
+          orgao: string
+          portaria_vinculante: string
+          precedentes: string
+          sim: number
+          situacao: string
+          url_portaria: string
+          vinculante: boolean
+        }[]
+      }
+      carf_sumula_limite: { Args: never; Returns: number }
       creditos_do_mes: { Args: never; Returns: Json }
       creditos_do_plano: { Args: { p_plano: string }; Returns: number }
       current_user_role: { Args: never; Returns: string }
@@ -1433,6 +1723,27 @@ export type Database = {
           ultima_publicacao: string
         }[]
       }
+      tse_sumula: {
+        Args: { p_numero: number; p_tese?: string }
+        Returns: {
+          colhido_em: string
+          enunciado: string
+          fonte_pagina: number
+          fonte_url: string
+          nota_cancelamento: string
+          notas: string[]
+          numero: number
+          origem_redacao_atual: string
+          publicacao: string
+          redacao_original: string
+          referencias: string
+          sim: number
+          sim_original: number
+          situacao: string
+          titulo_bruto: string
+        }[]
+      }
+      tse_sumula_limite: { Args: never; Returns: number }
       tst_precedente: {
         Args: { p_numero: number; p_tese?: string; p_tipo: string }
         Returns: {
@@ -1450,6 +1761,31 @@ export type Database = {
           titulo: string
           transito_julgado: string
           tribunal: string
+        }[]
+      }
+      tst_sumula: {
+        Args: { p_numero: number; p_tese?: string; p_tipo: string }
+        Returns: {
+          colhido_em: string
+          fonte_pagina: number
+          fonte_url: string
+          historico: string
+          marcas: string[]
+          natureza: string
+          numero: number
+          sim: number
+          situacao: string
+          texto: string
+          tipo: string
+          titulo: string
+          titulo_bruto: string
+        }[]
+      }
+      tst_sumula_limites: {
+        Args: never
+        Returns: {
+          maximo: number
+          tipo: string
         }[]
       }
       workspace_founder: { Args: { p_ws: string }; Returns: string }
