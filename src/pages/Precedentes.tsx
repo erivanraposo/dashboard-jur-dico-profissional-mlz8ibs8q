@@ -258,7 +258,15 @@ export default function Precedentes() {
     const linhas = [
       i.citacao,
       `[${meta.rotulo}]`,
-      i.o_que_decide ? `O que decide: ${i.o_que_decide}` : null,
+      // O TEXTO COPIADO VIAJA — vai para dentro da peça, do e-mail, do
+      // memorando. Se na tela o rótulo já não podia afirmar o que o conteúdo
+      // nega, aqui menos ainda: fora do contexto do Verificador, ninguém verá a
+      // faixa de aviso nem o estado do achado.
+      i.o_que_decide
+        ? /^\s*DA MEM[ÓO]RIA DO MODELO/i.test(i.o_que_decide)
+          ? `O modelo indica, SEM CONFERÊNCIA: ${i.o_que_decide}`
+          : `O que decide: ${i.o_que_decide}`
+        : null,
       i.observacao ? `Ressalva: ${i.observacao}` : null,
       i.url_oficial ? `Fonte oficial: ${i.url_oficial}` : null,
       i.url_busca ? `Busca no portal: ${i.url_busca}` : null,
@@ -413,14 +421,31 @@ export default function Precedentes() {
 
                 <p className="text-xs text-muted-foreground">{ajuda}</p>
 
-                {i.o_que_decide && (
-                  <div className="text-sm">
-                    <span className="font-semibold text-muted-foreground uppercase text-xs tracking-wider">
-                      O que o julgado decide
-                    </span>
-                    <p className="mt-1 text-slate-700">{i.o_que_decide}</p>
-                  </div>
-                )}
+                {i.o_que_decide &&
+                  (() => {
+                    // O RÓTULO NÃO PODE AFIRMAR O QUE O TEXTO DESMENTE.
+                    //
+                    // Quando a busca está desativada e o conteúdo vem da memória
+                    // do modelo, ele começa por "DA MEMÓRIA DO MODELO, NÃO DE
+                    // FONTE CONSULTADA:". Manter o rótulo "O que o julgado
+                    // decide" faria o cabeçalho afirmar exatamente o que a
+                    // primeira linha nega — e quem lê rápido lê o rótulo.
+                    const daMemoria = /^\s*DA MEM[ÓO]RIA DO MODELO/i.test(i.o_que_decide!)
+                    return (
+                      <div className="text-sm">
+                        <span
+                          className={`font-semibold uppercase text-xs tracking-wider ${
+                            daMemoria ? 'text-amber-700' : 'text-muted-foreground'
+                          }`}
+                        >
+                          {daMemoria
+                            ? 'O modelo indica, sem conferência, a decisão'
+                            : 'O que o julgado decide'}
+                        </span>
+                        <p className="mt-1 text-slate-700">{i.o_que_decide}</p>
+                      </div>
+                    )
+                  })()}
 
                 {(i.campos_conferidos?.length || i.campos_nao_conferidos?.length) && (
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
