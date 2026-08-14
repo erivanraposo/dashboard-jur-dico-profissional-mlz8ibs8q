@@ -472,11 +472,16 @@ async function chamaModelo(
                 text:
                   'MODO SEM BUSCA EXTERNA. Este escritório optou por não permitir consulta a mecanismos de busca. ' +
                   'VOCÊ NÃO TEM A FERRAMENTA DE BUSCA nesta requisição — ignore a instrução acima que manda usá-la. ' +
-                  'NÃO responda de memória em hipótese alguma: memória de modelo é exatamente o que produz citação ' +
-                  'inventada, e aqui não há como conferir. Para toda citação que não venha já conferida nas bases ' +
-                  'canônicas, devolva estado "IDENTIFICADO" e, na observação, diga que a verificação externa está ' +
-                  'desativada por opção do escritório e que a citação precisa ser conferida manualmente no portal ' +
-                  'oficial do tribunal, indicando qual.',
+                  'Para toda citação que não venha já conferida nas bases canônicas, devolva estado "IDENTIFICADO" ' +
+                  '(NUNCA "NAO_LOCALIZADO": nada foi procurado, e dizer que não se encontrou sugere que se procurou). ' +
+                  '\n\n' +
+                  'SOBRE O QUE VOCÊ SABE DE MEMÓRIA. Você pode oferecer o que sabe sobre a citação — é útil ao ' +
+                  'advogado como orientação. Mas a proveniência tem de ser INEQUÍVOCA, porque memória de modelo é ' +
+                  'exatamente o mecanismo que produz citação inventada com ar de certeza, e quem lê não tem como ' +
+                  'distinguir um acerto de um erro. Então: comece o trecho com "DA MEMÓRIA DO MODELO, NÃO DE FONTE ' +
+                  'CONSULTADA:" e termine dizendo em que portal oficial conferir, nomeando-o. Nunca escreva que a ' +
+                  'citação "corresponde a" ou "é" algo — escreva que você ACREDITA tratar-se disso, e que não foi ' +
+                  'verificado. Se não souber, diga que não sabe; inventar aqui é pior que calar.',
               },
             ]),
       ],
@@ -534,6 +539,36 @@ async function verificaPorBusca(
   confirmados: ConfirmadoBase[] = [],
   buscaExterna = true,
 ): Promise<{ itens: Item[]; uso: any }> {
+  // SEM BUSCA, "NÃO LOCALIZADO" É AFIRMAÇÃO QUE NÃO PODEMOS FAZER.
+  //
+  // No primeiro teste com a busca desligada (13/08), o modelo devolveu
+  // NAO_LOCALIZADO — e a tela exibiu "Não encontrado nos portais consultados".
+  // NENHUM portal foi consultado. Dizer que não se encontrou sugere que se
+  // procurou; é afirmação diferente de "não procurei", e distinguir essas duas
+  // coisas é a razão de existir deste produto.
+  //
+  // Corrigido POR CÓDIGO, não por instrução no prompt: o modelo já havia sido
+  // instruído a devolver IDENTIFICADO e não obedeceu. Instrução é pedido;
+  // remapeamento no servidor é garantia.
+  const corrigeSemBusca = (r: { itens: Item[]; uso: any }) => {
+    if (buscaExterna) return r
+    return {
+      ...r,
+      itens: r.itens.map((i) =>
+        i.estado === 'NAO_LOCALIZADO'
+          ? {
+              ...i,
+              estado: 'IDENTIFICADO' as const,
+              observacao:
+                'A busca externa está desativada por opção do escritório, então esta citação NÃO FOI ' +
+                'PROCURADA em portal nenhum — o que não é o mesmo que não ter sido encontrada. ' +
+                (i.observacao ?? ''),
+            }
+          : i,
+      ),
+    }
+  }
+
   const base = [
     `CITAÇÕES A VERIFICAR (texto colado pelo advogado):\n${citacoesTexto}`,
     tese
@@ -542,16 +577,18 @@ async function verificaPorBusca(
   ].join('\n') + blocoConfirmados(confirmados)
 
   try {
-    return await chamaModelo(base, anthropicKey, confirmados, buscaExterna)
+    return corrigeSemBusca(await chamaModelo(base, anthropicKey, confirmados, buscaExterna))
   } catch (err: any) {
     if (!String(err?.message ?? '').includes('JSON')) throw err
     console.warn('[verify-precedent] JSON quebrado; uma retentativa')
-    return await chamaModelo(
-      base +
-        '\n\nATENÇÃO: sua resposta anterior não veio em JSON. Responda AGORA exclusivamente com o objeto JSON {"itens":[...]}, sem uma palavra antes ou depois, sem cerca de código.',
-      anthropicKey,
-      confirmados,
-      buscaExterna,
+    return corrigeSemBusca(
+      await chamaModelo(
+        base +
+          '\n\nATENÇÃO: sua resposta anterior não veio em JSON. Responda AGORA exclusivamente com o objeto JSON {"itens":[...]}, sem uma palavra antes ou depois, sem cerca de código.',
+        anthropicKey,
+        confirmados,
+        buscaExterna,
+      ),
     )
   }
 }

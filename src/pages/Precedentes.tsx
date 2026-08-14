@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -107,7 +107,7 @@ const ESTADOS: Record<Estado, { rotulo: string; cls: string; Icone: any; ajuda: 
     cls: 'bg-slate-100 text-slate-700 border-slate-300',
     Icone: ShieldQuestion,
     ajuda:
-      'Reconhecemos a citação pelo formato e abrimos a busca oficial. Nenhuma fonte foi consultada e o teor não foi lido — isto não é uma confirmação.',
+      'Reconhecemos a citação pelo formato e abrimos a busca oficial. Nenhuma fonte foi consultada e o teor não foi lido — isto não é uma confirmação. É também o estado devolvido quando o escritório desativa a busca externa: nada foi procurado, o que é diferente de nada ter sido encontrado.',
   },
   VIGENCIA_COMPROMETIDA: {
     rotulo: 'Vigência comprometida',
@@ -144,7 +144,30 @@ export default function Precedentes() {
   const [itens, setItens] = useState<Item[] | null>(null)
   const [consumo, setConsumo] = useState<{ hoje: number; teto: number } | null>(null)
   const [dominios, setDominios] = useState<string[]>([])
+  // Busca externa desligada precisa aparecer AQUI, não só na resposta. Sem aviso
+  // na tela, o advogado descobre pelo resultado — ou não descobre, e atribui a
+  // limitação ao produto em vez de à opção do escritório.
+  const [buscaExterna, setBuscaExterna] = useState(true)
   const { toast } = useToast()
+
+  useEffect(() => {
+    ;(async () => {
+      const uid = (await supabase.auth.getUser()).data.user?.id
+      if (!uid) return
+      const { data: perfil } = await supabase
+        .from('profiles')
+        .select('workspace_id')
+        .eq('id', uid)
+        .maybeSingle()
+      if (!perfil?.workspace_id) return
+      const { data } = await supabase
+        .from('workspaces')
+        .select('busca_externa')
+        .eq('id', perfil.workspace_id)
+        .maybeSingle()
+      setBuscaExterna((data as any)?.busca_externa !== false)
+    })()
+  }, [])
 
   // Streaming: a Edge Function corta em 150s sem tráfego, e uma verificação
   // demorada morria em 504 na cara do advogado. O batimento mantém a conexão
@@ -268,11 +291,33 @@ export default function Precedentes() {
           </h1>
           <p className="text-muted-foreground mt-1">
             Cole citações de qualquer origem — peça da parte contrária, minuta de estagiário, saída
-            de outra IA, sua própria peça antes do protocolo. Conferimos em portais oficiais.
+            de outra IA, sua própria peça antes do protocolo.{' '}
+            {buscaExterna
+              ? 'Conferimos em portais oficiais.'
+              : 'Conferimos nas bases oficiais que mantemos.'}
           </p>
         </div>
         <HelpButton anchor="verificador-precedentes" />
       </div>
+
+      {!buscaExterna && (
+        <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <p className="font-semibold flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4" />
+            Busca externa desativada neste escritório
+          </p>
+          <p className="mt-1 leading-relaxed">
+            Nenhuma consulta sai do sistema. Súmulas, temas de repercussão geral e precedentes do
+            STF, STJ, TST, TSE e CARF continuam sendo conferidos normalmente — eles não dependem de
+            busca. Já <strong>acórdãos fora dessas bases não serão conferidos</strong>: virão
+            marcados para conferência manual, com o portal indicado.
+          </p>
+          <p className="mt-2 text-xs">
+            A opção fica em <strong>Configurações → Busca externa na verificação</strong>, e só o
+            titular do escritório pode alterá-la.
+          </p>
+        </div>
+      )}
 
       <Card className="border-border/50 shadow-sm">
         <CardContent className="p-6 space-y-4">
