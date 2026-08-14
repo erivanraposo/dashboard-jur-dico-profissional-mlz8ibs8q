@@ -408,6 +408,26 @@ async function chamaModelo(
   userMsg: string,
   anthropicKey: string,
   confirmados: ConfirmadoBase[] = [],
+  // BUSCA EXTERNA — desligável por escritório.
+  //
+  // A ferramenta de busca é OPCIONAL POR REQUISIÇÃO: só roda quando vai no array
+  // `tools`. Não indo, a consulta sequer é formulada — e portanto não sai.
+  //
+  // Isso importa por uma razão que a restrição de domínio NÃO resolve. O
+  // `allowed_domains` filtra o que VOLTA, não o que SAI: o texto da consulta é
+  // enviado ao provedor de busca de todo modo. E os provedores são
+  // subprocessadores da Anthropic — Brave Search e TurboPuffer (EUA), conforme a
+  // lista colhida em 13/08/2026 — que podem mudar com aviso de 30 dias.
+  //
+  // Só NÃO BUSCAR é robusto a mudança de cadeia. Qualquer outra medida depende
+  // de vigiar uma lista que muda por decisão de terceiro.
+  //
+  // O custo é de cobertura, e é menor do que parece: os 126 casos de teste
+  // resolvem TODOS pelas dez bases canônicas, a custo zero. A busca só entra
+  // para acórdão fora delas — que, sem ela, volta como IDENTIFICADO dizendo que
+  // não foi conferido e por quê. É a disciplina de sempre: não confirmar em vez
+  // de confirmar sem base.
+  buscaExterna = true,
 ): Promise<{ itens: Item[]; uso: any }> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -419,20 +439,47 @@ async function chamaModelo(
     body: JSON.stringify({
       model: MODELO,
       max_tokens: 4000,
-      tools: [
-        {
-          type: 'web_search_20260209',
-          name: 'web_search',
-          // 8 -> 5 em 31/07/2026. Medição das 13 primeiras verificações: 70k tokens
-          // de GRAVAÇÃO de cache por chamada (3,75/M) = 75% do custo de US$ 0,35.
-          // Não é o system prompt (~2,5k) — é o conteúdo das buscas, reescrito no
-          // cache a cada volta do laço interno. Cortar buscas é a alavanca real.
-          max_uses: 5,
-          allowed_callers: ['direct'],
-          allowed_domains: DOMINIOS_OFICIAIS,
-        },
+      tools: buscaExterna
+        ? [
+            {
+              type: 'web_search_20260209',
+              name: 'web_search',
+              // 8 -> 5 em 31/07/2026. Medição das 13 primeiras verificações: 70k tokens
+              // de GRAVAÇÃO de cache por chamada (3,75/M) = 75% do custo de US$ 0,35.
+              // Não é o system prompt (~2,5k) — é o conteúdo das buscas, reescrito no
+              // cache a cada volta do laço interno. Cortar buscas é a alavanca real.
+              max_uses: 5,
+              allowed_callers: ['direct'],
+              allowed_domains: DOMINIOS_OFICIAIS,
+            },
+          ]
+        : [],
+      // O SYSTEM PRECISA SABER QUE NÃO HÁ BUSCA. Sem isto o modelo tentaria
+      // usar uma ferramenta ausente, ou — pior — responderia de memória, que é
+      // exatamente o que produz citação inventada. O aviso substitui a instrução
+      // "use a busca" por "diga que não conferiu".
+      //
+      // O bloco extra vai FORA do trecho com cache_control: o system em cache é
+      // idêntico nos dois modos, e só o aviso muda. Assim o escritório que
+      // desliga a busca não perde o cache do prompt principal.
+      system: [
+        { type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } },
+        ...(buscaExterna
+          ? []
+          : [
+              {
+                type: 'text',
+                text:
+                  'MODO SEM BUSCA EXTERNA. Este escritório optou por não permitir consulta a mecanismos de busca. ' +
+                  'VOCÊ NÃO TEM A FERRAMENTA DE BUSCA nesta requisição — ignore a instrução acima que manda usá-la. ' +
+                  'NÃO responda de memória em hipótese alguma: memória de modelo é exatamente o que produz citação ' +
+                  'inventada, e aqui não há como conferir. Para toda citação que não venha já conferida nas bases ' +
+                  'canônicas, devolva estado "IDENTIFICADO" e, na observação, diga que a verificação externa está ' +
+                  'desativada por opção do escritório e que a citação precisa ser conferida manualmente no portal ' +
+                  'oficial do tribunal, indicando qual.',
+              },
+            ]),
       ],
-      system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: userMsg }],
     }),
   })
@@ -485,6 +532,7 @@ async function verificaPorBusca(
   tese: string,
   anthropicKey: string,
   confirmados: ConfirmadoBase[] = [],
+  buscaExterna = true,
 ): Promise<{ itens: Item[]; uso: any }> {
   const base = [
     `CITAÇÕES A VERIFICAR (texto colado pelo advogado):\n${citacoesTexto}`,
@@ -494,7 +542,7 @@ async function verificaPorBusca(
   ].join('\n') + blocoConfirmados(confirmados)
 
   try {
-    return await chamaModelo(base, anthropicKey, confirmados)
+    return await chamaModelo(base, anthropicKey, confirmados, buscaExterna)
   } catch (err: any) {
     if (!String(err?.message ?? '').includes('JSON')) throw err
     console.warn('[verify-precedent] JSON quebrado; uma retentativa')
@@ -503,6 +551,7 @@ async function verificaPorBusca(
         '\n\nATENÇÃO: sua resposta anterior não veio em JSON. Responda AGORA exclusivamente com o objeto JSON {"itens":[...]}, sem uma palavra antes ou depois, sem cerca de código.',
       anthropicKey,
       confirmados,
+      buscaExterna,
     )
   }
 }
@@ -2521,6 +2570,17 @@ Deno.serve(async (req: Request) => {
       return json({ status: 'error', code: 'no_profile', message: 'Perfil não encontrado.' }, 400)
     }
 
+    // Interruptor de busca externa, por escritório. Padrão LIGADO: falha de
+    // leitura, coluna ausente ou workspace sem preferência mantêm o
+    // comportamento atual. Desligar é ato deliberado — e o `!== false` garante
+    // que só o valor explícito desliga.
+    const { data: wsCfg } = await admin
+      .from('workspaces')
+      .select('busca_externa')
+      .eq('id', perfil.workspace_id)
+      .maybeSingle()
+    const buscaExterna = wsCfg?.busca_externa !== false
+
     // ---- teto diário do plano, por CUSTO (por escritório)
     // Contar chamadas deixou de fazer sentido quando o Nível 1 entrou: uma
     // verificação resolvida na base custa ~US$ 0 e uma do Nível 2 custa ~US$ 0,19.
@@ -2612,7 +2672,13 @@ Deno.serve(async (req: Request) => {
     const temAcordao = /[A-Za-z]{2,6}\s*n?[ºo.]?\s*[\d][\d.]{2,}/.test(resto)
     if (temAcordao) {
       send({ tipo: 'progresso', etapa: 'Consultando os portais oficiais dos tribunais…' })
-      const r = await verificaPorBusca(resto.slice(0, 6000), tese, anthropicKey, confirmados)
+      const r = await verificaPorBusca(
+        resto.slice(0, 6000),
+        tese,
+        anthropicKey,
+        confirmados,
+        buscaExterna,
+      )
       porBusca = r.itens.slice(0, MAX_CITACOES)
       uso = r.uso
     }

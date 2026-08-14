@@ -10,6 +10,7 @@ import { useCurrentUser } from '@/hooks/use-current-user'
 import { supabase } from '@/lib/supabase/client'
 import AdvogadosSection from '@/components/AdvogadosSection'
 import AnexosSemProcessoSection from '@/components/AnexosSemProcessoSection'
+import BuscaExternaSection from '@/components/BuscaExternaSection'
 import {
   Settings,
   Upload,
@@ -260,6 +261,8 @@ export default function Configuracoes() {
       </div>
 
       {isOwner && <AdvogadosSection />}
+
+      {isOwner && <BuscaExternaSection />}
 
       {isOwner && <AnexosSemProcessoSection />}
 
