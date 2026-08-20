@@ -158,11 +158,27 @@ const ProcessDocuments = ({
     }
 
     setUploading(true)
-    const fileExt = file.name.split('.').pop()
-    const fileName = `${processId}/${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`
+
+    // Balde unificado com o Gerador de Minutas (20/08/2026). Esta aba gravava
+    // em 'legal_documents', que nunca recebeu um arquivo sequer e cuja política
+    // não filtrava por workspace.
+    //
+    // O caminho TEM de começar pelo auth.uid(): a política pa_storage_insert
+    // exige que a primeira pasta seja o usuário, e recusa o envio se não for.
+    // Por isso o esquema antigo, <process_id>/..., não podia ser mantido.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      toast({ title: 'Erro', description: 'Usuário não autenticado.', variant: 'destructive' })
+      setUploading(false)
+      return
+    }
+
+    const fileName = `${user.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
 
     const { error: uploadError } = await supabase.storage
-      .from('legal_documents')
+      .from('process-attachments')
       .upload(fileName, file)
 
     if (uploadError) {
@@ -180,6 +196,10 @@ const ProcessDocuments = ({
     })
 
     if (dbError) {
+      // Desfaz o envio: arquivo sem linha é órfão — invisível na interface e
+      // fora do alcance de qualquer eliminação orientada por processo. É a
+      // mesma compensação que o Gerador de Minutas já faz.
+      await supabase.storage.from('process-attachments').remove([fileName])
       toast({ title: 'Erro ao salvar', description: dbError.message, variant: 'destructive' })
     } else {
       toast({ title: 'Sucesso', description: 'Documento anexado com sucesso.' })
@@ -190,7 +210,9 @@ const ProcessDocuments = ({
   }
 
   const handleDownload = async (doc: any) => {
-    const { data, error } = await supabase.storage.from('legal_documents').download(doc.file_path)
+    const { data, error } = await supabase.storage
+      .from('process-attachments')
+      .download(doc.file_path)
 
     if (error) {
       toast({ title: 'Erro no download', description: error.message, variant: 'destructive' })
@@ -208,8 +230,11 @@ const ProcessDocuments = ({
   }
 
   const handleDelete = async (doc: any) => {
+    // ARQUIVO PRIMEIRO, LINHA DEPOIS — já estava na ordem certa aqui; só muda
+    // o balde. Falha no segundo passo deixa linha sem arquivo, que é visível,
+    // e não órfão, que não é.
     const { error: storageError } = await supabase.storage
-      .from('legal_documents')
+      .from('process-attachments')
       .remove([doc.file_path])
 
     if (storageError) {
