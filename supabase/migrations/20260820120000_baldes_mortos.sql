@@ -34,29 +34,36 @@ drop policy if exists "Authenticated users can upload legal-attachments" on stor
 drop policy if exists "Authenticated users can delete legal-attachments" on storage.objects;
 
 -- ---------------------------------------------------------------------------
--- 2) Os baldes — com trava.
---    Só apaga se estiverem realmente vazios. A conferência foi feita hoje, mas
---    entre a conferência e a aplicação alguém pode ter subido alguma coisa, e
---    apagar balde com arquivo dentro é irreversível.
+-- 2) Os baldes NÃO são apagados aqui — e não por escolha nossa.
+--
+--    A primeira versão desta migration apagava as duas linhas de
+--    storage.buckets. O banco recusou:
+--
+--      ERROR: 42501: Direct deletion from storage tables is not allowed.
+--             Use the Storage API instead.
+--      HINT:  This prevents accidental data loss from orphaned objects.
+--      CONTEXT: PL/pgSQL function storage.protect_delete()
+--
+--    A Supabase passou a impor no banco a mesma regra que este projeto já
+--    tinha aprendido em 12/08 e escrito em limpa_orfaos.py: apagar a linha em
+--    storage.objects remove o REGISTRO e não o ARQUIVO. Quem apaga por SQL
+--    troca um resíduo rastreável por um invisível. O gatilho existe para
+--    impedir exatamente isso.
+--
+--    Como apagar os dois baldes vazios, então: pelo painel da Supabase,
+--    Storage -> selecionar o balde -> Delete bucket. Passa pela Storage API,
+--    que remove registro e conteúdo. Sem chave de serviço, porque o painel já
+--    está autenticado.
+--
+--    Conferir antes que continuam vazios:
+--
+--      select bucket_id, count(*)
+--        from storage.objects
+--       where bucket_id in ('legal_documents', 'legal-attachments')
+--       group by bucket_id;
+--
+--    Zero linhas no resultado = os dois estão vazios e podem ser apagados.
 -- ---------------------------------------------------------------------------
-do $$
-declare
-  v_balde text;
-  v_qtd   int;
-begin
-  foreach v_balde in array array['legal_documents', 'legal-attachments'] loop
-    select count(*) into v_qtd from storage.objects where bucket_id = v_balde;
-
-    if v_qtd > 0 then
-      raise exception
-        'ABORTADO: o balde % tem % objeto(s). Estava vazio na auditoria de 20/08 — apurar antes de apagar.',
-        v_balde, v_qtd;
-    end if;
-
-    delete from storage.buckets where id = v_balde;
-    raise notice 'balde % removido (estava vazio)', v_balde;
-  end loop;
-end $$;
 
 -- ---------------------------------------------------------------------------
 -- 3) O balde 'Escritorio' NÃO é tocado aqui, de propósito.
@@ -70,7 +77,17 @@ end $$;
 --    service_role alcança. Não é exposição.
 --
 --    Mas é dado que nenhuma eliminação orientada por processo atinge — a mesma
---    natureza dos órfãos, para efeito da cláusula 10 do DPA. Identificar o
---    arquivo (só com a chave de serviço) e então decidir entre migrar para
---    'workspace-branding' ou apagar balde e conteúdo.
+--    natureza dos órfãos, para efeito da cláusula 10 do DPA.
+--
+--    IDENTIFICAR o arquivo é uma consulta comum: o SQL Editor roda acima do
+--    RLS, então enxerga o que o aplicativo não enxerga.
+--
+--      select o.name, o.created_at::date, o.owner,
+--             pg_size_pretty((o.metadata->>'size')::bigint) as tamanho,
+--             o.metadata->>'mimetype' as tipo
+--        from storage.objects o
+--       where o.bucket_id = 'Escritorio';
+--
+--    APAGAR, esse sim, exige a Storage API — painel ou chave de serviço, pela
+--    mesma razão do item 2.
 -- ---------------------------------------------------------------------------
