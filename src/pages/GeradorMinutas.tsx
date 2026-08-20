@@ -1105,16 +1105,20 @@ export default function GeradorMinutas() {
     setAttachments((prev) => prev.filter((a) => a.path !== path))
 
     try {
+      // ARQUIVO PRIMEIRO, LINHA DEPOIS — mesma razão do clearAllAttachments
+      // logo abaixo, que foi corrigido em 12/08 e deixou este caminho para
+      // trás. Remover um anexo por vez é o caminho mais usado, então era daqui
+      // que vinha a maior parte dos órfãos.
+      const { error: storageError } = await supabase.storage
+        .from('process-attachments')
+        .remove([path])
+      if (storageError) throw storageError
+
       const { error: dbError } = await supabase
         .from('process_attachments')
         .delete()
         .eq('file_path', path)
       if (dbError) throw dbError
-
-      const { error: storageError } = await supabase.storage
-        .from('process-attachments')
-        .remove([path])
-      if (storageError) throw storageError
     } catch (err: any) {
       setAttachments((prev) => [...prev, attachmentToRemove])
       toast({
